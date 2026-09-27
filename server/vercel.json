@@ -30,7 +30,7 @@
   ],
   "functions": {
     "api/vercel.ts": {
-      "includeFiles": "public/**"
+      "includeFiles": "../public/**"
     }
   }
 }
