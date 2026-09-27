@@ -1,0 +1,136 @@
+{
+  "nav": {
+    "dashboard": "Главная",
+    "users": "Пользователи",
+    "complaints": "Жалобы",
+    "reactions": "Реакции",
+    "comments": "Комментарии",
+    "warehouse": "Склад",
+    "products": "Товары",
+    "stock": "Остатки",
+    "orders": "Заказы",
+    "profile": "Профиль",
+    "settings": "Настройки",
+    "goToSite": "Перейти на сайт"
+  },
+  "crud": {
+    "list": "Список",
+    "create": "Создать",
+    "edit": "Редактировать",
+    "delete": "Удалить",
+    "view": "Просмотр",
+    "adjust": "Настроить"
+  },
+  "dashboard": {
+    "title": "Главная",
+    "subtitle": "Статистика магазина и обзор",
+    "totalRevenue": "Общий доход",
+    "totalOrders": "Заказы",
+    "totalUsers": "Пользователи",
+    "totalProducts": "Товары",
+    "recentOrders": "Последние заказы",
+    "salesChart": "График продаж",
+    "topProducts": "Топ товаров"
+  },
+  "users": {
+    "title": "Пользователи",
+    "subtitle": "Все зарегистрированные пользователи",
+    "name": "Имя",
+    "email": "Email",
+    "role": "Роль",
+    "status": "Статус",
+    "actions": "Действия",
+    "createTitle": "Новый пользователь",
+    "editTitle": "Редактировать пользователя",
+    "deleteTitle": "Удалить пользователя",
+    "deleteConfirm": "Вы уверены, что хотите удалить этого пользователя?"
+  },
+  "complaints": {
+    "title": "Жалобы",
+    "subtitle": "Жалобы и обращения клиентов",
+    "subject": "Тема",
+    "from": "От",
+    "date": "Дата",
+    "priority": "Приоритет",
+    "status": "Статус",
+    "pending": "Ожидание",
+    "resolved": "Решено",
+    "inProgress": "В процессе"
+  },
+  "reactions": {
+    "title": "Реакции",
+    "subtitle": "Обзор реакций на товары",
+    "likes": "Лайки",
+    "dislikes": "Дизлайки",
+    "product": "Товар",
+    "type": "Тип"
+  },
+  "comments": {
+    "title": "Комментарии",
+    "subtitle": "Комментарии и отзывы пользователей",
+    "author": "Автор",
+    "content": "Текст",
+    "product": "Товар",
+    "approve": "Одобрить",
+    "reject": "Отклонить"
+  },
+  "products": {
+    "title": "Товары",
+    "subtitle": "Управление каталогом товаров",
+    "createTitle": "Добавить товар",
+    "editTitle": "Редактировать товар",
+    "deleteTitle": "Удалить товар",
+    "price": "Цена",
+    "category": "Категория",
+    "stock": "Остаток"
+  },
+  "stock": {
+    "title": "Остатки",
+    "subtitle": "Уровни запасов на складе",
+    "adjustTitle": "Настроить остаток",
+    "quantity": "Количество",
+    "lowStock": "Мало на складе",
+    "inStock": "В наличии"
+  },
+  "orders": {
+    "title": "Заказы",
+    "subtitle": "Список всех заказов",
+    "orderId": "ID заказа",
+    "customer": "Клиент",
+    "total": "Итого",
+    "status": "Статус",
+    "date": "Дата",
+    "delivered": "Доставлен",
+    "processing": "В обработке",
+    "cancelled": "Отменён"
+  },
+  "profile": {
+    "title": "Профиль",
+    "subtitle": "Ваша личная информация",
+    "name": "Имя",
+    "email": "Email",
+    "phone": "Телефон",
+    "role": "Должность",
+    "save": "Сохранить"
+  },
+  "settings": {
+    "title": "Настройки",
+    "subtitle": "Системные и API настройки",
+    "apiKey": "API ключ",
+    "apiKeyPlaceholder": "Введите API ключ...",
+    "language": "Язык",
+    "theme": "Тема"
+  },
+  "common": {
+    "search": "Поиск...",
+    "save": "Сохранить",
+    "cancel": "Отмена",
+    "confirm": "Подтвердить",
+    "loading": "Загрузка...",
+    "noData": "Данные не найдены",
+    "success": "Успешно!",
+    "error": "Произошла ошибка",
+    "actions": "Действия",
+    "back": "Назад"
+  }
+}

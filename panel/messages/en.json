@@ -1,0 +1,136 @@
+{
+  "nav": {
+    "dashboard": "Dashboard",
+    "users": "Users",
+    "complaints": "Complaints",
+    "reactions": "Reactions",
+    "comments": "Comments",
+    "warehouse": "Warehouse",
+    "products": "Products",
+    "stock": "Stock",
+    "orders": "Orders",
+    "profile": "Profile",
+    "settings": "Settings",
+    "goToSite": "Go to site"
+  },
+  "crud": {
+    "list": "List",
+    "create": "Create",
+    "edit": "Edit",
+    "delete": "Delete",
+    "view": "View",
+    "adjust": "Adjust"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "subtitle": "Store statistics and overview",
+    "totalRevenue": "Total Revenue",
+    "totalOrders": "Orders",
+    "totalUsers": "Users",
+    "totalProducts": "Products",
+    "recentOrders": "Recent Orders",
+    "salesChart": "Sales Chart",
+    "topProducts": "Top Products"
+  },
+  "users": {
+    "title": "Users",
+    "subtitle": "All registered users",
+    "name": "Name",
+    "email": "Email",
+    "role": "Role",
+    "status": "Status",
+    "actions": "Actions",
+    "createTitle": "New User",
+    "editTitle": "Edit User",
+    "deleteTitle": "Delete User",
+    "deleteConfirm": "Are you sure you want to delete this user?"
+  },
+  "complaints": {
+    "title": "Complaints",
+    "subtitle": "Customer complaints and requests",
+    "subject": "Subject",
+    "from": "From",
+    "date": "Date",
+    "priority": "Priority",
+    "status": "Status",
+    "pending": "Pending",
+    "resolved": "Resolved",
+    "inProgress": "In Progress"
+  },
+  "reactions": {
+    "title": "Reactions",
+    "subtitle": "Product reactions overview",
+    "likes": "Likes",
+    "dislikes": "Dislikes",
+    "product": "Product",
+    "type": "Type"
+  },
+  "comments": {
+    "title": "Comments",
+    "subtitle": "User comments and reviews",
+    "author": "Author",
+    "content": "Content",
+    "product": "Product",
+    "approve": "Approve",
+    "reject": "Reject"
+  },
+  "products": {
+    "title": "Products",
+    "subtitle": "Product catalog management",
+    "createTitle": "Add New Product",
+    "editTitle": "Edit Product",
+    "deleteTitle": "Delete Product",
+    "price": "Price",
+    "category": "Category",
+    "stock": "Stock"
+  },
+  "stock": {
+    "title": "Stock",
+    "subtitle": "Warehouse inventory levels",
+    "adjustTitle": "Adjust Stock",
+    "quantity": "Quantity",
+    "lowStock": "Low Stock",
+    "inStock": "In Stock"
+  },
+  "orders": {
+    "title": "Orders",
+    "subtitle": "All orders list",
+    "orderId": "Order ID",
+    "customer": "Customer",
+    "total": "Total",
+    "status": "Status",
+    "date": "Date",
+    "delivered": "Delivered",
+    "processing": "Processing",
+    "cancelled": "Cancelled"
+  },
+  "profile": {
+    "title": "Profile",
+    "subtitle": "Your personal information",
+    "name": "Name",
+    "email": "Email",
+    "phone": "Phone",
+    "role": "Role",
+    "save": "Save"
+  },
+  "settings": {
+    "title": "Settings",
+    "subtitle": "System and API settings",
+    "apiKey": "API Key",
+    "apiKeyPlaceholder": "Enter API key...",
+    "language": "Language",
+    "theme": "Theme"
+  },
+  "common": {
+    "search": "Search...",
+    "save": "Save",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "loading": "Loading...",
+    "noData": "No data found",
+    "success": "Success!",
+    "error": "An error occurred",
+    "actions": "Actions",
+    "back": "Back"
+  }
+}

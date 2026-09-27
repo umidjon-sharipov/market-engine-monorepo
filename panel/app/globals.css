@@ -1,0 +1,243 @@
+@import "tailwindcss";
+@import "react-datepicker/dist/react-datepicker.css";
+
+* {
+    box-sizing: border-box;
+
+    &::-webkit-scrollbar {
+        display: none;
+    }
+}
+
+head {
+    overflow-x: hidden !important;
+}
+
+body {
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+    overflow-x: hidden;
+    overflow-x: hidden !important;
+}
+
+input,
+textarea,
+button,
+a {
+    user-select: none !important;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px) scale(0.99);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.animate-fade-in {
+    animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.glass-panel {
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(25px) saturate(180%);
+    -webkit-backdrop-filter: blur(25px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+}
+
+.glass-panel-light {
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(25px) saturate(180%);
+    -webkit-backdrop-filter: blur(25px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 8px 32px 0 rgba(255, 255, 255, 0.37);
+}
+
+input::-webkit-outer-spin-button,
+input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+input[type=number] {
+    -moz-appearance: textfield;
+}
+
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
+    background-color: rgba(224, 242, 254, 0.1) !important;
+    border: 1px solid rgba(255, 255, 255, 0.8) !important;
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15) !important;
+    border-radius: 24px !important;
+    backdrop-filter: blur(10px) !important;
+}
+
+.leaflet-popup-content {
+    margin: 0 16px !important;
+    line-height: 1.4;
+}
+
+::-webkit-datetime-edit-fields-wrapper {
+    background: transparent;
+}
+
+::-webkit-calendar-picker-indicator {
+    background-color: transparent;
+    cursor: pointer;
+}
+
+.react-datepicker-wrapper {
+    width: 100%;
+    z-index: 99999999999999999999999999999999999 !important;
+}
+
+.react-datepicker {
+    background: transparent !important;
+    backdrop-filter: blur(25px) saturate(180%) !important;
+    -webkit-backdrop-filter: blur(25px) saturate(180%) !important;
+    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+    border-radius: 24px !important;
+    color: #fff !important;
+    font-family: inherit;
+    box-shadow: 0 20px 35px 0 rgba(0, 0, 0, 0.5) !important;
+    overflow: hidden;
+    z-index: 99999999999999999999999999999999999 !important;
+}
+
+.react-datepicker__header {
+    background-color: transparent !important;
+    backdrop-filter: blur(16px);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+    padding-top: 16px !important;
+    position: relative !important;
+}
+
+.react-datepicker__current-month,
+.react-datepicker-time__header,
+.react-datepicker__day-name {
+    color: #fff !important;
+}
+
+.react-datepicker__day {
+    color: #cbd5e1 !important;
+    border-radius: 8px;
+    transition: all 0.2s;
+}
+
+.react-datepicker__day:hover {
+    background-color: rgba(14, 165, 233, 0.2) !important;
+    backdrop-filter: blur(16px);
+    color: #fff !important;
+}
+
+.react-datepicker__day--selected,
+.react-datepicker__day--keyboard-selected {
+    background-color: #0ea5e9 !important;
+    color: #fff !important;
+    font-weight: 600;
+}
+
+.react-datepicker__time-container {
+    border-left: 1px solid rgba(255, 255, 255, 0.1) !important;
+    backdrop-filter: blur(16px) !important;
+    background-color: rgba(15, 23, 42, 0.25) !important;
+    border-top-right-radius: 24px;
+    border-bottom-right-radius: 24px;
+}
+
+.react-datepicker__time-container .react-datepicker__time {
+    background-color: transparent !important;
+    backdrop-filter: blur(16px);
+    border-bottom-right-radius: 24px;
+}
+
+.react-datepicker__time-box {
+    background-color: transparent !important;
+    backdrop-filter: blur(16px);
+}
+
+.react-datepicker__time-box ul.react-datepicker__time-list {
+    background-color: transparent !important;
+    backdrop-filter: blur(16px);
+}
+
+.react-datepicker__time-box ul.react-datepicker__time-list li.react-datepicker__time-list-item {
+    color: #cbd5e1 !important;
+    background-color: transparent !important;
+    backdrop-filter: blur(16px);
+    transition: all 0.2s;
+}
+
+.react-datepicker__time-box ul.react-datepicker__time-list li.react-datepicker__time-list-item:hover {
+    background-color: rgba(14, 165, 233, 0.2) !important;
+    color: #fff !important;
+}
+
+.react-datepicker__time-box ul.react-datepicker__time-list li.react-datepicker__time-list-item--selected {
+    background-color: #0ea5e9 !important;
+    color: #fff !important;
+    font-weight: 600;
+}
+
+.react-datepicker__triangle {
+    display: none !important;
+}
+
+.react-datepicker__navigation {
+    position: absolute !important;
+    bottom: 14px !important;
+    width: 32px !important;
+    height: 32px !important;
+    border-radius: 50%;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    transition: all 0.2s;
+    padding: 4px;
+    background-color: rgba(255, 255, 255, 0.08) !important;
+    z-index: 10;
+}
+
+.react-datepicker__day-names {
+    padding: 4px;
+    color: #0ea5e9;
+    border-radius: 50%;
+}
+
+.react-datepicker__navigation:hover {
+    background-color: rgba(255, 255, 255, 0.3) !important;
+}
+
+.react-datepicker__navigation--previous {
+    left: 16px !important;
+}
+
+.react-datepicker__navigation--next {
+    right: 16px !important;
+}
+
+.react-datepicker__navigation-icon {
+    position: relative !important;
+    top: 0 !important;
+    left: 0 !important;
+}
+
+.react-datepicker__navigation-icon::before {
+    border-color: #fff !important;
+    border-width: 2px 2px 0 0 !important;
+    width: 6px !important;
+    height: 6px !important;
+}
+
+.diogram {
+    outline: none !important;
+}
+
+.diogram > * {
+    outline: none !important;
+}

@@ -1,0 +1,32 @@
+{
+  "expo": {
+    "name": "Online Market",
+    "slug": "solito-blank",
+    "version": "3.0.0",
+    "scheme": "online-market",
+    "platforms": [
+      "ios",
+      "android"
+    ],
+    "ios": {
+      "bundleIdentifier": "com.market.online"
+    },
+    "newArchEnabled": true,
+    "experiments": {
+      "reactCanary": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "4cc687c0-0518-4abe-aa9f-5f2b258af593"
+      }
+    },
+    "android": {
+      "package": "com.market.online",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/logo.png",
+        "backgroundColor": "#13a255"
+      }
+    },
+    "owner": "umidjonfrontenddeveloper"
+  }
+}

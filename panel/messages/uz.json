@@ -1,0 +1,136 @@
+{
+  "nav": {
+    "dashboard": "Bosh sahifa",
+    "users": "Foydalanuvchilar",
+    "complaints": "Shikoyatlar",
+    "reactions": "Reaksiyalar",
+    "comments": "Izohlar",
+    "warehouse": "Ombor",
+    "products": "Mahsulotlar",
+    "stock": "Ombor qoldig'i",
+    "orders": "Buyurtmalar",
+    "profile": "Profil",
+    "settings": "Sozlamalar",
+    "goToSite": "Saytga o'tish"
+  },
+  "crud": {
+    "list": "Ro'yxat",
+    "create": "Yaratish",
+    "edit": "Tahrirlash",
+    "delete": "O'chirish",
+    "view": "Ko'rish",
+    "adjust": "Sozlash"
+  },
+  "dashboard": {
+    "title": "Bosh sahifa",
+    "subtitle": "Do'kon statistikasi va umumiy ko'rinish",
+    "totalRevenue": "Umumiy daromad",
+    "totalOrders": "Buyurtmalar",
+    "totalUsers": "Foydalanuvchilar",
+    "totalProducts": "Mahsulotlar",
+    "recentOrders": "So'nggi buyurtmalar",
+    "salesChart": "Savdo grafigi",
+    "topProducts": "Top mahsulotlar"
+  },
+  "users": {
+    "title": "Foydalanuvchilar",
+    "subtitle": "Barcha ro'yxatdan o'tgan foydalanuvchilar",
+    "name": "Ism",
+    "email": "Email",
+    "role": "Rol",
+    "status": "Holat",
+    "actions": "Amallar",
+    "createTitle": "Yangi foydalanuvchi",
+    "editTitle": "Foydalanuvchini tahrirlash",
+    "deleteTitle": "Foydalanuvchini o'chirish",
+    "deleteConfirm": "Haqiqatan ham bu foydalanuvchini o'chirmoqchimisiz?"
+  },
+  "complaints": {
+    "title": "Shikoyatlar",
+    "subtitle": "Mijozlar shikoyatlari va murojaatlari",
+    "subject": "Mavzu",
+    "from": "Kimdan",
+    "date": "Sana",
+    "priority": "Muhimlik",
+    "status": "Holat",
+    "pending": "Kutilmoqda",
+    "resolved": "Hal qilindi",
+    "inProgress": "Jarayonda"
+  },
+  "reactions": {
+    "title": "Reaksiyalar",
+    "subtitle": "Mahsulotlarga qo'yilgan reaksiyalar",
+    "likes": "Yoqtirishlar",
+    "dislikes": "Yoqtirmasliklar",
+    "product": "Mahsulot",
+    "type": "Turi"
+  },
+  "comments": {
+    "title": "Izohlar",
+    "subtitle": "Foydalanuvchi izohlari va sharhlari",
+    "author": "Muallif",
+    "content": "Matn",
+    "product": "Mahsulot",
+    "approve": "Tasdiqlash",
+    "reject": "Rad etish"
+  },
+  "products": {
+    "title": "Mahsulotlar",
+    "subtitle": "Mahsulotlar katalogi boshqaruvi",
+    "createTitle": "Yangi mahsulot qo'shish",
+    "editTitle": "Mahsulotni tahrirlash",
+    "deleteTitle": "Mahsulotni o'chirish",
+    "price": "Narx",
+    "category": "Kategoriya",
+    "stock": "Qoldiq"
+  },
+  "stock": {
+    "title": "Ombor qoldig'i",
+    "subtitle": "Ombordagi mahsulotlar miqdori",
+    "adjustTitle": "Qoldiqni sozlash",
+    "quantity": "Miqdor",
+    "lowStock": "Kam qoldiq",
+    "inStock": "Omborda bor"
+  },
+  "orders": {
+    "title": "Buyurtmalar",
+    "subtitle": "Barcha buyurtmalar ro'yxati",
+    "orderId": "Buyurtma ID",
+    "customer": "Mijoz",
+    "total": "Jami",
+    "status": "Holat",
+    "date": "Sana",
+    "delivered": "Yetkazildi",
+    "processing": "Jarayonda",
+    "cancelled": "Bekor qilindi"
+  },
+  "profile": {
+    "title": "Profil",
+    "subtitle": "Shaxsiy ma'lumotlaringiz",
+    "name": "Ism",
+    "email": "Email",
+    "phone": "Telefon",
+    "role": "Lavozim",
+    "save": "Saqlash"
+  },
+  "settings": {
+    "title": "Sozlamalar",
+    "subtitle": "Tizim va API sozlamalari",
+    "apiKey": "API kalit",
+    "apiKeyPlaceholder": "API kalitni kiriting...",
+    "language": "Til",
+    "theme": "Mavzu"
+  },
+  "common": {
+    "search": "Qidirish...",
+    "save": "Saqlash",
+    "cancel": "Bekor qilish",
+    "confirm": "Tasdiqlash",
+    "loading": "Yuklanmoqda...",
+    "noData": "Ma'lumot topilmadi",
+    "success": "Muvaffaqiyatli!",
+    "error": "Xatolik yuz berdi",
+    "actions": "Amallar",
+    "back": "Orqaga"
+  }
+}
