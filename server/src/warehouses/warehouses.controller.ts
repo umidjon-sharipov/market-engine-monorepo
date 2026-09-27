@@ -4,7 +4,7 @@ import { CreateWarehouseDto } from './dto/create-warehouse.dto';
 import { UpdateWarehouseDto } from './dto/update-warehouse.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { MarketAccessGuard } from '../auth/guards/market-access.guard';
-import { PrismaService } from 'src/prisma/prisma.service';
+import { PrismaService } from '../prisma/prisma.service';
 
 @Controller('warehouses')
 export class WarehousesController {

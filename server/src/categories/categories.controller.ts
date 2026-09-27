@@ -19,7 +19,7 @@ import { MarketAccessGuard } from '../auth/guards/market-access.guard';
 import { CategoriesService } from './categories.service';
 import { CategoryParsePipe } from './pipes/category-parse.pipe';
 import { CreateCategoryDto, UpdateCategoryDto } from './dto/create-category.dto';
-import { PrismaService } from 'src/prisma/prisma.service';
+import { PrismaService } from '../prisma/prisma.service';
 
 @Controller('categories')
 export class CategoriesController {

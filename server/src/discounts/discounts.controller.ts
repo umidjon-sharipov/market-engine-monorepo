@@ -16,7 +16,7 @@ import { MarketAccessGuard } from '../auth/guards/market-access.guard';
 import { CreateDiscountDto } from './dto/create-discount.dto';
 import { UpdateDiscountDto } from './dto/update-discount.dto';
 import { DiscountsService } from './discounts.service';
-import { PrismaService } from 'src/prisma/prisma.service';
+import { PrismaService } from '../prisma/prisma.service';
 
 @Controller('discounts')
 export class DiscountsController {

@@ -10,7 +10,7 @@ import { UpdateSliderDto } from './dto/update-slider.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { MarketAccessGuard } from '../auth/guards/market-access.guard';
 import { uploadImageToImgBB } from '../common/helpers/image-upload.helper';
-import { PrismaService } from 'src/prisma/prisma.service';
+import { PrismaService } from '../prisma/prisma.service';
 
 @Controller('sliders')
 export class SlidersController {

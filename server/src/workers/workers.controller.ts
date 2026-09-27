@@ -3,7 +3,7 @@ import { WorkersService } from './workers.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CreateWorkerDto } from './dto/create-worker.dto';
 import { MarketAccessGuard } from '../auth/guards/market-access.guard';
-import { PrismaService } from 'src/prisma/prisma.service';
+import { PrismaService } from '../prisma/prisma.service';
 
 @Controller('workers')
 export class WorkersController {
