@@ -12,32 +12,21 @@ async function bootstrap() {
 
   app.getHttpAdapter().getInstance().set('trust proxy', 1);
 
-  app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
-    const allowedOrigins = process.env.ALLOW_ORIGINS ? JSON.parse(process.env.ALLOW_ORIGINS) : ['...'];
+  const allowedOrigins = process.env.ALLOW_ORIGINS
+    ? JSON.parse(process.env.ALLOW_ORIGINS)
+    : ['...'];
 
-    const origin = req.headers.origin as string;
-
-    if (allowedOrigins.includes(origin)) {
-      res.setHeader('Access-Control-Allow-Origin', origin);
-    } else {
-      res.setHeader('Access-Control-Allow-Origin', origin || 'http://localhost:3000');
-    }
-
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
-    res.setHeader(
-      'Access-Control-Allow-Methods',
-      'GET, HEAD, PUT, PATCH, POST, DELETE, OPTIONS',
-    );
-    res.setHeader(
-      'Access-Control-Allow-Headers',
-      'Content-Type, Authorization, Accept, X-Requested-With',
-    );
-
-    if (req.method === 'OPTIONS') {
-      return res.sendStatus(204);
-    }
-
-    next();
+  app.enableCors({
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error('CORS bo\'yicha kirishga ruxsat berilmadi'));
+      }
+    },
+    credentials: true,
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    allowedHeaders: 'Content-Type, Authorization, Accept, X-Requested-With, marketid, token, x-custom-header, Range',
   });
 
   app.use(
