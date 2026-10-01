@@ -4,6 +4,7 @@
   "description": "A comprehensive e-commerce backend system built with Nest.js, featuring live real-time database endpoints for multiple stores and user tracking.",
   "author": "Umidjon Sharipov",
   "private": true,
+  "main": "api/vercel.ts",
   "license": "UNLICENSED",
   "scripts": {
     "build": "prisma generate && nest build && tsc-alias",
