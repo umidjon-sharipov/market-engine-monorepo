@@ -1,6 +1,5 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
-import helmet from 'helmet';
 import { AppModule } from './app.module';
 import * as express from 'express';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
@@ -14,7 +13,7 @@ async function bootstrap() {
 
   const allowedOrigins = process.env.ALLOW_ORIGINS
     ? JSON.parse(process.env.ALLOW_ORIGINS)
-    : ['...'];
+    : ['http://localhost:3000'];
 
   app.enableCors({
     origin: (origin, callback) => {
@@ -26,15 +25,26 @@ async function bootstrap() {
     },
     credentials: true,
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-    allowedHeaders: 'Content-Type, Authorization, Accept, X-Requested-With, marketid, token, x-custom-header, Range',
+    allowedHeaders:
+      'Content-Type, Authorization, Accept, X-Requested-With, marketid, token, x-custom-header, Range',
   });
 
   app.use(
-    helmet({
-      contentSecurityPolicy: false,
-      crossOriginResourcePolicy: { policy: 'cross-origin' },
-      crossOriginOpenerPolicy: { policy: 'unsafe-none' },
-    }),
+    (
+      req: express.Request,
+      res: express.Response,
+      next: express.NextFunction,
+    ) => {
+      res.setHeader('X-DNS-Prefetch-Control', 'off');
+      res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+      res.setHeader('Content-Security-Policy', "frame-ancestors 'self'");
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Referrer-Policy', 'no-referrer');
+      res.setHeader('X-XSS-Protection', '1; mode=block');
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+      res.setHeader('Cross-Origin-Opener-Policy', 'unsafe-none');
+      next();
+    },
   );
 
   app.useStaticAssets(join(__dirname, '..', 'public'));

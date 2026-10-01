@@ -16,7 +16,7 @@
         },
         {
           "key": "Access-Control-Allow-Origin",
-          "value": "https://sizning-frontend-domeningiz.com"
+          "value": "*"
         },
         {
           "key": "Access-Control-Allow-Methods",
