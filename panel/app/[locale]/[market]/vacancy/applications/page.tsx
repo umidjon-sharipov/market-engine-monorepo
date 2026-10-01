@@ -161,7 +161,7 @@ function ApplicationsContent() {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    rate: rateCount,
+                    rateCount: rateCount,
                     targetEmail: selectEmail
                 })
             });

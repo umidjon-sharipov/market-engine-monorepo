@@ -47,7 +47,7 @@ interface Slider {
 const isWeb = typeof window !== 'undefined' && window.innerWidth > 768;
 
 const HomeScreen = () => {
-    const url = useUrlStore(state => state.url)
+    const url = process.env.BACKEND_URL || '...'
     const token = useTokenStore(state => state.token)
     const router = useRouter()
     const [products, setProducts] = useState<Product[]>([]);

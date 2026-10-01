@@ -58,7 +58,7 @@ export class VacanciesService {
     const updated = await this.prisma.vacancy.update({
       where: { id: vacancyId },
       data: {
-        applicants: { set: [...applicants, applicant] },
+        applicants: [...applicants, applicant],
       },
     });
 
@@ -143,19 +143,32 @@ export class VacanciesService {
       throw new NotFoundException('Vakansiya topilmadi!');
     }
 
-    const applicants = Array.isArray(vacancy.applicants) ? vacancy.applicants : [];
-    if (!applicants.some((app: any) => app?.email === targetEmail)) {
+    const rawApplicants = vacancy.applicants;
+    const applicants: any[] = Array.isArray(rawApplicants)
+      ? rawApplicants
+      : (rawApplicants as any)?.set && Array.isArray((rawApplicants as any).set)
+      ? (rawApplicants as any).set
+      : [];
+
+    const targetApplicant = applicants.find((app: any) => app?.email === targetEmail);
+    if (!targetApplicant) {
       throw new BadRequestException('Bu nomzod ushbu vakansiyaga ariza topshirmagan!');
     }
+
+    const updatedApplicants = applicants.map((app: any) => {
+      if (app?.email === targetEmail) {
+        return {
+          ...app,
+          rate: Number(rate),
+        };
+      }
+      return app;
+    });
 
     const updated = await this.prisma.vacancy.update({
       where: { id: vacancyId },
       data: {
-        applicants: {
-          set: applicants.map((app: any) =>
-            app?.email === targetEmail ? { ...app, rate } : app,
-          ),
-        },
+        applicants: updatedApplicants,
       },
     });
 

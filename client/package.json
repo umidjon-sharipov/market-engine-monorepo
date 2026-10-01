@@ -17,7 +17,6 @@
     "native": "cd apps/expo && yarn start",
     "web": "cd apps/next && yarn next"
   },
-  "packageManager": "yarn@4.7.0",
   "eslintConfig": {
     "extends": "next",
     "settings": {
@@ -39,5 +38,6 @@
     "react-native-gesture-handler": "^3.0.2",
     "react-native-reanimated": "^4.5.0",
     "react-native-safe-area-context": "^5.8.0"
-  }
+  },
+  "packageManager": "yarn@4.7.0"
 }

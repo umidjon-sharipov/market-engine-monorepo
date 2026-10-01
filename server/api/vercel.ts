@@ -15,7 +15,7 @@ async function bootstrap() {
     );
 
     nestApp.enableCors({
-      origin: true,
+      origin: process.env.ALLOW_ORIGINS ? JSON.parse(process.env.ALLOW_ORIGINS) : ['...'],
       methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
       credentials: true,
       allowedHeaders: 'Content-Type, Authorization, Accept, X-Requested-With, marketid, token, x-custom-header',

@@ -30,7 +30,6 @@ export class CreateVacancyDto {
     @Min(0, { message: "Maosh 0 dan kichik bo'lishi mumkin emas" })
     salary?: number;
 
-    // Rasm Body ichida kelmaydi, fayl sifatida o'tadi
     @IsOptional()
     @IsString()
     image?: string;

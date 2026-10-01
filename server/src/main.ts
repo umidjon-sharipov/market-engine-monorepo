@@ -12,21 +12,14 @@ async function bootstrap() {
 
   app.getHttpAdapter().getInstance().set('trust proxy', 1);
 
-  // 1. CUSTOM HARDCODED CORS MIDDLEWARE (Eng birinchi ishlaydi va barcha so'rovlarni o'tkazadi)
   app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
-    const allowedOrigins = [
-      'http://localhost:3000',
-      'http://127.0.0.1:3000',
-      'https://internet-magazin-panel.vercel.app',
-      'https://internet-magazin-uzum.vercel.app',
-    ];
+    const allowedOrigins = process.env.ALLOW_ORIGINS ? JSON.parse(process.env.ALLOW_ORIGINS) : ['...'];
 
     const origin = req.headers.origin as string;
 
     if (allowedOrigins.includes(origin)) {
       res.setHeader('Access-Control-Allow-Origin', origin);
     } else {
-      // Agarda o'sha origin ro'yxatda bo'lmasa ham lokalda muammo bermasligi uchun default localhost:3000 beramiz
       res.setHeader('Access-Control-Allow-Origin', origin || 'http://localhost:3000');
     }
 
@@ -40,7 +33,6 @@ async function bootstrap() {
       'Content-Type, Authorization, Accept, X-Requested-With',
     );
 
-    // OPTIONS (Preflight) so'rovi kelgan bo'lsa, uni NestJS routelariga yetkazmasdan 200/204 bilan darhol qaytaramiz
     if (req.method === 'OPTIONS') {
       return res.sendStatus(204);
     }
@@ -48,7 +40,6 @@ async function bootstrap() {
     next();
   });
 
-  // 2. Helmet (CORS headerlarini o'chirib yubormasligi uchun moslangan)
   app.use(
     helmet({
       contentSecurityPolicy: false,
@@ -57,7 +48,6 @@ async function bootstrap() {
     }),
   );
 
-  // 3. Statik fayllar
   app.useStaticAssets(join(__dirname, '..', 'public'));
 
   app.useGlobalPipes(
