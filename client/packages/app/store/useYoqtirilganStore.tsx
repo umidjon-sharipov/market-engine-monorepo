@@ -3,8 +3,8 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface YoqtirilganState {
-    yoqtirilganIds: number[];
-    toggleYoqtirilgan: (id: number) => void;
+    yoqtirilganIds: string[];
+    toggleYoqtirilgan: (id: string) => void;
 }
 
 export const useYoqtirilganStore = create<YoqtirilganState>()(

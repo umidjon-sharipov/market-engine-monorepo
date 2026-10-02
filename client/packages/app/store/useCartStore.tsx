@@ -9,7 +9,7 @@ interface CartItem {
 
 interface CartState {
     cart: CartItem[];
-    toggleCart: (id: number) => void;
+    toggleCart: (id: string) => void;
     incrementQuantity: (id: number) => void;
     decrementQuantity: (id: number) => void;
 }

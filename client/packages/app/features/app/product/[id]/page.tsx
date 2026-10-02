@@ -33,11 +33,11 @@ interface optionItem {
 interface optionGroup {
     id: string;
     title: string;
-    options: optionItem;
+    options: optionItem[];
 }
 
 interface Product {
-    id: string | number;
+    id: string;
     title: string;
     price: number;
     marketId: string;
@@ -50,12 +50,11 @@ interface Product {
 }
 
 const ProductID = () => {
-    const theme = 'light'
     const url = useUrlStore(state => state.url)
     const lan = useLanStorage(state => state.lan);
     const inputValue = useInputStorage(state => state.input);
     const pathname = usePathname();
-    const [selectedOptions, setSelectedOptions] = useState<Record<string, Record<string, number>>>({});
+    const [selectedOptions, setSelectedOptions] = useState<Record<string, Record<string, string>>>({});
     const { width: windowWidth } = useWindowDimensions();
     const router = useRouter();
     const isTabletView = windowWidth < 1000 && windowWidth > 500;
@@ -76,19 +75,83 @@ const ProductID = () => {
 
     const { cart, toggleCart } = useCartStore();
 
-    const product: Product | undefined = products.find(p => String(p.id) === String(productIdToFind));
+    const product: Product | undefined =
+    {
+        id: "prod_101",
+        title: "Ergonomik Ish Stoli Chirog'i",
+        price: 250000,
+        marketId: "market_45",
+        description: {
+            uz: "Sensorli boshqaruvga ega zamonaviy LED stol chirog'i.",
+            ru: "Современный светодиодный настольный светильник с сенсорным управлением.",
+            en: "Modern LED desk lamp with touch control."
+        },
+        categoryId: "cat_home_appliances",
+        discountId: "disc_10off",
+        images: [
+            "https://res.cloudinary.com/v3htlo7s/image/upload/v1790852374/shop_app/rzqdssea0zkuwgzc6rbk.webp",
+            "https://res.cloudinary.com/v3htlo7s/image/upload/v1790851497/shop_app/sokvenim6vy9cck9rsww.webp"
+        ],
+        quantity: 15,
+        options: [
+            {
+                id: "group_color",
+                title: "Rangi",
+                options: [
+                    {
+                        id: "opt_black",
+                        key: "Qora",
+                        value: 42
+                    },
+                    {
+                        id: "opt_white",
+                        key: "Oq",
+                        value: 634
+                    }
+                ]
+            },
+            {
+                id: "group_power",
+                title: "Quvvati",
+                options: [
+                    {
+                        id: "opt_12w",
+                        key: "12 W",
+                        value: 15000
+                    },
+                    {
+                        id: "opt_13w",
+                        key: "13 W",
+                        value: 15000
+                    },
+                    {
+                        id: "opt_10w",
+                        key: "10 W",
+                        value: 15000
+                    },
+                    {
+                        id: "opt_4w",
+                        key: "4 W",
+                        value: 15000
+                    }
+                ]
+            }
+        ]
+    };
+
+    // products.find(p => String(p.id) === String(productIdToFind));
     const isInCart = cart.some(item => String(item.id) === String(product?.id));
     const toggleYoqtirilgan = useYoqtirilganStore(state => state.toggleYoqtirilgan);
     const yoqtirilganIds = useYoqtirilganStore(state => state.yoqtirilganIds);
     const setModal = useModalStore(state => state.setModal)
     const modal = useModalStore(state => state.modal)
 
-    const handleOptionSelect = (productId: string, groupName: string, priceValue: number) => {
+    const handleOptionSelect = (productId: string, groupName: string, priceId: string) => {
         setSelectedOptions(prev => ({
             ...prev,
             [productId]: {
                 ...(prev[productId] || {}),
-                [groupName]: priceValue
+                [groupName]: priceId
             }
         }));
     };
@@ -125,7 +188,7 @@ const ProductID = () => {
     const handleFavoritePress = (e: GestureResponderEvent) => {
         e.stopPropagation();
         if (!product) return;
-        toggleYoqtirilgan(product.id);
+        toggleYoqtirilgan(product?.id);
 
         Animated.sequence([
             Animated.timing(scaleAnim, {
@@ -240,8 +303,7 @@ const ProductID = () => {
 
     const [totalPrice, setTotalPrice] = useState(calculateTotalPrice(product))
 
-
-    const calculateTotalPrice = (product: Product) => {
+    function calculateTotalPrice(product: Product | any) {
         if (!product || !product.id) return 0
 
         const productSelections = selectedOptions[product.id] || {};
@@ -253,17 +315,17 @@ const ProductID = () => {
             }
         });
 
-        setTotalPrice(optionsSum)
+        return optionsSum;
     };
 
     useEffect(() => {
-        calculateTotalPrice(product)
+        setTotalPrice(calculateTotalPrice(product))
     }, [selectedOptions])
 
 
     if (loading) {
         return (
-            <View style={styles.center}>
+            <View style={ styles.center }>
                 <ActivityIndicator size="large" color="rgba(115, 185, 255, 0.85)" />
             </View>
         );
@@ -271,7 +333,7 @@ const ProductID = () => {
 
     if (!product) {
         return (
-            <View style={styles.center}>
+            <View style={ styles.center }>
                 <Text>Mahsulot topilmadi</Text>
             </View>
         );
@@ -279,45 +341,45 @@ const ProductID = () => {
 
     return (
         <ScreenWrapper>
-            <View style={isMobileView ? styles.mobileContainer : undefined}>
-                <View style={{ width: '100%', flexDirection: (isTabletView || isMobileView) ? 'column' : 'row', gap: 16 }}>
+            <View style={ isMobileView ? styles.mobileContainer : undefined }>
+                <View style={ { width: '100%', flexDirection: (isTabletView || isMobileView) ? 'column' : 'row', gap: 16 } }>
 
-                    <View style={[
+                    <View style={ [
                         { flex: 7, flexDirection: 'row', gap: 16 },
                         isMobileView && styles.mobileImageStickySection
-                    ]}>
-                        <View style={{ flex: 3, flexDirection: 'row', gap: 20 }}>
-                            {(isTabletView || isMobileView) ? null : (
-                                <View style={{ flex: 15, height: isTabletView ? 400 : isMobileView ? 300 : elementHeight, gap: 8 }}>
+                    ] }>
+                        <View style={ { flex: 3, flexDirection: 'row', gap: 20 } }>
+                            { (isTabletView || isMobileView) ? null : (
+                                <View style={ { flex: 15, height: isTabletView ? 400 : isMobileView ? 300 : elementHeight, gap: 8 } }>
                                     <ProductSlider
-                                        sliders={product.images.map((img: string, idx: number) => ({
+                                        sliders={ product.images.map((img: string, idx: number) => ({
                                             id: String(idx),
                                             image: img
-                                        }))}
-                                        count={count}
-                                        setCount={setCount}
+                                        })) }
+                                        count={ count }
+                                        setCount={ setCount }
                                     />
                                 </View>
-                            )}
-                            <View style={{ flex: 85, height: isTabletView ? 400 : isMobileView ? 350 : elementHeight, gap: 5 }}>
+                            ) }
+                            <View style={ { flex: 85, height: isTabletView ? 400 : isMobileView ? 350 : elementHeight, gap: 5 } }>
                                 <Slider sliders={
                                     product.images.map((img: string, idx: number) => ({
                                         id: String(idx),
                                         image: img,
                                         link: '',
                                         marketId: product.marketId || ''
-                                    }))} link={false} count={count} setCount={setCount} />
+                                    })) } link={ false } count={ count } setCount={ setCount } />
                             </View>
                         </View>
 
-                        {!(isTabletView || isMobileView) ? (
-                            <ScrollView style={{ flex: 2, height: elementHeight, padding: 10, gap: 8, flexDirection: 'column', position: 'relative' }}>
+                        { !(isTabletView || isMobileView) ? (
+                            <ScrollView style={ { flex: 2, height: elementHeight, padding: 0, gap: 8, flexDirection: 'column', position: 'relative' } }>
 
                                 <LinearGradient
-                                    colors={['rgb(255, 255, 255)', 'rgba(255, 255, 255, 0)']}
-                                    start={{ x: 0, y: 0 }}
-                                    end={{ x: 0, y: 1 }}
-                                    style={[
+                                    colors={ ['rgb(255, 255, 255)', 'rgba(255, 255, 255, 0)'] }
+                                    start={ { x: 0, y: 0 } }
+                                    end={ { x: 0, y: 1 } }
+                                    style={ [
                                         {
                                             height: 50,
                                             width: '100%',
@@ -335,20 +397,20 @@ const ProductID = () => {
                                                 top: 0,
                                             }
                                         })
-                                    ]}
+                                    ] }
                                 />
 
-                                <View style={{ padding: 0, gap: 8 }}>
-                                    <Text style={{ fontSize: 18, fontWeight: '600', textTransform: 'capitalize' }}>{product.title}</Text>
-                                    <View style={{ flexDirection: 'row', gap: 4 }}>
+                                <View style={ { padding: 0, gap: 8 } }>
+                                    <Text style={ { fontSize: 18, fontWeight: '600', textTransform: 'capitalize' } }>{ product.title }</Text>
+                                    <View style={ { flexDirection: 'row', gap: 4 } }>
                                         {
                                             Array.from({ length: Math.round(4) }, (_, index) => index + 1).map((_, index) =>
                                                 <UniversalImage
-                                                    key={index}
-                                                    src={accesStarPng}
-                                                    alt={product.title}
-                                                    width={20}
-                                                    height={20}
+                                                    key={ index }
+                                                    src={ accesStarPng }
+                                                    alt={ product.title }
+                                                    width={ 20 }
+                                                    height={ 20 }
                                                     resizeMode='contain'
                                                 />
                                             )
@@ -356,97 +418,91 @@ const ProductID = () => {
                                         {
                                             Array.from({ length: Math.round(5 - 4) }, (_, index) => index + 1).map((_, index) =>
                                                 <UniversalImage
-                                                    key={index}
-                                                    src={starPng}
-                                                    alt={product.title}
-                                                    width={20}
-                                                    height={20}
+                                                    key={ index }
+                                                    src={ starPng }
+                                                    alt={ product.title }
+                                                    width={ 20 }
+                                                    height={ 20 }
                                                     resizeMode='contain'
                                                 />
                                             )
                                         }
-                                        <Text>{4} | {13000} sharh | {product.id}+ buyrutma</Text>
+                                        <Text>{ 4 } | { 13000 } sharh | { product.id }+ buyrutma</Text>
 
 
 
                                     </View>
                                 </View>
 
-                                <View style={{ width: '100%', gap: 4, flexDirection: 'column' }}>
-                                    {product.options && product.options.length > 0 && (
-                                        <View style={styles.container}>
-                                            <Text style={[styles.mainTitle, theme === 'dark' ? styles.textDark : styles.textLight]}>
+                                <View style={ { width: '100%', gap: 4, flexDirection: 'column' } }>
+                                    { product.options && product.options.length > 0 && (
+                                        <View style={ styles.container }>
+                                            <Text style={ [styles.mainTitle, styles.textLight] }>
                                                 Konfiguratsiyani o&apos;zgartirish:
                                             </Text>
-                                            <View style={styles.groupContainer}>
-                                                {product?.options?.map((optGroup, optIdx) => {
+                                            <View style={ styles.groupContainer }>
+                                                { product?.options?.map((optGroup, optIdx) => {
                                                     const activeVal = selectedOptions[product.id]?.[optGroup.id];
                                                     return (
                                                         <View
-                                                            key={optIdx}
-                                                            style={[
+                                                            key={ optIdx }
+                                                            style={ [
                                                                 styles.card,
-                                                                theme === 'dark' ? styles.cardDark : styles.cardLight
-                                                            ]}
+                                                                styles.cardLight
+                                                            ] }
                                                         >
-                                                            <Text style={[styles.groupTitle, theme === 'dark' ? styles.groupTitleDark : styles.groupTitleLight]}>
-                                                                {optGroup.title}
+                                                            <Text style={ [styles.groupTitle, styles.groupTitleLight] }>
+                                                                { optGroup.title }
                                                             </Text>
-                                                            <View style={styles.optionsList}>
-                                                                {optGroup.options.map((opt, valIdx) => {
-                                                                    const isSelected = activeVal === opt.id;
+                                                            <View style={ styles.optionsList }>
+                                                                { Array.isArray(optGroup.options) && optGroup.options.map((opt, valIdx) => {
+                                                                    const isSelected = String(activeVal) === String(opt.id);
 
                                                                     return (
                                                                         <TouchableOpacity
-                                                                            key={valIdx}
-                                                                            onPress={() => handleOptionSelect(product.id, optGroup.id, opt.value)}
-                                                                            activeOpacity={0.7}
-                                                                            style={[
+                                                                            key={ valIdx }
+                                                                            onPress={ () => handleOptionSelect(product.id, optGroup.id, opt.id) }
+                                                                            activeOpacity={ 0.7 }
+                                                                            style={ [
                                                                                 styles.optionButton,
                                                                                 isSelected
                                                                                     ? styles.buttonSelected
-                                                                                    : theme === 'dark'
-                                                                                        ? styles.buttonDark
-                                                                                        : styles.buttonLight
-                                                                            ]}
+                                                                                    : styles.buttonLight
+                                                                            ] }
                                                                         >
-                                                                            <Text style={[
+                                                                            <Text style={ [
                                                                                 styles.buttonText,
                                                                                 isSelected
                                                                                     ? styles.textSelected
-                                                                                    : theme === 'dark'
-                                                                                        ? styles.textDark
-                                                                                        : styles.textLight
-                                                                            ]}>
-                                                                                {opt.key}
+                                                                                    : styles.textLight
+                                                                            ] }>
+                                                                                { opt.key }
                                                                             </Text>
-                                                                            <Text style={[
+                                                                            <Text style={ [
                                                                                 styles.priceText,
                                                                                 isSelected
                                                                                     ? styles.textSelected
-                                                                                    : theme === 'dark'
-                                                                                        ? styles.priceDark
-                                                                                        : styles.priceLight
-                                                                            ]}>
-                                                                                +{opt.value.toLocaleString()} UZS
+                                                                                    : styles.priceLight
+                                                                            ] }>
+                                                                                +{ opt.value.toLocaleString() } UZS
                                                                             </Text>
                                                                         </TouchableOpacity>
                                                                     );
-                                                                })}
+                                                                }) }
                                                             </View>
                                                         </View>
                                                     );
-                                                })}
+                                                }) }
                                             </View>
                                         </View>
-                                    )}
+                                    ) }
                                 </View>
 
                                 <LinearGradient
-                                    colors={['rgba(255, 255, 255, 0)', 'rgb(255, 255, 255)']}
-                                    start={{ x: 0, y: 0 }}
-                                    end={{ x: 0, y: 1 }}
-                                    style={[
+                                    colors={ ['rgba(255, 255, 255, 0)', 'rgb(255, 255, 255)'] }
+                                    start={ { x: 0, y: 0 } }
+                                    end={ { x: 0, y: 1 } }
+                                    style={ [
                                         {
                                             height: 50,
                                             width: '100%',
@@ -462,226 +518,220 @@ const ProductID = () => {
                                             },
                                             default: {}
                                         })
-                                    ]}
+                                    ] }
                                 />
 
                             </ScrollView>
-                        ) : null}
+                        ) : null }
                     </View>
 
                     <View
-                        style={[
+                        style={ [
                             { flex: 3, gap: 8 },
                             isMobileView && styles.mobileContentOverlay
-                        ]}
-                        ref={Platform.OS === 'web' ? elementRef : undefined}
-                        onLayout={handleLayout}
+                        ] }
+                        ref={ Platform.OS === 'web' ? elementRef : undefined }
+                        onLayout={ handleLayout }
                     >
-                        <View style={{ width: '100%', paddingTop: 50, gap: 5, borderRadius: 28, backgroundColor: 'rgba(115, 185, 255, 0.85)' }}>
-                            <View style={{ width: '100%', backgroundColor: 'rgba(255, 255, 255, 0.95)', borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 20, gap: 22 }}>
-                                {(isTabletView || isMobileView) ? <Text style={{ fontWeight: '700', fontSize: 20 }}>{product.title}</Text> : null}
-                                <Text style={{ fontWeight: '700', fontSize: 30, color: '#111' }}>{totalPrice} so'm</Text>
-                                <Text style={{ fontWeight: '400', fontSize: 14, textDecorationLine: 'line-through', color: 'gray' }}>{((product.price / 100) * 120).toFixed(0)}</Text>
+                        <View style={ { width: '100%', paddingTop: 50, gap: 5, borderRadius: 28, backgroundColor: 'rgba(115, 185, 255, 0.85)' } }>
+                            <View style={ { width: '100%', backgroundColor: 'rgba(255, 255, 255, 0.95)', borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 20, gap: 22 } }>
+                                { (isTabletView || isMobileView) ? <Text style={ { fontWeight: '700', fontSize: 20 } }>{ product.title }</Text> : null }
+                                <Text style={ { fontWeight: '700', fontSize: 30, color: '#111' } }>{ totalPrice } so'm</Text>
+                                <Text style={ { fontWeight: '400', fontSize: 14, textDecorationLine: 'line-through', color: 'gray' } }>{ ((product.price / 100) * 120).toFixed(0) }</Text>
 
-                                <View style={{ width: '100%' }}>
-                                    <View style={{ width: '100%', padding: 4, backgroundColor: 'rgba(220, 238, 255, 0.9)', borderTopLeftRadius: 16, borderTopRightRadius: 16 }}>
-                                        <View style={{ width: '100%', gap: 4, flexDirection: 'row', position: 'relative' }}>
-                                            <Animated.View style={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', borderRadius: 12, position: 'absolute', top: 0, left: moonLeft, width: '25%', height: '100%' }}>
+                                <View style={ { width: '100%' } }>
+                                    <View style={ { width: '100%', padding: 4, backgroundColor: 'rgba(220, 238, 255, 0.9)', borderTopLeftRadius: 16, borderTopRightRadius: 16 } }>
+                                        <View style={ { width: '100%', gap: 4, flexDirection: 'row', position: 'relative' } }>
+                                            <Animated.View style={ { backgroundColor: 'rgba(255, 255, 255, 0.95)', borderRadius: 12, position: 'absolute', top: 0, left: moonLeft, width: '25%', height: '100%' } }>
                                             </Animated.View>
-                                            <Pressable onPress={() => setMoon(24)} style={{ padding: 6, borderRadius: 12, flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                                                <Text style={{ fontWeight: '700', color: `${moon === 24 ? 'rgba(10, 20, 30, 1)' : 'rgba(20, 40, 60, 0.85)'}` }}>24 oy</Text>
+                                            <Pressable onPress={ () => setMoon(24) } style={ { padding: 6, borderRadius: 12, flex: 1, alignItems: 'center', justifyContent: 'center' } }>
+                                                <Text style={ { fontWeight: '700', color: `${moon === 24 ? 'rgba(10, 20, 30, 1)' : 'rgba(20, 40, 60, 0.85)'}` } }>24 oy</Text>
                                             </Pressable>
-                                            <Pressable onPress={() => setMoon(12)} style={{ padding: 6, borderRadius: 12, flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                                                <Text style={{ fontWeight: '700', color: `${moon === 12 ? 'rgba(10, 20, 30, 1)' : 'rgba(20, 40, 60, 0.85)'}` }}>12 oy</Text>
+                                            <Pressable onPress={ () => setMoon(12) } style={ { padding: 6, borderRadius: 12, flex: 1, alignItems: 'center', justifyContent: 'center' } }>
+                                                <Text style={ { fontWeight: '700', color: `${moon === 12 ? 'rgba(10, 20, 30, 1)' : 'rgba(20, 40, 60, 0.85)'}` } }>12 oy</Text>
                                             </Pressable>
-                                            <Pressable onPress={() => setMoon(6)} style={{ padding: 6, borderRadius: 12, flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                                                <Text style={{ fontWeight: '700', color: `${moon === 6 ? 'rgba(10, 20, 30, 1)' : 'rgba(20, 40, 60, 0.85)'}` }}>6 oy</Text>
+                                            <Pressable onPress={ () => setMoon(6) } style={ { padding: 6, borderRadius: 12, flex: 1, alignItems: 'center', justifyContent: 'center' } }>
+                                                <Text style={ { fontWeight: '700', color: `${moon === 6 ? 'rgba(10, 20, 30, 1)' : 'rgba(20, 40, 60, 0.85)'}` } }>6 oy</Text>
                                             </Pressable>
-                                            <Pressable onPress={() => setMoon(3)} style={{ padding: 6, borderRadius: 12, flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                                                <Text style={{ fontWeight: '700', color: `${moon === 3 ? 'rgba(10, 20, 30, 1)' : 'rgba(20, 40, 60, 0.85)'}` }}>3 oy</Text>
+                                            <Pressable onPress={ () => setMoon(3) } style={ { padding: 6, borderRadius: 12, flex: 1, alignItems: 'center', justifyContent: 'center' } }>
+                                                <Text style={ { fontWeight: '700', color: `${moon === 3 ? 'rgba(10, 20, 30, 1)' : 'rgba(20, 40, 60, 0.85)'}` } }>3 oy</Text>
                                             </Pressable>
                                         </View>
                                     </View>
-                                    <Pressable style={{ width: '100%', padding: 8, backgroundColor: 'rgba(37, 146, 255, 0.48)', borderBottomLeftRadius: 16, borderBottomRightRadius: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                                        <Text><Text style={{ padding: 3, backgroundColor: 'rgba(80, 160, 240, 0.95)', borderRadius: 12, fontWeight: 'bold', fontSize: 16, color: 'rgba(255, 255, 255, 1)' }}>{(product.price / moon).toFixed(0)} so'm</Text> × {moon} oy</Text>
-                                        <Text style={{ fontSize: 16 }}>{'>'}</Text>
+                                    <Pressable style={ { width: '100%', padding: 8, backgroundColor: 'rgba(37, 146, 255, 0.48)', borderBottomLeftRadius: 16, borderBottomRightRadius: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' } }>
+                                        <Text><Text style={ { padding: 3, backgroundColor: 'rgba(80, 160, 240, 0.95)', borderRadius: 12, fontWeight: 'bold', fontSize: 16, color: 'rgba(255, 255, 255, 1)' } }>{ (product.price / moon).toFixed(0) } so'm</Text> × { moon } oy</Text>
+                                        <Text style={ { fontSize: 16 } }>{ '>' }</Text>
                                     </Pressable>
                                 </View>
 
-                                <View style={{ width: '100%', flexDirection: 'row', gap: 16 }}>
-                                    <Animated.View style={{ flex: 9, transform: [{ scale: btnScaleAnim }] }}>
+                                <View style={ { width: '100%', flexDirection: 'row', gap: 16 } }>
+                                    <Animated.View style={ { flex: 9, transform: [{ scale: btnScaleAnim }] } }>
                                         <Pressable
-                                            onPressIn={handleButtonPressIn}
-                                            onPressOut={handleButtonPressOut}
-                                            style={{ backgroundColor: 'rgba(115, 185, 255, 0.85)', padding: 14, borderRadius: 16, justifyContent: 'center', alignItems: 'center' }}
+                                            onPressIn={ handleButtonPressIn }
+                                            onPressOut={ handleButtonPressOut }
+                                            style={ { backgroundColor: 'rgba(115, 185, 255, 0.85)', padding: 14, borderRadius: 16, justifyContent: 'center', alignItems: 'center' } }
                                         >
-                                            <Text style={{ fontSize: 16, fontWeight: '700', textTransform: 'capitalize', color: '#fff' }}>1 klikda xarid qilish</Text>
+                                            <Text style={ { fontSize: 16, fontWeight: '700', textTransform: 'capitalize', color: '#fff' } }>1 klikda xarid qilish</Text>
                                         </Pressable>
                                     </Animated.View>
-                                    <Pressable onPress={handleFavoritePress} style={{ backgroundColor: 'rgba(135, 206, 235, 0.2)', padding: 12, borderRadius: 16, flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                                        <Animated.View style={{ transform: [{ scale: heartScale }] }}>
+                                    <Pressable onPress={ handleFavoritePress } style={ { backgroundColor: 'rgba(135, 206, 235, 0.2)', padding: 12, borderRadius: 16, flex: 1, justifyContent: 'center', alignItems: 'center' } }>
+                                        <Animated.View style={ { transform: [{ scale: heartScale }] } }>
                                             <UniversalImage
-                                                src={yoqtirilganIds.includes(product.id) ? 'https://i.ibb.co/XkFkG62y/image.png' : 'https://i.ibb.co/GfZzh6Y7/heart.png'}
+                                                src={ yoqtirilganIds.includes(product?.id) ? 'https://i.ibb.co/XkFkG62y/image.png' : 'https://i.ibb.co/GfZzh6Y7/heart.png' }
                                                 alt="Favorite Icon"
-                                                width={24}
-                                                height={24}
+                                                width={ 24 }
+                                                height={ 24 }
                                                 resizeMode="contain"
                                             />
                                         </Animated.View>
                                     </Pressable>
                                 </View>
 
-                                <View style={{ flexDirection: 'row', width: '100%', gap: 16 }}>
-                                    <Animated.View style={{ flex: 8, transform: [{ scale: btnScaleAnim }] }}>
+                                <View style={ { flexDirection: 'row', width: '100%', gap: 16 } }>
+                                    <Animated.View style={ { flex: 8, transform: [{ scale: btnScaleAnim }] } }>
                                         <Pressable
-                                            onPressIn={handleButtonPressIn}
-                                            onPressOut={handleButtonPressOut}
-                                            onPress={(e: any) => {
+                                            onPressIn={ handleButtonPressIn }
+                                            onPressOut={ handleButtonPressOut }
+                                            onPress={ (e: any) => {
                                                 e.stopPropagation();
                                                 toggleCart(product.id);
-                                            }}
-                                            style={[styles.button, isInCart ? styles.buttonInCart : styles.button, { width: '100%' }]}>
-                                            <Text style={[styles.buttonText, isInCart && styles.buttonTextInCart]}>{isInCart ? 'savatda ✓' : 'savatga qo\'shish'}</Text>
+                                            } }
+                                            style={ [styles.button, isInCart ? styles.buttonInCart : styles.button, { width: '100%' }] }>
+                                            <Text style={ [styles.buttonText, isInCart && styles.buttonTextInCart] }>{ isInCart ? 'savatda ✓' : 'savatga qo\'shish' }</Text>
                                         </Pressable>
                                     </Animated.View>
-                                    {isInCart ? (
-                                        <Pressable onPress={() => router.push('/savat')} style={{
+                                    { isInCart ? (
+                                        <Pressable onPress={ () => router.push('/savat') } style={ {
                                             flex: 2, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(135, 206, 235, 0.2)', borderRadius: 14, borderWidth: 1,
                                             borderColor: 'rgba(115, 185, 255, 0.85)',
-                                        }}>
+                                        } }>
                                             <UniversalImage
-                                                src={CartPng}
-                                                alt={product.title}
-                                                width={30}
-                                                height={30}
+                                                src={ CartPng }
+                                                alt={ product.title }
+                                                width={ 30 }
+                                                height={ 30 }
                                                 resizeMode='contain'
                                             />
                                         </Pressable>
-                                    ) : null}
+                                    ) : null }
                                 </View>
 
-                                <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                                <View style={ { flexDirection: 'row', gap: 8, alignItems: 'center' } }>
                                     <UniversalImage
-                                        src={CheckPng}
+                                        src={ CheckPng }
                                         alt='check'
-                                        width={30}
-                                        height={30}
+                                        width={ 30 }
+                                        height={ 30 }
                                         resizeMode='contain'
                                     />
-                                    <Text>{product.quantity} dona xarid qilish mumkin</Text>
+                                    <Text>{ product.quantity } dona xarid qilish mumkin</Text>
                                 </View>
-                                <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                                <View style={ { flexDirection: 'row', gap: 8, alignItems: 'center' } }>
                                     <View>
                                         <UniversalImage
-                                            src={CartPng}
+                                            src={ CartPng }
                                             alt='cart'
-                                            width={30}
-                                            height={30}
+                                            width={ 30 }
+                                            height={ 30 }
                                             resizeMode='contain'
                                         />
                                         <UniversalImage
-                                            style={{ position: 'absolute', bottom: 0, right: 0 }}
-                                            src={CheckedPng}
+                                            style={ { position: 'absolute', bottom: 0, right: 0 } }
+                                            src={ CheckedPng }
                                             alt='check'
-                                            width={10}
-                                            height={10}
+                                            width={ 10 }
+                                            height={ 10 }
                                             resizeMode='contain'
                                         />
                                     </View>
                                     <Text>Bu haftada 5 kishi sotib oldi</Text>
                                 </View>
                             </View>
-                            <View style={{ position: 'absolute', top: 0, left: 0, flexDirection: 'row', justifyContent: 'space-between', width: '100%', padding: 10 }}>
-                                <Text style={{ fontSize: 20, fontWeight: 'bold', color: 'snow', textTransform: 'capitalize' }}>yozgi chegirmalar <Text style={{ fontSize: 20 }}>{'>'}</Text></Text>
-                                <Text style={{ fontSize: 20, fontWeight: 'bold', color: 'snow', textTransform: 'capitalize' }}>{new Date().getSeconds()} kun qoldi</Text>
+                            <View style={ { position: 'absolute', top: 0, left: 0, flexDirection: 'row', justifyContent: 'space-between', width: '100%', padding: 10 } }>
+                                <Text style={ { fontSize: 20, fontWeight: 'bold', color: 'snow', textTransform: 'capitalize' } }>yozgi chegirmalar <Text style={ { fontSize: 20 } }>{ '>' }</Text></Text>
+                                <Text style={ { fontSize: 20, fontWeight: 'bold', color: 'snow', textTransform: 'capitalize' } }>{ new Date().getSeconds() } kun qoldi</Text>
                             </View>
                         </View>
                     </View>
 
                 </View>
-                <View style={{ padding: 12 }}>
+                <View style={ { padding: 12 } }>
                     <Text>
-                        {typeof product.description === 'string'
+                        { typeof product.description === 'string'
                             ? product.description
-                            : product.description?.[lan as keyof typeof product.description] || product.description?.uz}
+                            : product.description?.[lan as keyof typeof product.description] || product.description?.uz }
                     </Text>
 
-                    {(isTabletView || isMobileView) ? (
+                    { (isTabletView || isMobileView) ? (
 
                         product.options && product.options.length > 0 && (
-                            <View style={styles.container}>
-                                <Text style={[styles.mainTitle, theme === 'dark' ? styles.textDark : styles.textLight]}>
+                            <View style={ styles.container }>
+                                <Text style={ [styles.mainTitle, styles.textLight] }>
                                     Konfiguratsiyani o&apos;zgartirish:
                                 </Text>
-                                <View style={styles.groupContainer}>
-                                    {product.options.map((optGroup, optIdx) => {
+                                <View style={ styles.groupContainer }>
+                                    { product.options.map((optGroup, optIdx) => {
                                         const activeVal = selectedOptions[product.id]?.[optGroup.id];
                                         return (
                                             <View
-                                                key={optIdx}
-                                                style={[
+                                                key={ optIdx }
+                                                style={ [
                                                     styles.card,
-                                                    theme === 'dark' ? styles.cardDark : styles.cardLight
-                                                ]}
+                                                    styles.cardLight
+                                                ] }
                                             >
-                                                <Text style={[styles.groupTitle, theme === 'dark' ? styles.groupTitleDark : styles.groupTitleLight]}>
-                                                    {optGroup.title}
+                                                <Text style={ [styles.groupTitle, styles.groupTitleLight] }>
+                                                    { optGroup.title }
                                                 </Text>
-                                                <View style={styles.optionsList}>
-                                                    {optGroup.options.map((opt, valIdx) => {
-                                                        const isSelected = activeVal === opt.id;
+                                                <View style={ styles.optionsList }>
+                                                    { Array.isArray(optGroup.options) && optGroup.options.map((opt, valIdx) => {
+                                                        const isSelected = String(activeVal) === String(opt.id);
 
                                                         return (
                                                             <TouchableOpacity
-                                                                key={valIdx}
-                                                                onPress={() => handleOptionSelect(product.id, optGroup.id, opt.value)}
-                                                                activeOpacity={0.7}
-                                                                style={[
+                                                                key={ valIdx }
+                                                                onPress={ () => handleOptionSelect(product.id, optGroup.id, opt.id) }
+                                                                activeOpacity={ 0.7 }
+                                                                style={ [
                                                                     styles.optionButton,
                                                                     isSelected
                                                                         ? styles.buttonSelected
-                                                                        : theme === 'dark'
-                                                                            ? styles.buttonDark
-                                                                            : styles.buttonLight
-                                                                ]}
+                                                                        : styles.buttonLight
+                                                                ] }
                                                             >
-                                                                <Text style={[
+                                                                <Text style={ [
                                                                     styles.buttonText,
                                                                     isSelected
                                                                         ? styles.textSelected
-                                                                        : theme === 'dark'
-                                                                            ? styles.textDark
-                                                                            : styles.textLight
-                                                                ]}>
-                                                                    {opt.key}
+                                                                        : styles.textLight
+                                                                ] }>
+                                                                    { opt.key }
                                                                 </Text>
-                                                                <Text style={[
+                                                                <Text style={ [
                                                                     styles.priceText,
                                                                     isSelected
                                                                         ? styles.textSelected
-                                                                        : theme === 'dark'
-                                                                            ? styles.priceDark
-                                                                            : styles.priceLight
-                                                                ]}>
-                                                                    +{opt.value.toLocaleString()} UZS
+                                                                        : styles.priceLight
+                                                                ] }>
+                                                                    +{ opt.value.toLocaleString() } UZS
                                                                 </Text>
                                                             </TouchableOpacity>
                                                         );
-                                                    })}
+                                                    }) }
                                                 </View>
                                             </View>
                                         );
-                                    })}
+                                    }) }
                                 </View>
                             </View>
                         )
 
-                    ) : null}
+                    ) : null }
                 </View>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', padding: 12, backgroundColor: '#fff' }}>
-                    {nextProducts.map((p: Product, index: number) => (
-                        <ProductCart key={p.id} product={p} products={nextProducts} index={index} />
-                    ))}
+                <View style={ { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', padding: 12, backgroundColor: '#fff' } }>
+                    { nextProducts.map((p: Product, index: number) => (
+                        <ProductCart key={ p.id } product={ p } products={ nextProducts } index={ index } />
+                    )) }
                 </View>
             </View>
         </ScreenWrapper>
