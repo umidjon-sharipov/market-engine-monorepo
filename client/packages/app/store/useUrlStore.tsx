@@ -7,7 +7,7 @@ interface urlState {
 
 export const useUrlStore = create<urlState>()(
     (set) => ({
-        url: 'https://internet-magazin-nest-server.vercel.app',
+        url: 'http://localhost:4000',
         setUrl: (url) => set({ url: url }),
     })
 )

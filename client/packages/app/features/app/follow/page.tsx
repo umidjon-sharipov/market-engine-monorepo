@@ -1,11 +1,21 @@
 'use client'
 
-import React, { useEffect, useState } from 'react'
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, TextInput } from 'react-native'
+import React, { useCallback, useEffect, useState } from 'react'
+import {
+    ActivityIndicator,
+    Platform,
+    Pressable,
+    StyleSheet,
+    Text,
+    TextInput,
+    View,
+} from 'react-native'
+import { useRouter } from 'solito/navigation'
 import ScreenWrapper from 'app/components/layout/ScreenWrapper'
 import { UniversalImage } from 'app/components/UI/UniversalImage'
-import { useTokenStore } from 'app/store/useTokenStore'
+import { fetchWithAuth } from 'app/features/app/auth/fetchWithAuth'
 import { useLanStorage } from 'app/store/useLanStore'
+import { useTokenStore } from 'app/store/useTokenStore'
 import { useUrlStore } from 'app/store/useUrlStore'
 
 interface Market {
@@ -14,275 +24,777 @@ interface Market {
     logo: string
 }
 
-interface Follow {
+interface FollowTimestamp {
     id: string
-    userId: string
-    following: string[]
+    isFollowing: boolean
+    createdAt: string
+    updatedAt: string
 }
 
-const FollowComponent = () => {
-    const lan = useLanStorage(state => state.lan)
-    const url = useUrlStore(state => state.url)
-    const [markets, setMarkets] = useState<Market[]>([])
-    const [userFollowingIds, setUserFollowingIds] = useState<string[]>([])
-    const [loading, setLoading] = useState<boolean>(true)
-    const token = useTokenStore(state => state.token)
-    const [inputValue, setInputValue] = useState('')
-    const [filteredMarkets, setFilteredMarkets] = useState<Market[]>(markets)
+interface FollowItem extends FollowTimestamp {
+    marketId: string
+    market: Market
+}
 
-    const fetchAllData = async (token: string) => {
-        try {
-            const profileRes = await fetch(`${url}/auth/profile`, {
-                method: 'GET',
-                headers: {
-                    'Authorization': `Bearer ${token}`
+interface MarketSearchResult extends Market {
+    following: FollowTimestamp | null
+}
+
+const translations = {
+    uz: {
+        title: 'Marketlarni kuzatish',
+        subtitle: 'O‘zingizga yoqqan marketlarni toping va kuzatib boring.',
+        search: 'Market nomi bo‘yicha qidiring',
+        searchHint: 'Kamida 3 ta harf yozing',
+        following: 'Kuzatayotganlar',
+        results: 'Qidiruv natijalari',
+        follow: 'Kuzatish',
+        unfollow: 'Kuzatishni to‘xtatish',
+        followedAt: 'Kuzatish vaqti',
+        updatedAt: 'Oxirgi o‘zgarish',
+        marketCaption: 'Market',
+        emptyFollowing: 'Hozircha market kuzatmayapsiz.',
+        emptySearch: 'Bu nom bo‘yicha market topilmadi.',
+        startSearch: 'Market topish uchun nomidan bir necha harf yozing.',
+        loadingError: 'Ma’lumotlarni yuklashda xatolik yuz berdi.',
+        actionError: 'Amalni bajarib bo‘lmadi. Qayta urinib ko‘ring.',
+        loginRequired: 'Davom etish uchun akkauntingizga kiring.',
+        retry: 'Qayta urinish',
+        dateLocale: 'uz-UZ',
+    },
+    en: {
+        title: 'Discover markets',
+        subtitle: 'Find the markets you like and keep up with them.',
+        search: 'Search by market name',
+        searchHint: 'Type at least 3 characters',
+        following: 'Following',
+        results: 'Search results',
+        follow: 'Follow',
+        unfollow: 'Unfollow',
+        followedAt: 'Followed',
+        updatedAt: 'Last changed',
+        marketCaption: 'Market',
+        emptyFollowing: 'You are not following any markets yet.',
+        emptySearch: 'No markets found for this name.',
+        startSearch: 'Type a few letters to find a market.',
+        loadingError: 'Could not load the data.',
+        actionError: 'The action failed. Please try again.',
+        loginRequired: 'Sign in to continue.',
+        retry: 'Try again',
+        dateLocale: 'en-US',
+    },
+    ru: {
+        title: 'Найти магазины',
+        subtitle: 'Находите интересные магазины и следите за ними.',
+        search: 'Поиск по названию магазина',
+        searchHint: 'Введите не менее 3 символов',
+        following: 'Вы подписаны',
+        results: 'Результаты поиска',
+        follow: 'Подписаться',
+        unfollow: 'Отписаться',
+        followedAt: 'Подписка',
+        updatedAt: 'Последнее изменение',
+        marketCaption: 'Магазин',
+        emptyFollowing: 'Вы пока не подписаны на магазины.',
+        emptySearch: 'Магазины с таким названием не найдены.',
+        startSearch: 'Введите несколько букв, чтобы найти магазин.',
+        loadingError: 'Не удалось загрузить данные.',
+        actionError: 'Не удалось выполнить действие. Попробуйте ещё раз.',
+        loginRequired: 'Войдите в аккаунт, чтобы продолжить.',
+        retry: 'Повторить',
+        dateLocale: 'ru-RU',
+    },
+}
+
+const isMarket = (value: unknown): value is Market =>
+    typeof value === 'object' &&
+    value !== null &&
+    'id' in value &&
+    typeof value.id === 'string' &&
+    'title' in value &&
+    typeof value.title === 'string' &&
+    'logo' in value &&
+    typeof value.logo === 'string'
+
+const isFollowTimestamp = (value: unknown): value is FollowTimestamp =>
+    typeof value === 'object' &&
+    value !== null &&
+    'id' in value &&
+    typeof value.id === 'string' &&
+    'isFollowing' in value &&
+    typeof value.isFollowing === 'boolean' &&
+    'createdAt' in value &&
+    typeof value.createdAt === 'string' &&
+    'updatedAt' in value &&
+    typeof value.updatedAt === 'string'
+
+const isFollowItemArray = (value: unknown): value is FollowItem[] =>
+    Array.isArray(value) &&
+    value.every(item =>
+        typeof item === 'object' &&
+        item !== null &&
+        isFollowTimestamp(item) &&
+        'marketId' in item &&
+        typeof item.marketId === 'string' &&
+        'market' in item &&
+        isMarket(item.market)
+    )
+
+const isSearchResultArray = (value: unknown): value is MarketSearchResult[] =>
+    Array.isArray(value) &&
+    value.every(item =>
+        typeof item === 'object' &&
+        item !== null &&
+        isMarket(item) &&
+        'following' in item &&
+        (item.following === null || isFollowTimestamp(item.following))
+    )
+
+const FollowComponent = () => {
+    const lan = useLanStorage(state => state.lan) as keyof typeof translations
+    const t = translations[lan] || translations.uz
+    const url = useUrlStore(state => state.url)
+    const token = useTokenStore(state => state.token)
+    const hasHydrated = useTokenStore(state => state.hasHydrated)
+    const router = useRouter()
+
+    const [followedMarkets, setFollowedMarkets] = useState<FollowItem[]>([])
+    const [searchResults, setSearchResults] = useState<MarketSearchResult[]>([])
+    const [inputValue, setInputValue] = useState('')
+    const [loading, setLoading] = useState(true)
+    const [searching, setSearching] = useState(false)
+    const [error, setError] = useState('')
+    const [pendingMarkets, setPendingMarkets] = useState<string[]>([])
+
+    const normalizedQuery = inputValue.trim()
+    const shouldSearch = normalizedQuery.length >= 3
+
+    const fetchFollowedMarkets = useCallback(async (signal?: AbortSignal) => {
+        const response = await fetchWithAuth(`${url}/followings/mine`, { method: 'GET', signal }, token)
+        if (response.status === 401) {
+            router.push('/auth')
+            throw new Error(t.loginRequired)
+        }
+        if (!response.ok) throw new Error(`${t.loadingError} (${response.status})`)
+
+        const data: unknown = await response.json()
+        if (!isFollowItemArray(data)) throw new Error(t.loadingError)
+        setFollowedMarkets(data)
+    }, [router, t, token, url])
+
+    useEffect(() => {
+        if (!hasHydrated) return
+        if (!token) {
+            router.push('/auth')
+            setLoading(false)
+            return
+        }
+
+        const controller = new AbortController()
+        setLoading(true)
+        setError('')
+        fetchFollowedMarkets(controller.signal)
+            .catch((requestError: unknown) => {
+                if (!controller.signal.aborted) {
+                    setError(requestError instanceof Error ? requestError.message : t.loadingError)
                 }
             })
-            const profileData = await profileRes.json()
-            const userEmail = profileData?.email
+            .finally(() => {
+                if (!controller.signal.aborted) setLoading(false)
+            })
 
-            const usersRes = await fetch(`${url}/users`)
-            const usersData = await usersRes.json()
-            const currentUser = usersData.find((u: any) => u.email === userEmail)
-            const currentUserId = currentUser?.id
+        return () => controller.abort()
+    }, [fetchFollowedMarkets, hasHydrated, router, token, url])
 
-            const [marketsRes, followingsRes] = await Promise.all([
-                fetch(`${url}/markets`),
-                fetch(`${url}/followings`)
-            ])
+    useEffect(() => {
+        if (!hasHydrated || !token || !shouldSearch) {
+            setSearchResults([])
+            setSearching(false)
+            return
+        }
 
-            const marketsData = await marketsRes.json()
-            const followingsData = await followingsRes.json()
+        const controller = new AbortController()
+        setSearchResults([])
+        setSearching(true)
+        setError('')
+        const timer = setTimeout(() => {
+            fetchWithAuth(
+                `${url}/followings/markets/search?q=${encodeURIComponent(normalizedQuery)}`,
+                { method: 'GET', signal: controller.signal },
+                token,
+            )
+                .then(async response => {
+                    if (response.status === 401) {
+                        router.push('/auth')
+                        throw new Error(t.loginRequired)
+                    }
+                    if (!response.ok) throw new Error(`${t.loadingError} (${response.status})`)
+                    const data: unknown = await response.json()
+                    if (!isSearchResultArray(data)) throw new Error(t.loadingError)
+                    setSearchResults(data)
+                })
+                .catch((requestError: unknown) => {
+                    if (!controller.signal.aborted) {
+                        setSearchResults([])
+                        setError(requestError instanceof Error ? requestError.message : t.loadingError)
+                    }
+                })
+                .finally(() => {
+                    if (!controller.signal.aborted) setSearching(false)
+                })
+        }, 300)
 
-            setMarkets(marketsData)
-            setFilteredMarkets(marketsData)
+        return () => {
+            clearTimeout(timer)
+            controller.abort()
+        }
+    }, [hasHydrated, normalizedQuery, router, shouldSearch, t, token, url])
 
-            if (currentUserId) {
-                const userFollowObj = followingsData.find((f: Follow) => f.userId === currentUserId)
-                if (userFollowObj) {
-                    setUserFollowingIds(userFollowObj.following || [])
-                }
+    const handleFollowToggle = async (market: Market) => {
+        if (pendingMarkets.includes(market.id)) return
+        setPendingMarkets(current => [...current, market.id])
+        setError('')
+
+        try {
+            const response = await fetchWithAuth(`${url}/followings/${market.id}`, {
+                method: 'PATCH',
+            }, token)
+            if (response.status === 401) {
+                router.push('/auth')
+                throw new Error(t.loginRequired)
             }
-        } catch (err) {
-            console.error("Ma'lumotlarni yuklashda xatolik:", err)
+            if (!response.ok) throw new Error(`${t.actionError} (${response.status})`)
+
+            const data: unknown = await response.json()
+            if (
+                typeof data !== 'object' ||
+                data === null ||
+                !('id' in data) ||
+                typeof data.id !== 'string' ||
+                !('isFollowing' in data) ||
+                typeof data.isFollowing !== 'boolean' ||
+                !('createdAt' in data) ||
+                typeof data.createdAt !== 'string' ||
+                !('updatedAt' in data) ||
+                typeof data.updatedAt !== 'string'
+            ) {
+                throw new Error(t.actionError)
+            }
+
+            const updatedFollow: FollowTimestamp = {
+                id: data.id,
+                isFollowing: data.isFollowing,
+                createdAt: data.createdAt,
+                updatedAt: data.updatedAt,
+            }
+
+            setFollowedMarkets(current => data.isFollowing
+                ? [
+                    {
+                        ...updatedFollow,
+                        marketId: market.id,
+                        market,
+                    },
+                    ...current.filter(item => item.marketId !== market.id),
+                ]
+                : current.filter(item => item.marketId !== market.id))
+
+            setSearchResults(current => current.map(result =>
+                result.id === market.id ? { ...result, following: updatedFollow } : result
+            ))
+        } catch (requestError) {
+            setError(requestError instanceof Error ? requestError.message : t.actionError)
+        } finally {
+            setPendingMarkets(current => current.filter(id => id !== market.id))
+        }
+    }
+
+    const handleRetry = async () => {
+        setError('')
+        if (shouldSearch) {
+            setSearching(true)
+            try {
+                const response = await fetchWithAuth(
+                    `${url}/followings/markets/search?q=${encodeURIComponent(normalizedQuery)}`,
+                    { method: 'GET' },
+                    token,
+                )
+                if (response.status === 401) {
+                    router.push('/auth')
+                    throw new Error(t.loginRequired)
+                }
+                if (!response.ok) throw new Error(`${t.loadingError} (${response.status})`)
+                const data: unknown = await response.json()
+                if (!isSearchResultArray(data)) throw new Error(t.loadingError)
+                setSearchResults(data)
+            } catch (requestError) {
+                setError(requestError instanceof Error ? requestError.message : t.loadingError)
+            } finally {
+                setSearching(false)
+            }
+            return
+        }
+
+        setLoading(true)
+        try {
+            await fetchFollowedMarkets()
+        } catch (requestError) {
+            setError(requestError instanceof Error ? requestError.message : t.loadingError)
         } finally {
             setLoading(false)
         }
     }
 
-    const handleInputValidate = () => {
-        if (inputValue === '') {
-            setFilteredMarkets(markets)
-        } else {
-            setFilteredMarkets(markets.filter((market: Market) => market.title.toLowerCase().includes(inputValue.toLowerCase().trim())))
-        }
+    const formatDate = (value: string) => {
+        const date = new Date(value)
+        if (Number.isNaN(date.getTime())) return ''
+        return new Intl.DateTimeFormat(t.dateLocale, {
+            dateStyle: 'medium',
+            timeStyle: 'short',
+        }).format(date)
     }
 
-    useEffect(() => {
-        fetchAllData(token)
-    }, [token])
+    const renderFollowedMarket = (item: FollowItem) => (
+        <MarketCard
+            key={item.marketId}
+            market={item.market}
+            followed
+            timestampLabel={t.updatedAt}
+            timestampValue={formatDate(item.updatedAt)}
+            marketCaption={t.marketCaption}
+            actionLabel={pendingMarkets.includes(item.marketId) ? '...' : t.unfollow}
+            actionPending={pendingMarkets.includes(item.marketId)}
+            onAction={() => handleFollowToggle(item.market)}
+        />
+    )
 
-    useEffect(() => {
-        handleInputValidate()
-    }, [inputValue])
-
-    const handleFollowToggle = async (marketId: string) => {
-        try {
-            const res = await fetch(`${url}/followings/${marketId}`, {
-                method: 'PATCH',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ id: marketId })
-            })
-
-            if (res.ok) {
-                fetchAllData(token)
-            } else {
-                const err = await res.json()
-                console.log(err.message)
-            }
-        } catch (err) {
-            console.log(`So'rov yuborilmadi ${err}`)
-        }
-    }
-
-    const handleChatPress = (marketId: string) => {
-        Alert.alert("Chat / Message", `Market ID: ${marketId}`)
-    }
-
-    if (loading) {
+    const renderSearchMarket = (market: MarketSearchResult) => {
+        const followed = market.following?.isFollowing ?? false
         return (
-            <ScreenWrapper>
-                <View style={styles.loaderContainer}>
-                    <ActivityIndicator size="large" color="#007AFF" />
-                </View>
-            </ScreenWrapper>
+            <MarketCard
+                key={market.id}
+                market={market}
+                followed={followed}
+                timestampLabel={t.followedAt}
+                timestampValue={followed && market.following ? formatDate(market.following.createdAt) : undefined}
+                marketCaption={t.marketCaption}
+                actionLabel={pendingMarkets.includes(market.id) ? '...' : followed ? t.unfollow : t.follow}
+                actionPending={pendingMarkets.includes(market.id)}
+                onAction={() => handleFollowToggle(market)}
+            />
         )
     }
 
     return (
         <ScreenWrapper>
             <View style={styles.container}>
-                <TextInput
-                    style={styles.searchInput}
-                    onChangeText={setInputValue}
-                    value={inputValue}
-                    placeholder={lan === 'uz' ? `Qidirish...` : lan === 'en' ? `Search...` : lan === 'ru' ? 'Поиск' : 'Qidirish...'}
-                    placeholderTextColor="#A0AEC0"
-                />
+                <View style={styles.hero}>
+                    <View style={styles.heroIcon}>
+                        <Text style={styles.heroIconText}>✦</Text>
+                    </View>
+                    <Text style={styles.heroTitle}>{t.title}</Text>
+                    <Text style={styles.heroSubtitle}>{t.subtitle}</Text>
+                </View>
 
-                <Text style={styles.headerTitle}>{lan === 'uz' ? 'Barcha Marketlar' : lan === 'en' ? 'All Markets' : lan === 'ru' ? 'Все Mаркеты' : 'Barcha Marketlar'}</Text>
+                <View style={styles.searchBox}>
+                    <Text style={styles.searchIcon}>⌕</Text>
+                    <TextInput
+                        style={styles.searchInput}
+                        onChangeText={setInputValue}
+                        value={inputValue}
+                        placeholder={t.search}
+                        placeholderTextColor="#94A3B8"
+                        returnKeyType="search"
+                        autoCorrect={false}
+                    />
+                    {searching && <ActivityIndicator size="small" color="#0284C7" />}
+                    {inputValue.length > 0 && (
+                        <Pressable onPress={() => setInputValue('')} style={styles.clearButton}>
+                            <Text style={styles.clearButtonText}>×</Text>
+                        </Pressable>
+                    )}
+                </View>
+                <Text style={styles.searchHint}>{t.searchHint}</Text>
 
-                {filteredMarkets.map((market: Market) => {
-                    const isFollowing = userFollowingIds.includes(market.id)
+                {error ? (
+                    <View style={styles.errorBox}>
+                        <Text style={styles.errorText}>{error}</Text>
+                        <Pressable onPress={handleRetry}>
+                            <Text style={styles.retryText}>{t.retry}</Text>
+                        </Pressable>
+                    </View>
+                ) : null}
 
-                    return (
-                        <View key={market.id} style={styles.card}>
-                            <View style={styles.leftContainer}>
-                                <UniversalImage
-                                    src={market.logo}
-                                    width={45}
-                                    height={45}
-                                    alt={market.title}
-                                    resizeMode='cover'
-                                    style={styles.logo}
-                                />
-                                <Text style={styles.title} numberOfLines={1}>{market.title}</Text>
-                            </View>
-
-                            <View style={styles.rightContainer}>
-                                <TouchableOpacity
-                                    style={[styles.button, isFollowing ? styles.followingBtn : styles.followBtn]}
-                                    onPress={() => handleFollowToggle(market.id)}
-                                >
-                                    <Text style={[styles.buttonText, isFollowing ? styles.followingText : styles.followText]}>
-                                        {isFollowing ? 'Following' : 'Follow'}
-                                    </Text>
-                                </TouchableOpacity>
-
-                                <TouchableOpacity
-                                    style={styles.chatButton}
-                                    onPress={() => handleChatPress(market.id)}
-                                >
-                                    <Text style={styles.chatButtonText}>Chat</Text>
-                                </TouchableOpacity>
+                {!shouldSearch && (
+                    <View style={styles.section}>
+                        <View style={styles.sectionHeader}>
+                            <Text style={styles.sectionTitle}>{t.following}</Text>
+                            <View style={styles.countBadge}>
+                                <Text style={styles.countText}>{followedMarkets.length}</Text>
                             </View>
                         </View>
-                    )
-                })}
+                        {loading ? (
+                            <View style={styles.loadingCard}>
+                                <ActivityIndicator color="#0284C7" />
+                            </View>
+                        ) : followedMarkets.length > 0 ? (
+                            followedMarkets.map(renderFollowedMarket)
+                        ) : (
+                            <View style={styles.emptyCard}>
+                                <Text style={styles.emptyIcon}>♡</Text>
+                                <Text style={styles.emptyText}>{t.emptyFollowing}</Text>
+                                <Text style={styles.emptyHint}>{t.startSearch}</Text>
+                            </View>
+                        )}
+                    </View>
+                )}
+
+                {shouldSearch && (
+                    <View style={styles.section}>
+                        <View style={styles.sectionHeader}>
+                            <Text style={styles.sectionTitle}>{t.results}</Text>
+                            {!searching && (
+                                <View style={styles.countBadge}>
+                                    <Text style={styles.countText}>{searchResults.length}</Text>
+                                </View>
+                            )}
+                        </View>
+                        {searching ? (
+                            <View style={styles.loadingCard}>
+                                <ActivityIndicator color="#0284C7" />
+                            </View>
+                        ) : searchResults.length > 0 ? (
+                            searchResults.map(renderSearchMarket)
+                        ) : !error ? (
+                            <View style={styles.emptyCard}>
+                                <Text style={styles.emptyIcon}>⌕</Text>
+                                <Text style={styles.emptyText}>{t.emptySearch}</Text>
+                            </View>
+                        ) : null}
+                    </View>
+                )}
             </View>
         </ScreenWrapper>
     )
 }
 
+interface MarketCardProps {
+    market: Market
+    followed: boolean
+    timestampLabel: string
+    timestampValue?: string
+    marketCaption: string
+    actionLabel: string
+    actionPending: boolean
+    onAction: () => void
+}
+
+const MarketCard = ({
+    market,
+    followed,
+    timestampLabel,
+    timestampValue,
+    marketCaption,
+    actionLabel,
+    actionPending,
+    onAction,
+}: MarketCardProps) => (
+    <View style={styles.marketCard}>
+        <View style={styles.marketMain}>
+            <UniversalImage
+                src={market.logo}
+                width={54}
+                height={54}
+                alt={market.title}
+                resizeMode="cover"
+                style={styles.marketLogo}
+            />
+            <View style={styles.marketDetails}>
+                <Text style={styles.marketTitle} numberOfLines={1}>{market.title}</Text>
+                {followed && timestampValue ? (
+                    <Text style={styles.timestamp} numberOfLines={1}>
+                        {timestampLabel}: {timestampValue}
+                    </Text>
+                ) : (
+                    <Text style={styles.marketCaption}>{marketCaption}</Text>
+                )}
+            </View>
+        </View>
+        <View style={styles.marketActions}>
+            <Pressable
+                onPress={onAction}
+                disabled={actionPending}
+                style={({ pressed }: { pressed: boolean }) => [
+                    styles.followButton,
+                    followed ? styles.followingButton : styles.notFollowingButton,
+                    pressed && styles.pressed,
+                    actionPending && styles.disabled,
+                ]}
+            >
+                {actionPending
+                    ? <ActivityIndicator size="small" color={followed ? '#0369A1' : '#FFFFFF'} />
+                    : <Text style={[styles.followButtonText, followed && styles.followingButtonText]}>{actionLabel}</Text>}
+            </Pressable>
+        </View>
+    </View>
+)
+
 const styles = StyleSheet.create({
     container: {
-        flex: 1,
-        padding: 16,
+        width: '100%',
+        maxWidth: 900,
+        alignSelf: 'center',
+        paddingHorizontal: 18,
+        paddingTop: 12,
+        paddingBottom: 32,
     },
-    loaderContainer: {
-        flex: 1,
-        justifyContent: 'center',
+    hero: {
         alignItems: 'center',
+        paddingTop: 14,
+        paddingBottom: 24,
     },
-    headerTitle: {
+    heroIcon: {
+        width: 52,
+        height: 52,
+        borderRadius: 18,
+        backgroundColor: '#E0F2FE',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 12,
+    },
+    heroIconText: {
+        color: '#0284C7',
+        fontSize: 28,
+        fontWeight: '700',
+    },
+    heroTitle: {
+        color: '#0F172A',
+        fontSize: 25,
+        fontWeight: '800',
+        textAlign: 'center',
+    },
+    heroSubtitle: {
+        maxWidth: 420,
+        color: '#64748B',
+        fontSize: 14,
+        lineHeight: 21,
+        textAlign: 'center',
+        marginTop: 7,
+    },
+    searchBox: {
+        minHeight: 54,
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 15,
+        borderRadius: 17,
+        borderWidth: 1,
+        borderColor: '#DBEAFE',
+        backgroundColor: '#FFFFFF',
+        ...Platform.select({
+            web: { boxShadow: '0 6px 20px rgba(15, 23, 42, 0.05)' },
+            default: { elevation: 2 },
+        }),
+    },
+    searchIcon: {
+        color: '#0284C7',
+        fontSize: 26,
+        lineHeight: 30,
+        marginRight: 10,
+    },
+    searchInput: {
+        flex: 1,
+        minWidth: 0,
+        height: 52,
+        color: '#0F172A',
+        fontSize: 15,
+        outlineStyle: 'none',
+    },
+    clearButton: {
+        width: 30,
+        height: 30,
+        borderRadius: 15,
+        backgroundColor: '#F1F5F9',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginLeft: 8,
+    },
+    clearButtonText: {
+        color: '#64748B',
         fontSize: 22,
-        fontWeight: 'bold',
-        color: '#1A1A1A',
-        marginBottom: 16,
+        lineHeight: 25,
     },
-    card: {
+    searchHint: {
+        color: '#94A3B8',
+        fontSize: 11,
+        marginTop: 7,
+        marginLeft: 5,
+    },
+    section: {
+        marginTop: 26,
+    },
+    sectionHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 13,
+        gap: 9,
+    },
+    sectionTitle: {
+        color: '#0F172A',
+        fontSize: 18,
+        fontWeight: '800',
+    },
+    countBadge: {
+        minWidth: 25,
+        height: 25,
+        borderRadius: 13,
+        backgroundColor: '#E0F2FE',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingHorizontal: 7,
+    },
+    countText: {
+        color: '#0369A1',
+        fontSize: 12,
+        fontWeight: '800',
+    },
+    marketCard: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        backgroundColor: '#FFFFFF',
-        borderWidth: 1,
-        borderColor: '#E2E8F0',
-        borderRadius: 14,
         padding: 12,
-        marginBottom: 12,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.05,
-        shadowRadius: 2,
-        elevation: 2,
+        marginBottom: 10,
+        borderRadius: 18,
+        borderWidth: 1,
+        borderColor: '#E8EEF5',
+        backgroundColor: '#FFFFFF',
+        gap: 10,
+        ...Platform.select({
+            web: { boxShadow: '0 4px 14px rgba(15, 23, 42, 0.04)' },
+            default: { elevation: 2 },
+        }),
     },
-    leftContainer: {
+    marketMain: {
+        flex: 1,
+        minWidth: 0,
         flexDirection: 'row',
         alignItems: 'center',
+        gap: 12,
+    },
+    marketLogo: {
+        width: 54,
+        height: 54,
+        borderRadius: 16,
+        backgroundColor: '#F1F5F9',
+    },
+    marketDetails: {
         flex: 1,
-        marginRight: 10,
+        minWidth: 0,
     },
-    logo: {
-        width: 45,
-        height: 45,
-        borderRadius: 22.5,
-        backgroundColor: '#EDF2F7',
-    },
-    title: {
+    marketTitle: {
+        color: '#0F172A',
         fontSize: 15,
-        fontWeight: '600',
-        color: '#2D3748',
-        marginLeft: 12,
-        flex: 1,
+        fontWeight: '700',
     },
-    rightContainer: {
+    marketCaption: {
+        color: '#94A3B8',
+        fontSize: 12,
+        marginTop: 5,
+    },
+    timestamp: {
+        color: '#64748B',
+        fontSize: 10,
+        marginTop: 5,
+    },
+    marketActions: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 8,
+        gap: 7,
     },
-    button: {
-        paddingVertical: 8,
-        paddingHorizontal: 16,
-        borderRadius: 20,
+    followButton: {
+        minWidth: 88,
+        minHeight: 38,
+        paddingHorizontal: 12,
+        borderRadius: 13,
+        alignItems: 'center',
+        justifyContent: 'center',
         borderWidth: 1,
     },
-    followBtn: {
-        backgroundColor: '#007AFF',
-        borderColor: '#007AFF',
+    notFollowingButton: {
+        backgroundColor: '#0284C7',
+        borderColor: '#0284C7',
     },
-    followingBtn: {
-        backgroundColor: '#EDF2F7',
-        borderColor: '#CBD5E0',
+    followingButton: {
+        backgroundColor: '#F0F9FF',
+        borderColor: '#BAE6FD',
     },
-    buttonText: {
-        fontSize: 13,
-        fontWeight: '600',
-    },
-    followText: {
+    followButtonText: {
         color: '#FFFFFF',
+        fontSize: 12,
+        fontWeight: '700',
     },
-    followingText: {
-        color: '#4A5568',
+    followingButtonText: {
+        color: '#0369A1',
     },
-    chatButton: {
-        backgroundColor: '#E2E8F0',
-        paddingVertical: 8,
-        paddingHorizontal: 12,
-        borderRadius: 20,
+    pressed: {
+        opacity: 0.78,
+        transform: [{ scale: 0.97 }],
     },
-    chatButtonText: {
-        fontSize: 13,
-        fontWeight: '600',
-        color: '#2D3748',
+    disabled: {
+        opacity: 0.7,
     },
-    searchInput: {
+    loadingCard: {
+        minHeight: 100,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: 18,
         backgroundColor: '#FFFFFF',
         borderWidth: 1,
-        borderColor: '#E2E8F0',
-        borderRadius: 12,
-        paddingHorizontal: 16,
-        paddingVertical: 12,
+        borderColor: '#E8EEF5',
+    },
+    emptyCard: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingHorizontal: 24,
+        paddingVertical: 30,
+        borderRadius: 18,
+        borderWidth: 1,
+        borderColor: '#E8EEF5',
+        backgroundColor: '#FFFFFF',
+    },
+    emptyIcon: {
+        color: '#38BDF8',
+        fontSize: 35,
+        marginBottom: 9,
+    },
+    emptyText: {
+        color: '#334155',
         fontSize: 14,
-        color: '#2D3748',
-        marginBottom: 16,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.03,
-        shadowRadius: 2,
-        elevation: 1,
+        fontWeight: '700',
+        textAlign: 'center',
+    },
+    emptyHint: {
+        color: '#94A3B8',
+        fontSize: 12,
+        textAlign: 'center',
+        marginTop: 6,
+    },
+    errorBox: {
+        padding: 13,
+        marginTop: 16,
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: '#FECACA',
+        backgroundColor: '#FEF2F2',
+        gap: 7,
+    },
+    errorText: {
+        color: '#B91C1C',
+        fontSize: 13,
+    },
+    retryText: {
+        color: '#0369A1',
+        fontSize: 13,
+        fontWeight: '700',
     },
 })
 

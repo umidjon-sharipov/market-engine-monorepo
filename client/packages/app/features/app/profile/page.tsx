@@ -1,6 +1,6 @@
 'use client'
 
-import { Text, View, StyleSheet, ScrollView, Pressable, Animated, TextInput, useWindowDimensions, Platform } from 'react-native'
+import { Text, View, StyleSheet, ScrollView, Pressable, Animated, TextInput, useWindowDimensions, Platform, Modal } from 'react-native'
 import { UniversalImage } from 'app/components/UI/UniversalImage'
 import { useRouter } from 'solito/navigation'
 import React, { useState, useEffect, useRef } from 'react'
@@ -11,6 +11,7 @@ import ProfileImageUpload from './_components/ProfileImageUpload'
 import { useTokenStore } from 'app/store/useTokenStore'
 import { useLocationOpenStore } from 'app/store/useLocationOpenStore'
 import { useUrlStore } from 'app/store/useUrlStore'
+import { fetchWithAuth } from 'app/features/app/auth/fetchWithAuth'
 
 const translations = {
     uz: {
@@ -26,6 +27,12 @@ const translations = {
         clearCache: 'Keshni tozalash',
         deleteAkk: 'Hisobni O\'chirib tashlash',
         logout: 'Chiqib ketish',
+        addAccount: 'Boshqa akkaunt qo‘shish',
+        switchAccount: 'Akkauntni almashtirish',
+        activeAccount: 'Faol',
+        accounts: 'Akkauntlar',
+        accountCount: 'ta akkaunt',
+        close: 'Yopish',
         appVersion: 'Ilova versiyasi',
         yourInformation: 'Sizning Ma\'lumotlaringiz',
         firstName: 'Ism',
@@ -59,6 +66,12 @@ const translations = {
         clearCache: 'Clear Cache',
         deleteAkk: 'Delete Account',
         logout: 'Log Out',
+        addAccount: 'Add another account',
+        switchAccount: 'Switch account',
+        activeAccount: 'Active',
+        accounts: 'Accounts',
+        accountCount: 'accounts',
+        close: 'Close',
         appVersion: 'App Version',
         yourInformation: 'Your Information',
         firstName: 'First Name',
@@ -91,6 +104,12 @@ const translations = {
         clearCache: 'Очистить кэш',
         deleteAkk: 'Удалить аккаунт',
         logout: 'Выйти',
+        addAccount: 'Добавить аккаунт',
+        switchAccount: 'Сменить аккаунт',
+        activeAccount: 'Активный',
+        accounts: 'Аккаунты',
+        accountCount: 'аккаунта',
+        close: 'Закрыть',
         appVersion: 'Версия приложения',
         yourInformation: 'Ваша информация',
         firstName: 'Имя',
@@ -115,7 +134,11 @@ const translations = {
 const Profile = () => {
     const url = useUrlStore(state => state.url)
     const token = useTokenStore(state => state.token)
-    const setToken = useTokenStore(state => state.setToken)
+    const hasHydrated = useTokenStore(state => state.hasHydrated)
+    const accounts = useTokenStore(state => state.accounts)
+    const activeEmail = useTokenStore(state => state.activeEmail)
+    const switchAccount = useTokenStore(state => state.switchAccount)
+    const removeAccount = useTokenStore(state => state.removeAccount)
     const lan = useLanStorage(state => state.lan) as 'uz' | 'ru' | 'en'
     const setLan = useLanStorage(state => state.setLan)
     const t = translations[lan || 'uz']
@@ -124,6 +147,7 @@ const Profile = () => {
     const isDesktop = width >= 800;
 
     const [isEditing, setIsEditing] = useState<boolean>(false)
+    const [accountsModalOpen, setAccountsModalOpen] = useState(false)
 
     const [firstName, setFirstName] = useState<string>('FirstName')
     const [image, setImage] = useState(UserPng)
@@ -162,14 +186,15 @@ const Profile = () => {
 
     const renderToken = async (token: string) => {
         try {
-            const res = await fetch(`${url}/auth/profile`, {
+            const res = await fetchWithAuth(`${url}/auth/profile`, {
                 method: 'GET',
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                }
-            });
+            }, token)
+            if (!res.ok) {
+                if (res.status === 401) router.push('/auth')
+                throw new Error(`Profilni yuklash muvaffaqiyatsiz: ${res.status}`)
+            }
             const req = await res.json()
-            console.log(req)
+            if (useTokenStore.getState().token !== token) return
             setFirstName(req.firstName)
             setLastName(req.lastName)
             setPhone(req.phone)
@@ -184,20 +209,15 @@ const Profile = () => {
 
     const handleDeleteAccount = async () => {
         try {
-            const response = await fetch(`${url}/auth/account`, {
+            const response = await fetchWithAuth(`${url}/auth/account`, {
                 method: 'DELETE',
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                }
             });
 
-            const data = await response.json();
-
             if (response.ok) {
-                setToken('')
-
-                window.location.href = '/auth';
+                removeAccount(email)
+                if (useTokenStore.getState().accounts.length === 0) router.push('/auth')
             } else {
+                throw new Error(`Akkauntni o‘chirish muvaffaqiyatsiz: ${response.status}`)
             }
         } catch (error) {
             console.error('Server bilan aloqada xatolik:', error);
@@ -206,11 +226,10 @@ const Profile = () => {
 
     const handleUpdateProfile = async () => {
         try {
-            const response = await fetch(`${url}/auth/update-profile`, {
+            const response = await fetchWithAuth(`${url}/auth/update-profile`, {
                 method: 'PATCH',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
                 },
                 body: JSON.stringify({
                     firstName,
@@ -226,7 +245,7 @@ const Profile = () => {
             const data = await response.json();
 
             if (response.ok) {
-                renderToken(token)
+                await renderToken(useTokenStore.getState().token)
             } else {
             }
         } catch (error) {
@@ -235,57 +254,65 @@ const Profile = () => {
     };
 
     useEffect(() => {
+        if (!hasHydrated) return
         if (!token) {
             router.push('/auth')
         } else {
             renderToken(token)
         }
-    }, [])
+    }, [hasHydrated, token])
+
+    const handleLogout = () => {
+        removeAccount(email)
+        if (useTokenStore.getState().accounts.length === 0) {
+            router.push('/auth')
+        }
+    }
 
 
     return (
-        <View style={styles.outerContainer}>
-            <View style={styles.backgroundDecor}>
-                <View style={styles.orbTop} />
-                <View style={styles.orbBottom} />
+        <View style={ styles.outerContainer }>
+            <View style={ styles.backgroundDecor }>
+                <View style={ styles.orbTop } />
+                <View style={ styles.orbBottom } />
             </View>
 
             <Animated.ScrollView
-                contentContainerStyle={[styles.scrollContent, {
+                contentContainerStyle={ [styles.scrollContent, {
                     paddingVertical: isDesktop ? 24 : 0,
                     paddingHorizontal: isDesktop ? 16 : 0,
-                }]}
-                showsVerticalScrollIndicator={false}
-                onScroll={Animated.event(
+                }] }
+                showsVerticalScrollIndicator={ false }
+                onScroll={ Animated.event(
                     [{ nativeEvent: { contentOffset: { y: scrollY } } }],
                     { useNativeDriver: false }
-                )}
-                scrollEventThrottle={16}
+                ) }
+                scrollEventThrottle={ 16 }
             >
-                <View style={[styles.mainWrapper, isDesktop && styles.desktopMaxWidth]}>
+                <View style={ [styles.mainWrapper, isDesktop && styles.desktopMaxWidth] }>
 
-                    {!isEditing ? (
-                        <View style={[styles.containerCard, isDesktop && styles.desktopGridContainer, {
+                    { !isEditing ? (
+                        <View style={ [styles.containerCard, isDesktop && styles.desktopGridContainer, {
                             paddingBottom: isDesktop ? 0 : 80,
                             paddingTop: isDesktop ? 100 : 40
-                        }]}>
+                        }] }>
 
-                            <View style={[styles.sidebarColumn, isDesktop && styles.desktopSidebarColumn, {
+                            <View style={ [styles.sidebarColumn, isDesktop && styles.desktopSidebarColumn, {
                                 backgroundColor: isDesktop ? '#FFFFFF' : 'transparent',
-                            }]}>
-                                <View style={styles.phoneHeader}>
-                                    {!isDesktop && (
-                                        <Pressable style={styles.iconButton} onPress={() => router.back()}>
-                                            <Text style={styles.headerNavArrow}>‹</Text>
+                            }] }>
+                                <View style={ styles.phoneHeader }>
+                                    { !isDesktop && (
+                                        <Pressable style={ styles.iconButton } onPress={ () => router.back() }>
+                                            <Text style={ styles.headerNavArrow }>‹</Text>
                                         </Pressable>
-                                    )}
-                                    <Text style={styles.phoneHeaderTitle}>{isDesktop ? t.accountSettings : t.myProfile}</Text>
-                                    <View style={[styles.iconButton, { backgroundColor: 'transparent' }]}>
+                                    ) }
+                                    <Text style={ styles.phoneHeaderTitle }>{ isDesktop ? t.accountSettings : t.myProfile }</Text>
+                                    <View style={ [styles.iconButton, { backgroundColor: 'transparent' }] }>
                                     </View>
                                 </View>
 
-                                <View style={styles.profileCardClean}>
-                                    <Animated.View style={[styles.avatarWrapper, {
+                                <View style={ styles.profileCardClean }>
+                                    <Animated.View style={ [styles.avatarWrapper, {
                                         elevation: 120,
                                         shadowColor: `${gender === 'Male' ? '#0284C7' : 'red'}`,
                                         shadowOffset: { width: 0, height: 0 },
@@ -293,30 +320,30 @@ const Profile = () => {
                                         shadowRadius: 120,
                                         borderRadius: 10000000,
                                         transform: [{ scale: avatarScale }],
-                                    }]}>
-                                        <Animated.View style={[styles.avatarContainer, {
+                                    }] }>
+                                        <Animated.View style={ [styles.avatarContainer, {
                                             borderColor: gender === 'Male' ? '#00E5FF' : '#FF007F',
-                                        }]}>
+                                        }] }>
                                             <UniversalImage
-                                                src={image}
+                                                src={ image }
                                                 alt="Profile"
-                                                width={80}
-                                                height={80}
+                                                width={ 80 }
+                                                height={ 80 }
                                                 resizeMode="cover"
                                             />
                                         </Animated.View>
-                                        <Pressable style={styles.cameraBadge}>
-                                            <ProfileImageUpload render={renderToken} gender={gender} />
+                                        <Pressable style={ styles.cameraBadge }>
+                                            <ProfileImageUpload render={ renderToken } gender={ gender } />
                                         </Pressable>
                                     </Animated.View>
 
-                                    <Text style={styles.profileName}>{firstName} {lastName}</Text>
-                                    <Text style={styles.profileEmail}>{email}</Text>
-                                    <Text style={styles.profileEmail}>{bio}</Text>
+                                    <Text style={ styles.profileName }>{ firstName } { lastName }</Text>
+                                    <Text style={ styles.profileEmail }>{ email }</Text>
+                                    <Text style={ styles.profileEmail }>{ bio }</Text>
 
                                     <Pressable
-                                        android_ripple={{ color: 'rgba(255, 255, 255, 0.3)' }}
-                                        style={({ pressed, hovered }: { pressed?: boolean; hovered?: boolean }) => [
+                                        android_ripple={ { color: 'rgba(255, 255, 255, 0.3)' } }
+                                        style={ ({ pressed, hovered }: { pressed?: boolean; hovered?: boolean }) => [
                                             [styles.editProfileButton, { transition: 'all 0.3s' }],
                                             {
                                                 background: (hovered || pressed)
@@ -339,196 +366,223 @@ const Profile = () => {
                                                 shadowOpacity: 0.8,
                                                 shadowRadius: 8,
                                             }
-                                        ]}
-                                        onPress={() => setIsEditing(true)}
+                                        ] }
+                                        onPress={ () => setIsEditing(true) }
                                     >
-                                        {({ pressed, hovered }: { pressed?: boolean; hovered?: boolean }) => (
+                                        { ({ pressed, hovered }: { pressed?: boolean; hovered?: boolean }) => (
                                             <LinearGradient
-                                                colors={(hovered || pressed) ? ['#0284C7', '#00E5FF'] : ['#00E5FF', '#0284C7']}
-                                                start={{ x: 0, y: 0 }}
-                                                end={{ x: 0, y: 1 }}
-                                                style={styles.editProfileGradient}
+                                                colors={ (hovered || pressed) ? ['#0284C7', '#00E5FF'] : ['#00E5FF', '#0284C7'] }
+                                                start={ { x: 0, y: 0 } }
+                                                end={ { x: 0, y: 1 } }
+                                                style={ styles.editProfileGradient }
                                             >
-                                                <Text style={styles.editProfileButtonText}>{t.editProfile}</Text>
+                                                <Text style={ styles.editProfileButtonText }>{ t.editProfile }</Text>
                                             </LinearGradient>
-                                        )}
+                                        ) }
                                     </Pressable>
+                                    { accounts.length > 0 && (
+                                        <Pressable
+                                            onPress={ () => setAccountsModalOpen(true) }
+                                            accessibilityRole="button"
+                                            accessibilityLabel={ `${t.switchAccount}, ${accounts.length} ${t.accountCount}` }
+                                            style={ ({ pressed }: { pressed: boolean }) => [
+                                                styles.accountSwitchButton,
+                                                pressed && styles.accountSwitchButtonPressed,
+                                            ] }
+                                        >
+                                            <Text style={ styles.accountSwitchIcon }>⇄</Text>
+                                            <View style={ styles.accountSwitchCopy }>
+                                                <Text style={ styles.accountSwitchTitle }>{ t.switchAccount }</Text>
+                                                <Text style={ styles.accountSwitchSubtitle } numberOfLines={ 1 }>
+                                                    { activeEmail } · { accounts.length } { t.accountCount }
+                                                </Text>
+                                            </View>
+                                            <Text style={ styles.accountSwitchChevron }>›</Text>
+                                        </Pressable>
+                                    ) }
                                 </View>
 
-                                <View style={styles.menuGroup}>
-                                    <Pressable android_ripple={{ color: 'rgba(0, 229, 255, 0.2)' }} onPress={() => router.push('/yoqtirilgan')} style={styles.menuRow}>
-                                        <View style={styles.menuRowLeft}>
-                                            <Text style={styles.menuEmoji}>🤍</Text>
-                                            <Text style={styles.menuRowText}>{t.favourites}</Text>
+                                <View style={ styles.menuGroup }>
+                                    <Pressable android_ripple={ { color: 'rgba(0, 229, 255, 0.2)' } } onPress={ () => router.push('/yoqtirilgan') } style={ styles.menuRow }>
+                                        <View style={ styles.menuRowLeft }>
+                                            <Text style={ styles.menuEmoji }>🤍</Text>
+                                            <Text style={ styles.menuRowText }>{ t.favourites }</Text>
                                         </View>
-                                        <Text style={styles.menuArrow}>›</Text>
+                                        <Text style={ styles.menuArrow }>›</Text>
                                     </Pressable>
 
-                                    <Pressable android_ripple={{ color: 'rgba(0, 229, 255, 0.2)' }} onPress={() => router.push('/savat')} style={styles.menuRow}>
-                                        <View style={styles.menuRowLeft}>
-                                            <Text style={styles.menuEmoji}>🛒</Text>
-                                            <Text style={styles.menuRowText}>{t.cart}</Text>
+                                    <Pressable android_ripple={ { color: 'rgba(0, 229, 255, 0.2)' } } onPress={ () => router.push('/savat') } style={ styles.menuRow }>
+                                        <View style={ styles.menuRowLeft }>
+                                            <Text style={ styles.menuEmoji }>🛒</Text>
+                                            <Text style={ styles.menuRowText }>{ t.cart }</Text>
                                         </View>
-                                        <Text style={styles.menuArrow}>›</Text>
+                                        <Text style={ styles.menuArrow }>›</Text>
                                     </Pressable>
                                 </View>
                             </View>
 
-                            <View style={[styles.contentColumn, isDesktop && styles.desktopContentColumn, {
+                            <View style={ [styles.contentColumn, isDesktop && styles.desktopContentColumn, {
                                 backgroundColor: isDesktop ? '#FFFFFF' : 'transparent',
-                            }]}>
-                                <View style={styles.menuGroup}>
-                                    <Text style={styles.desktopSectionHeader}>{t.generalSettings}</Text>
-                                    <Pressable android_ripple={{ color: 'rgba(0, 229, 255, 0.2)' }} style={styles.menuRow} onPress={cycleLanguage}>
-                                        <View style={styles.menuRowLeft}>
-                                            <Text style={styles.menuEmoji}>🌐</Text>
-                                            <Text style={styles.menuRowText}>{t.language}</Text>
+                            }] }>
+                                <View style={ styles.menuGroup }>
+                                    <Text style={ styles.desktopSectionHeader }>{ t.generalSettings }</Text>
+                                    <Pressable android_ripple={ { color: 'rgba(0, 229, 255, 0.2)' } } style={ styles.menuRow } onPress={ cycleLanguage }>
+                                        <View style={ styles.menuRowLeft }>
+                                            <Text style={ styles.menuEmoji }>🌐</Text>
+                                            <Text style={ styles.menuRowText }>{ t.language }</Text>
                                         </View>
-                                        <Text style={styles.menuArrow}>›</Text>
+                                        <Text style={ styles.menuArrow }>›</Text>
                                     </Pressable>
 
-                                    <Pressable android_ripple={{ color: 'rgba(0, 229, 255, 0.2)' }} onPress={() => setOpenLocation(prev => !prev)} style={styles.menuRow}>
-                                        <View style={styles.menuRowLeft}>
-                                            <Text style={styles.menuEmoji}>📍</Text>
-                                            <Text style={styles.menuRowText}>{t.location}</Text>
+                                    <Pressable android_ripple={ { color: 'rgba(0, 229, 255, 0.2)' } } onPress={ () => setOpenLocation(prev => !prev) } style={ styles.menuRow }>
+                                        <View style={ styles.menuRowLeft }>
+                                            <Text style={ styles.menuEmoji }>📍</Text>
+                                            <Text style={ styles.menuRowText }>{ t.location }</Text>
                                         </View>
-                                        <Text style={styles.menuArrow}>›</Text>
+                                        <Text style={ styles.menuArrow }>›</Text>
                                     </Pressable>
 
-                                    <Pressable android_ripple={{ color: 'rgba(0, 229, 255, 0.2)' }} style={styles.menuRow}>
-                                        <View style={styles.menuRowLeft}>
-                                            <Text style={styles.menuEmoji}>📦</Text>
-                                            <Text style={styles.menuRowText}>{t.orders}</Text>
+                                    <Pressable android_ripple={ { color: 'rgba(0, 229, 255, 0.2)' } } style={ styles.menuRow }>
+                                        <View style={ styles.menuRowLeft }>
+                                            <Text style={ styles.menuEmoji }>📦</Text>
+                                            <Text style={ styles.menuRowText }>{ t.orders }</Text>
                                         </View>
-                                        <Text style={styles.menuArrow}>›</Text>
+                                        <Text style={ styles.menuArrow }>›</Text>
                                     </Pressable>
 
-                                    <Pressable android_ripple={{ color: 'rgba(0, 229, 255, 0.2)' }} style={styles.menuRow}>
-                                        <View style={styles.menuRowLeft}>
-                                            <Text style={styles.menuEmoji}>📱</Text>
-                                            <Text style={styles.menuRowText}>{t.feedPreference}</Text>
+                                    <Pressable android_ripple={ { color: 'rgba(0, 229, 255, 0.2)' } } style={ styles.menuRow }>
+                                        <View style={ styles.menuRowLeft }>
+                                            <Text style={ styles.menuEmoji }>📱</Text>
+                                            <Text style={ styles.menuRowText }>{ t.feedPreference }</Text>
                                         </View>
-                                        <Text style={styles.menuArrow}>›</Text>
+                                        <Text style={ styles.menuArrow }>›</Text>
                                     </Pressable>
 
-                                    <Pressable onPress={() => router.push('/follow')} android_ripple={{ color: 'rgba(0, 229, 255, 0.2)' }} style={styles.menuRow}>
-                                        <View style={styles.menuRowLeft}>
-                                            <Text style={styles.menuEmoji}>🏪</Text>
-                                            <Text style={styles.menuRowText}>{t.subscription}</Text>
+                                    <Pressable onPress={ () => router.push('/follow') } android_ripple={ { color: 'rgba(0, 229, 255, 0.2)' } } style={ styles.menuRow }>
+                                        <View style={ styles.menuRowLeft }>
+                                            <Text style={ styles.menuEmoji }>🏪</Text>
+                                            <Text style={ styles.menuRowText }>{ t.subscription }</Text>
                                         </View>
-                                        <Text style={styles.menuArrow}>›</Text>
-                                    </Pressable>
-                                </View>
-
-                                <View style={styles.menuGroup}>
-                                    <Text style={styles.desktopSectionHeader}>{t.systemData}</Text>
-                                    <Pressable android_ripple={{ color: 'rgba(0, 229, 255, 0.2)' }} style={styles.menuRow}>
-                                        <View style={styles.menuRowLeft}>
-                                            <Text style={styles.menuEmoji}>🗑️</Text>
-                                            <Text style={styles.menuRowText}>{t.clearCache}</Text>
-                                        </View>
-                                        <Text style={styles.menuArrow}>›</Text>
-                                    </Pressable>
-
-                                    <Pressable onPress={handleDeleteAccount} android_ripple={{ color: 'rgba(239, 68, 68, 0.2)' }} style={styles.menuRow}>
-                                        <View style={styles.menuRowLeft}>
-                                            <Text style={styles.menuEmoji}>⚠️</Text>
-                                            <Text style={[styles.menuRowText, styles.logoutTextLabel]}>{t.deleteAkk}</Text>
-                                        </View>
-                                        <Text style={[styles.menuArrow, styles.logoutTextLabel]}>›</Text>
-                                    </Pressable>
-
-                                    <Pressable onPress={() => { setToken(''), renderToken(token), router.push('auth') }} android_ripple={{ color: 'rgba(239, 68, 68, 0.2)' }} style={styles.menuRow}>
-                                        <View style={styles.menuRowLeft}>
-                                            <Text style={styles.menuEmoji}>🚪</Text>
-                                            <Text style={[styles.menuRowText, styles.logoutTextLabel]}>{t.logout}</Text>
-                                        </View>
-                                        <Text style={[styles.menuArrow, styles.logoutTextLabel]}>›</Text>
+                                        <Text style={ styles.menuArrow }>›</Text>
                                     </Pressable>
                                 </View>
 
-                                <Text style={styles.versionFooterText}>{t.appVersion} 3.0.0</Text>
+                                <View style={ styles.menuGroup }>
+                                    <Text style={ styles.desktopSectionHeader }>{ t.systemData }</Text>
+                                    <Pressable onPress={ () => router.push('/auth') } android_ripple={ { color: 'rgba(0, 229, 255, 0.2)' } } style={ styles.menuRow }>
+                                        <View style={ styles.menuRowLeft }>
+                                            <Text style={ styles.menuEmoji }>➕</Text>
+                                            <Text style={ styles.menuRowText }>{ t.addAccount }</Text>
+                                        </View>
+                                        <Text style={ styles.menuArrow }>›</Text>
+                                    </Pressable>
+                                    <Pressable android_ripple={ { color: 'rgba(0, 229, 255, 0.2)' } } style={ styles.menuRow }>
+                                        <View style={ styles.menuRowLeft }>
+                                            <Text style={ styles.menuEmoji }>🗑️</Text>
+                                            <Text style={ styles.menuRowText }>{ t.clearCache }</Text>
+                                        </View>
+                                        <Text style={ styles.menuArrow }>›</Text>
+                                    </Pressable>
+
+                                    <Pressable onPress={ handleDeleteAccount } android_ripple={ { color: 'rgba(239, 68, 68, 0.2)' } } style={ styles.menuRow }>
+                                        <View style={ styles.menuRowLeft }>
+                                            <Text style={ styles.menuEmoji }>⚠️</Text>
+                                            <Text style={ [styles.menuRowText, styles.logoutTextLabel] }>{ t.deleteAkk }</Text>
+                                        </View>
+                                        <Text style={ [styles.menuArrow, styles.logoutTextLabel] }>›</Text>
+                                    </Pressable>
+
+                                    <Pressable onPress={ handleLogout } android_ripple={ { color: 'rgba(239, 68, 68, 0.2)' } } style={ styles.menuRow }>
+                                        <View style={ styles.menuRowLeft }>
+                                            <Text style={ styles.menuEmoji }>🚪</Text>
+                                            <Text style={ [styles.menuRowText, styles.logoutTextLabel] }>{ t.logout }</Text>
+                                        </View>
+                                        <Text style={ [styles.menuArrow, styles.logoutTextLabel] }>›</Text>
+                                    </Pressable>
+                                </View>
+
+                                <Text style={ styles.versionFooterText }>{ t.appVersion } 3.0.0</Text>
                             </View>
 
                         </View>
                     ) : (
-                        <View style={[styles.containerCard, {
+                        <View style={ [styles.containerCard, {
                             maxWidth: isDesktop ? 800 : 900, alignSelf: 'center',
                             paddingTop: isDesktop ? 100 : 40,
                             paddingBottom: isDesktop ? 20 : 100,
                             marginTop: isDesktop ? 100 : 0,
                             marginBottom: isDesktop ? 100 : 0,
-                        }]}>
-                            <View style={styles.phoneHeader}>
-                                <Pressable style={styles.iconButton} onPress={() => { setIsEditing(false), renderToken(token) }}>
-                                    <Text style={styles.headerNavArrow}>‹</Text>
+                        }] }>
+                            <View style={ styles.phoneHeader }>
+                                <Pressable style={ styles.iconButton } onPress={ () => { setIsEditing(false), renderToken(token) } }>
+                                    <Text style={ styles.headerNavArrow }>‹</Text>
                                 </Pressable>
-                                <Text style={styles.phoneHeaderTitle}>{t.editProfile}</Text>
+                                <Text style={ styles.phoneHeaderTitle }>{ t.editProfile }</Text>
                                 <Pressable
-                                    style={[styles.iconButton, styles.checkButtonBg]}
-                                    onPress={() => setIsEditing(false)}
+                                    style={ [styles.iconButton, styles.checkButtonBg] }
+                                    onPress={ () => setIsEditing(false) }
                                 >
-                                    <Text style={styles.checkIconText}>✓</Text>
+                                    <Text style={ styles.checkIconText }>✓</Text>
                                 </Pressable>
                             </View>
 
-                            <View style={[styles.inputBox, isDesktop && { flex: 1 }, focus === 8 ? styles.inputBoxActive : null]}>
-                                <Text style={styles.inputLabel}>{t.firstName}</Text>
+                            <View style={ [styles.inputBox, isDesktop && { flex: 1 }, focus === 8 ? styles.inputBoxActive : null] }>
+                                <Text style={ styles.inputLabel }>{ t.firstName }</Text>
                                 <TextInput
-                                    multiline={true}
-                                    numberOfLines={5}
+                                    multiline={ true }
+                                    numberOfLines={ 5 }
                                     placeholder="Matn kiriting..."
-                                    style={[styles.textInput, { width: '100%' }]}
-                                    value={bio}
-                                    onChangeText={(text: string) => {
+                                    style={ [styles.textInput, { width: '100%' }] }
+                                    value={ bio }
+                                    onChangeText={ (text: string) => {
                                         const letters = text.match(/[a-zA-Zа-яА-ЯoʻgʻOʻGʻ\u0400-\u04FF]/g) || [];
                                         if (letters.length <= 140) setBio(text);
-                                    }}
-                                    onFocus={() => setFocus(8)}
-                                    onBlur={() => setFocus(0)}
+                                    } }
+                                    onFocus={ () => setFocus(8) }
+                                    onBlur={ () => setFocus(0) }
                                     placeholderTextColor="#64748B"
                                 />
                             </View>
 
-                            <View style={styles.formContainer}>
-                                <Text style={styles.formSectionTitle}>{t.yourInformation}</Text>
+                            <View style={ styles.formContainer }>
+                                <Text style={ styles.formSectionTitle }>{ t.yourInformation }</Text>
 
-                                <View style={isDesktop ? styles.desktopFormRow : null}>
-                                    <View style={[styles.inputBox, isDesktop && { flex: 1 }, focus === 1 ? styles.inputBoxActive : null]}>
-                                        <Text style={styles.inputLabel}>{t.firstName}</Text>
+                                <View style={ isDesktop ? styles.desktopFormRow : null }>
+                                    <View style={ [styles.inputBox, isDesktop && { flex: 1 }, focus === 1 ? styles.inputBoxActive : null] }>
+                                        <Text style={ styles.inputLabel }>{ t.firstName }</Text>
                                         <TextInput
-                                            style={styles.textInput}
-                                            value={firstName}
+                                            style={ styles.textInput }
+                                            value={ firstName }
                                             placeholder='First name...'
-                                            onChangeText={setFirstName}
-                                            onFocus={() => setFocus(1)}
-                                            onBlur={() => setFocus(0)}
+                                            onChangeText={ setFirstName }
+                                            onFocus={ () => setFocus(1) }
+                                            onBlur={ () => setFocus(0) }
                                             placeholderTextColor="#64748B"
                                         />
                                     </View>
 
-                                    <View style={[styles.inputBox, isDesktop && { flex: 1 }, focus === 2 ? styles.inputBoxActive : null]}>
-                                        <Text style={styles.inputLabel}>{t.lastName}</Text>
+                                    <View style={ [styles.inputBox, isDesktop && { flex: 1 }, focus === 2 ? styles.inputBoxActive : null] }>
+                                        <Text style={ styles.inputLabel }>{ t.lastName }</Text>
                                         <TextInput
-                                            style={styles.textInput}
-                                            value={lastName}
-                                            onFocus={() => setFocus(2)}
-                                            onBlur={() => setFocus(0)}
+                                            style={ styles.textInput }
+                                            value={ lastName }
+                                            onFocus={ () => setFocus(2) }
+                                            onBlur={ () => setFocus(0) }
                                             placeholder='Last name...'
-                                            onChangeText={setLastName}
+                                            onChangeText={ setLastName }
                                             placeholderTextColor="#64748B"
                                         />
                                     </View>
                                 </View>
 
-                                <View style={isDesktop ? styles.desktopFormRow : null}>
-                                    <View style={[styles.inputBox, isDesktop && { flex: 1 }, focus === 3 ? styles.inputBoxActive : null]}>
-                                        <Text style={styles.inputLabel}>{t.phone}</Text>
+                                <View style={ isDesktop ? styles.desktopFormRow : null }>
+                                    <View style={ [styles.inputBox, isDesktop && { flex: 1 }, focus === 3 ? styles.inputBoxActive : null] }>
+                                        <Text style={ styles.inputLabel }>{ t.phone }</Text>
                                         <TextInput
-                                            style={styles.textInput}
-                                            value={phone}
+                                            style={ styles.textInput }
+                                            value={ phone }
                                             placeholder='Phone number...'
-                                            onChangeText={(text: string) => {
+                                            onChangeText={ (text: string) => {
                                                 if (!text.startsWith('+998 ')) {
                                                     text = '+998 ';
                                                 }
@@ -542,36 +596,36 @@ const Profile = () => {
                                                 if (rawNumber.length > 7) formatted += ' ' + rawNumber.substring(7, 9);
 
                                                 setPhone(formatted);
-                                            }}
-                                            onFocus={() => setFocus(3)}
-                                            onBlur={() => setFocus(0)}
+                                            } }
+                                            onFocus={ () => setFocus(3) }
+                                            onBlur={ () => setFocus(0) }
                                             placeholderTextColor="#64748B"
                                         />
                                     </View>
 
-                                    <View style={[styles.inputBox, isDesktop && { flex: 1 }, focus === 4 ? styles.inputBoxActive : null]}>
-                                        <Text style={styles.inputLabel}>{t.emailId}</Text>
+                                    <View style={ [styles.inputBox, isDesktop && { flex: 1 }, focus === 4 ? styles.inputBoxActive : null] }>
+                                        <Text style={ styles.inputLabel }>{ t.emailId }</Text>
                                         <TextInput
-                                            style={styles.textInput}
-                                            value={email}
+                                            style={ styles.textInput }
+                                            value={ email }
                                             placeholder='Email...'
-                                            onChangeText={setEmail}
-                                            onFocus={() => setFocus(4)}
-                                            onBlur={() => setFocus(0)}
+                                            onChangeText={ setEmail }
+                                            onFocus={ () => setFocus(4) }
+                                            onBlur={ () => setFocus(0) }
                                             placeholderTextColor="#64748B"
                                         />
                                     </View>
                                 </View>
 
-                                <View style={[styles.inputBox, genderOpen ? styles.inputBoxActive : null]}>
-                                    <Text style={styles.inputLabel}>{t.gender}</Text>
-                                    <Pressable onPress={() => setGenderOpen(prev => !prev)} style={[styles.selectRow, { flexDirection: genderOpen ? 'column' : 'row', gap: 5 }]}>
-                                        <Text style={styles.selectText}>{gender === 'Male' ? t.male : t.female}</Text>
-                                        {genderOpen ? null : <Text style={styles.selectArrow}>▼</Text>}
+                                <View style={ [styles.inputBox, genderOpen ? styles.inputBoxActive : null] }>
+                                    <Text style={ styles.inputLabel }>{ t.gender }</Text>
+                                    <Pressable onPress={ () => setGenderOpen(prev => !prev) } style={ [styles.selectRow, { flexDirection: genderOpen ? 'column' : 'row', gap: 5 }] }>
+                                        <Text style={ styles.selectText }>{ gender === 'Male' ? t.male : t.female }</Text>
+                                        { genderOpen ? null : <Text style={ styles.selectArrow }>▼</Text> }
                                         {
                                             genderOpen ? (
-                                                <Pressable onPress={() => { setGender(prev => prev === 'Male' ? 'Female' : 'Male'), setGenderOpen(false) }}>
-                                                    <Text style={styles.selectText}>{gender === 'Male' ? t.female : t.male}</Text>
+                                                <Pressable onPress={ () => { setGender(prev => prev === 'Male' ? 'Female' : 'Male'), setGenderOpen(false) } }>
+                                                    <Text style={ styles.selectText }>{ gender === 'Male' ? t.female : t.male }</Text>
                                                 </Pressable>
                                             ) : null
                                         }
@@ -579,8 +633,8 @@ const Profile = () => {
                                 </View>
 
                                 <Pressable
-                                    android_ripple={{ color: 'rgba(255, 255, 255, 0.3)' }}
-                                    style={({ pressed, hovered }: { pressed?: boolean; hovered?: boolean }) => [
+                                    android_ripple={ { color: 'rgba(255, 255, 255, 0.3)' } }
+                                    style={ ({ pressed, hovered }: { pressed?: boolean; hovered?: boolean }) => [
                                         [styles.saveButtonWrapper, { borderWidth: 0.1, borderColor: '#00E5FF', transition: 'all 0.3s' }],
                                         {
                                             background: (hovered || pressed)
@@ -603,26 +657,120 @@ const Profile = () => {
                                             shadowOpacity: 0.8,
                                             shadowRadius: 8,
                                         }
-                                    ]}
-                                    onPress={() => { setIsEditing(false), handleUpdateProfile() }}
+                                    ] }
+                                    onPress={ () => { setIsEditing(false), handleUpdateProfile() } }
                                 >
-                                    {({ pressed, hovered }: { pressed?: boolean; hovered?: boolean }) => (
+                                    { ({ pressed, hovered }: { pressed?: boolean; hovered?: boolean }) => (
                                         <LinearGradient
-                                            colors={(hovered || pressed) ? ['#0284C7', '#00E5FF'] : ['#00E5FF', '#0284C7']}
-                                            start={{ x: 0, y: 0 }}
-                                            end={{ x: 0, y: 1 }}
-                                            style={styles.editProfileGradient}
+                                            colors={ (hovered || pressed) ? ['#0284C7', '#00E5FF'] : ['#00E5FF', '#0284C7'] }
+                                            start={ { x: 0, y: 0 } }
+                                            end={ { x: 0, y: 1 } }
+                                            style={ styles.editProfileGradient }
                                         >
-                                            <Text style={styles.editProfileButtonText}>{t.save}</Text>
+                                            <Text style={ styles.editProfileButtonText }>{ t.save }</Text>
                                         </LinearGradient>
-                                    )}
+                                    ) }
                                 </Pressable>
                             </View>
                         </View>
-                    )}
+                    ) }
 
                 </View>
             </Animated.ScrollView>
+            <Modal
+                transparent
+                visible={ accountsModalOpen }
+                animationType={ isDesktop ? 'fade' : 'slide' }
+                statusBarTranslucent
+                onRequestClose={ () => setAccountsModalOpen(false) }
+            >
+                <View style={ [styles.accountModalRoot, isDesktop && styles.accountModalRootDesktop] }>
+                    <Pressable
+                        style={ styles.accountModalBackdrop }
+                        onPress={ () => setAccountsModalOpen(false) }
+                        accessibilityRole="button"
+                        accessibilityLabel={ t.close }
+                    />
+                    <View style={ [styles.accountSheet, isDesktop ? styles.accountDialog : styles.accountBottomSheet] }>
+                        { !isDesktop && <View style={ styles.accountSheetHandle } /> }
+                        <View style={ styles.accountSheetHeader }>
+                            <View style={ styles.accountSheetHeading }>
+                                <Text style={ styles.accountSheetTitle }>{ t.accounts }</Text>
+                                <Text style={ styles.accountSheetSubtitle }>{ t.switchAccount }</Text>
+                            </View>
+                            <Pressable
+                                onPress={ () => setAccountsModalOpen(false) }
+                                style={ styles.accountSheetClose }
+                                accessibilityRole="button"
+                                accessibilityLabel={ t.close }
+                            >
+                                <Text style={ styles.accountSheetCloseText }>×</Text>
+                            </Pressable>
+                        </View>
+
+                        <ScrollView
+                            style={ styles.accountList }
+                            contentContainerStyle={ styles.accountListContent }
+                            showsVerticalScrollIndicator={ false }
+                            keyboardShouldPersistTaps="handled"
+                        >
+                            { accounts.map(account => {
+                                const isActive = account.email === activeEmail
+                                return (
+                                    <Pressable
+                                        key={ account.email }
+                                        onPress={ () => {
+                                            switchAccount(account.email)
+                                            setAccountsModalOpen(false)
+                                        } }
+                                        accessibilityRole="button"
+                                        accessibilityState={ { selected: isActive } }
+                                        style={ ({ pressed }: { pressed: boolean }) => [
+                                            styles.accountOption,
+                                            isActive && styles.accountOptionActive,
+                                            pressed && styles.accountOptionPressed,
+                                        ] }
+                                    >
+                                        <View style={ [styles.accountAvatar, isActive && styles.accountAvatarActive] }>
+                                            <Text style={ [styles.accountAvatarText, isActive && styles.accountAvatarTextActive] }>
+                                                { (account.userName || account.email).trim().charAt(0).toUpperCase() }
+                                            </Text>
+                                        </View>
+                                        <View style={ styles.accountOptionCopy }>
+                                            <Text style={ styles.accountOptionName } numberOfLines={ 1 }>
+                                                { account.userName || account.email.split('@')[0] }
+                                            </Text>
+                                            <Text style={ styles.accountOptionEmail } numberOfLines={ 1 }>
+                                                { account.email }
+                                            </Text>
+                                        </View>
+                                        { isActive && (
+                                            <View style={ styles.accountActiveBadge }>
+                                                <Text style={ styles.accountActiveBadgeText }>{ t.activeAccount }</Text>
+                                            </View>
+                                        ) }
+                                        { !isActive && <Text style={ styles.accountOptionChevron }>›</Text> }
+                                    </Pressable>
+                                )
+                            }) }
+                            <Pressable
+                                onPress={ () => {
+                                    setAccountsModalOpen(false)
+                                    router.push('/auth')
+                                } }
+                                accessibilityRole="button"
+                                style={ ({ pressed }: { pressed: boolean }) => [
+                                    styles.accountAddButton,
+                                    pressed && styles.accountOptionPressed,
+                                ] }
+                            >
+                                <Text style={ styles.accountAddIcon }>＋</Text>
+                                <Text style={ styles.accountAddText }>{ t.addAccount }</Text>
+                            </Pressable>
+                        </ScrollView>
+                    </View>
+                </View>
+            </Modal>
         </View>
     )
 }
@@ -933,6 +1081,226 @@ const styles = StyleSheet.create({
         fontSize: 15,
         fontWeight: '600',
         color: '#1E293B',
+    },
+    accountSwitchButton: {
+        width: '100%',
+        maxWidth: 220,
+        minHeight: 48,
+        marginTop: 10,
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        borderRadius: 16,
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#F0F9FF',
+        borderWidth: 1,
+        borderColor: '#D9F2FC',
+        gap: 10,
+    },
+    accountSwitchButtonPressed: {
+        opacity: 0.75,
+        transform: [{ scale: 0.98 }],
+    },
+    accountSwitchIcon: {
+        color: '#0284C7',
+        fontSize: 22,
+        fontWeight: '700',
+    },
+    accountSwitchCopy: {
+        flex: 1,
+        minWidth: 0,
+    },
+    accountSwitchTitle: {
+        color: '#0F172A',
+        fontSize: 12,
+        fontWeight: '700',
+    },
+    accountSwitchSubtitle: {
+        color: '#64748B',
+        fontSize: 10,
+        marginTop: 2,
+    },
+    accountSwitchChevron: {
+        color: '#0284C7',
+        fontSize: 22,
+        fontWeight: '500',
+    },
+    accountModalRoot: {
+        flex: 1,
+        justifyContent: 'flex-end',
+    },
+    accountModalRootDesktop: {
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 24,
+    },
+    accountModalBackdrop: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: 'rgba(15, 23, 42, 0.48)',
+    },
+    accountSheet: {
+        width: '100%',
+        backgroundColor: '#FFFFFF',
+        paddingHorizontal: 20,
+        paddingTop: 12,
+        ...Platform.select({
+            web: { boxShadow: '0 -12px 40px rgba(15, 23, 42, 0.18)' },
+            default: { elevation: 24 },
+        }),
+    },
+    accountBottomSheet: {
+        maxHeight: '78%',
+        borderTopLeftRadius: 26,
+        borderTopRightRadius: 26,
+        paddingBottom: 28,
+    },
+    accountDialog: {
+        maxWidth: 460,
+        maxHeight: '80%',
+        borderRadius: 24,
+        paddingBottom: 20,
+        borderWidth: 1,
+        borderColor: '#E2E8F0',
+    },
+    accountSheetHandle: {
+        width: 38,
+        height: 4,
+        borderRadius: 2,
+        alignSelf: 'center',
+        backgroundColor: '#CBD5E1',
+        marginBottom: 16,
+    },
+    accountSheetHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingBottom: 16,
+    },
+    accountSheetHeading: {
+        flex: 1,
+    },
+    accountSheetTitle: {
+        color: '#0F172A',
+        fontSize: 20,
+        fontWeight: '800',
+    },
+    accountSheetSubtitle: {
+        color: '#64748B',
+        fontSize: 13,
+        marginTop: 3,
+    },
+    accountSheetClose: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#F1F5F9',
+        marginLeft: 12,
+    },
+    accountSheetCloseText: {
+        color: '#475569',
+        fontSize: 25,
+        lineHeight: 28,
+        marginTop: -2,
+    },
+    accountList: {
+        flexGrow: 0,
+        flexShrink: 1,
+    },
+    accountListContent: {
+        paddingBottom: 8,
+    },
+    accountOption: {
+        minHeight: 68,
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: '#E2E8F0',
+        backgroundColor: '#FFFFFF',
+        marginBottom: 9,
+        gap: 12,
+    },
+    accountOptionActive: {
+        backgroundColor: '#F0F9FF',
+        borderColor: '#7DD3FC',
+    },
+    accountOptionPressed: {
+        opacity: 0.72,
+    },
+    accountAvatar: {
+        width: 42,
+        height: 42,
+        borderRadius: 21,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#F1F5F9',
+    },
+    accountAvatarActive: {
+        backgroundColor: '#0284C7',
+    },
+    accountAvatarText: {
+        color: '#475569',
+        fontSize: 16,
+        fontWeight: '800',
+    },
+    accountAvatarTextActive: {
+        color: '#FFFFFF',
+    },
+    accountOptionCopy: {
+        flex: 1,
+        minWidth: 0,
+    },
+    accountOptionName: {
+        color: '#0F172A',
+        fontSize: 14,
+        fontWeight: '700',
+    },
+    accountOptionEmail: {
+        color: '#64748B',
+        fontSize: 12,
+        marginTop: 3,
+    },
+    accountActiveBadge: {
+        paddingHorizontal: 9,
+        paddingVertical: 5,
+        borderRadius: 10,
+        backgroundColor: '#DBF3FF',
+    },
+    accountActiveBadgeText: {
+        color: '#0369A1',
+        fontSize: 10,
+        fontWeight: '700',
+    },
+    accountOptionChevron: {
+        color: '#94A3B8',
+        fontSize: 23,
+    },
+    accountAddButton: {
+        minHeight: 52,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: '#BAE6FD',
+        borderStyle: 'dashed',
+        backgroundColor: '#F8FCFF',
+        marginTop: 3,
+        gap: 8,
+    },
+    accountAddIcon: {
+        color: '#0284C7',
+        fontSize: 20,
+        fontWeight: '700',
+    },
+    accountAddText: {
+        color: '#0369A1',
+        fontSize: 13,
+        fontWeight: '700',
     },
     logoutTextLabel: {
         color: '#EF4444',

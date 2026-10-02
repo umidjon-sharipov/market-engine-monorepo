@@ -26,6 +26,39 @@ export class FollowingRepository extends BaseCrudService<
     });
   }
 
+  findMine(userId: string) {
+    return this.prisma.following.findMany({
+      where: { userId, isFollowing: true },
+      orderBy: { updatedAt: 'desc' },
+      include: followingInclude,
+    });
+  }
+
+  async searchMarketsForUser(userId: string, query: string) {
+    const markets = await this.prisma.market.findMany({
+      where: {
+        title: { contains: query, mode: 'insensitive' },
+      },
+      orderBy: { title: 'asc' },
+      take: 20,
+      select: {
+        id: true,
+        title: true,
+        logo: true,
+        followers: {
+          where: { userId },
+          select: { id: true, isFollowing: true, createdAt: true, updatedAt: true },
+          take: 1,
+        },
+      },
+    });
+
+    return markets.map(({ followers, ...market }) => ({
+      ...market,
+      following: followers[0] ?? null,
+    }));
+  }
+
   async toggleFollow(userId: string, marketId: string) {
     const current = await this.prisma.following.findUnique({
       where: { userId_marketId: { userId, marketId } },

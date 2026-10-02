@@ -15,6 +15,7 @@ import { MarketAccessGuard } from '../auth/guards/market-access.guard';
 import { FollowingOwnerGuard } from './following-owner.guard';
 import { FollowingsService } from './followings.service';
 import { FollowingsQueryDto, ToggleBlockDto } from './dto/create-following.dto';
+import { SearchMarketsDto } from './dto/search-markets.dto';
 import type { Request } from 'express';
 
 type AuthenticatedRequest = Request & { user: { userId: string } };
@@ -25,6 +26,21 @@ export class FollowingsController {
 
   @Get()
   findAll(@Query() query: FollowingsQueryDto) { return this.followings.findAll(query); }
+
+  @Get('mine')
+  @UseGuards(JwtAuthGuard)
+  findMine(@Req() req: AuthenticatedRequest) {
+    return this.followings.findMine(req.user.userId);
+  }
+
+  @Get('markets/search')
+  @UseGuards(JwtAuthGuard)
+  searchMarkets(
+    @Query() query: SearchMarketsDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.followings.searchMarketsForUser(req.user.userId, query.q);
+  }
 
   @Get(':id')
   findOne(@Param('id', ParseUUIDPipe) id: string) { return this.followings.findOne(id); }

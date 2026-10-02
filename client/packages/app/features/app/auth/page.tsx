@@ -1,8 +1,8 @@
 'use client'
 
-import { Text, View, StyleSheet, ScrollView, Pressable, Animated, TextInput, useWindowDimensions } from 'react-native'
+import { Text, View, StyleSheet, ScrollView, Pressable, TextInput, useWindowDimensions, ActivityIndicator } from 'react-native'
 import { UniversalImage } from 'app/components/UI/UniversalImage'
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState } from 'react'
 import { LinearGradient } from 'expo-linear-gradient'
 import { BlurView } from 'expo-blur'
 import { useLanStorage } from 'app/store/useLanStore'
@@ -14,30 +14,49 @@ import { useUrlStore } from 'app/store/useUrlStore'
 const translations = {
     uz: {
         email: 'Elektron pochta',
-        submit: 'Yuborish',
+        submit: 'Kodni olish',
+        verify: 'Tasdiqlash',
+        code: '6 xonali kod',
+        sent: 'Tasdiqlash kodi yuborildi.',
+        changeEmail: 'Emailni o‘zgartirish',
+        invalidEmail: 'To‘g‘ri email manzilini kiriting.',
+        invalidCode: '6 xonali kodni to‘liq kiriting.',
+        serverError: 'Server bilan ulanishda xatolik yuz berdi.',
         appTitle: 'Online Market',
     },
     ru: {
         email: 'Эл. почта',
-        submit: 'Отправить',
+        submit: 'Получить код',
+        verify: 'Подтвердить',
+        code: 'Код из 6 цифр',
+        sent: 'Код подтверждения отправлен.',
+        changeEmail: 'Изменить эл. почту',
+        invalidEmail: 'Введите корректный адрес эл. почты.',
+        invalidCode: 'Введите полный код из 6 цифр.',
+        serverError: 'Не удалось подключиться к серверу.',
         appTitle: 'Online Market',
     },
     en: {
         email: 'Email',
-        submit: 'Submit',
+        submit: 'Send code',
+        verify: 'Verify',
+        code: '6-digit code',
+        sent: 'Verification code sent.',
+        changeEmail: 'Change email',
+        invalidEmail: 'Enter a valid email address.',
+        invalidCode: 'Enter the full 6-digit code.',
+        serverError: 'Could not connect to the server.',
         appTitle: 'Online Market',
     }
 }
 
 const AuthPage = () => {
     const url = useUrlStore(state => state.url)
-    const token = useTokenStore(state => state.token)
-    const setToken = useTokenStore(state => state.setToken)
+    const addOrUpdateAccount = useTokenStore(state => state.addOrUpdateAccount)
     const router = useRouter()
     const lan = useLanStorage(state => state.lan) as 'uz' | 'ru' | 'en'
-    const setLan = useLanStorage(state => state.setLan)
     const t = translations[lan || 'uz']
-    const [auth, setAuth] = useState('email')
+    const [auth, setAuth] = useState<'email' | 'code'>('email')
 
     const { width } = useWindowDimensions()
     const isDesktop = width > 600
@@ -45,26 +64,82 @@ const AuthPage = () => {
     const [email, setEmail] = useState('')
     const [code, setCode] = useState<string>('')
     const [inputFocus, setInputFocus] = useState(0)
+    const [loading, setLoading] = useState(false)
+    const [message, setMessage] = useState('')
+    const [messageType, setMessageType] = useState<'success' | 'error'>('error')
 
     const handleSubmit = async () => {
-        const bodyData = auth === 'email' ? { email } : { 'email': email, 'code': String(code) };
+        const normalizedEmail = email.trim().toLowerCase()
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+            setMessageType('error')
+            setMessage(t.invalidEmail)
+            return
+        }
+        if (auth === 'code' && !/^\d{6}$/.test(code)) {
+            setMessageType('error')
+            setMessage(t.invalidCode)
+            return
+        }
+
+        setMessage('')
+        setLoading(true)
+        const bodyData = auth === 'email' ? { email: normalizedEmail } : { email: normalizedEmail, code };
         const postUrl = auth === 'email' ? `${url}/auth/send-otp` : `${url}/auth/verify-otp`;
 
-        const res = await fetch(postUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(bodyData),
-        });
-        const data = await res.json();
+        try {
+            const res = await fetch(postUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(bodyData),
+            })
+            const data: unknown = await res.json()
 
-        if (res.ok) {
-            if (auth === 'email') {
-                setAuth('code');
-            } else {
-                setToken(data.token)
-                router.push('/profile');
+            if (!res.ok) {
+                const errorMessage = typeof data === 'object' && data !== null && 'message' in data && typeof data.message === 'string'
+                    ? data.message
+                    : t.serverError
+                setMessageType('error')
+                setMessage(errorMessage)
+                return
             }
-        } else {
+            if (auth === 'email') {
+                setAuth('code')
+                setMessageType('success')
+                setMessage(t.sent)
+                return
+            }
+
+            if (
+                typeof data !== 'object' ||
+                data === null ||
+                !('user' in data) ||
+                typeof data.user !== 'object' ||
+                data.user === null ||
+                !('email' in data.user) ||
+                typeof data.user.email !== 'string' ||
+                !('accessToken' in data) ||
+                typeof data.accessToken !== 'string' ||
+                !('refreshToken' in data) ||
+                typeof data.refreshToken !== 'string'
+            ) {
+                setMessageType('error')
+                setMessage(t.serverError)
+                return
+            }
+
+            addOrUpdateAccount({
+                email: data.user.email,
+                userName: 'userName' in data.user && typeof data.user.userName === 'string' ? data.user.userName : '',
+                image: 'image' in data.user && typeof data.user.image === 'string' ? data.user.image : '',
+                accessToken: data.accessToken,
+                refreshToken: data.refreshToken,
+            })
+            router.push('/profile')
+        } catch {
+            setMessageType('error')
+            setMessage(t.serverError)
+        } finally {
+            setLoading(false)
         }
     }
 
@@ -112,11 +187,12 @@ const AuthPage = () => {
                                         placeholderTextColor="#64748B"
                                         keyboardType="email-address"
                                         autoCapitalize="none"
+                                        editable={!loading}
                                     />
                                 </>
                             ) : (
                                 <>
-                                    <Text style={styles.inputLabel}>code</Text>
+                                    <Text style={styles.inputLabel}>{t.code} · {email.trim()}</Text>
                                     <TextInput
                                         style={[styles.textInput, { textAlign: 'center' }]}
                                         value={code}
@@ -127,14 +203,22 @@ const AuthPage = () => {
                                             const numericText = text.replace(/[^0-9]/g, '');
                                             setCode(numericText);
                                         }}
-                                        placeholder="code"
+                                        placeholder="••••••"
                                         placeholderTextColor="#64748B"
                                         keyboardType="number-pad"
+                                        editable={!loading}
                                     />
                                 </>
                             )}
                         </View>
+                        {message ? <Text style={[styles.messageText, messageType === 'success' && styles.successMessageText]}>{message}</Text> : null}
+                        {auth === 'code' && (
+                            <Pressable disabled={loading} onPress={() => { setAuth('email'); setCode(''); setMessage('') }}>
+                                <Text style={styles.switchModeFooterText}>{t.changeEmail}</Text>
+                            </Pressable>
+                        )}
                         <Pressable
+                            disabled={loading}
                             android_ripple={{ color: 'rgba(255, 255, 255, 0.3)' }}
                             style={({ pressed, hovered }: { pressed?: boolean; hovered?: boolean }) => [
                                 [styles.editProfileButton, { transition: 'all 0.3s' }],
@@ -169,7 +253,9 @@ const AuthPage = () => {
                                     end={{ x: 0, y: 1 }}
                                     style={styles.editProfileGradient}
                                 >
-                                    <Text style={styles.editProfileButtonText}>{t.submit}</Text>
+                                    {loading
+                                        ? <ActivityIndicator color="#FFFFFF" />
+                                        : <Text style={styles.editProfileButtonText}>{auth === 'email' ? t.submit : t.verify}</Text>}
                                 </LinearGradient>
                             )}
                         </Pressable>
@@ -367,6 +453,14 @@ const styles = StyleSheet.create({
         fontSize: 13,
         fontWeight: '600',
         color: '#0284C7',
+    },
+    messageText: {
+        color: '#B91C1C',
+        fontSize: 13,
+        textAlign: 'center',
+    },
+    successMessageText: {
+        color: '#15803D',
     },
     editProfileButton: {
         borderRadius: 24,

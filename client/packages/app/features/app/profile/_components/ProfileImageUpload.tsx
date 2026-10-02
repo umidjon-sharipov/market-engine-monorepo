@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Image, ActivityIndicator, Platform } from 'react-native';
 import { useTokenStore } from 'app/store/useTokenStore';
 import { useUrlStore } from 'app/store/useUrlStore';
+import { fetchWithAuth } from 'app/features/app/auth/fetchWithAuth';
 
 interface Props {
     currentImage?: string;
@@ -19,22 +20,19 @@ export default function ProfileImageUpload({ currentImage, onImageUpdated, rende
     const uploadToBackend = async (formData: FormData) => {
         setLoading(true);
         try {
-            const response = await fetch(`${url}/auth/image`, {
+            const response = await fetchWithAuth(`${url}/auth/image`, {
                 method: 'PATCH',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                },
                 body: formData,
             });
 
             const data = await response.json();
             if (response.ok) {
                 if (render && token) {
-                    render(token);
+                    render(useTokenStore.getState().token);
                 }
 
-                if (onImageUpdated && data.user?.image) {
-                    onImageUpdated(data.user.image);
+                if (onImageUpdated && data.image) {
+                    onImageUpdated(data.image);
                 }
             } else {
                 const errorMsg = data.message || 'Yuklab bo‘lmadi';

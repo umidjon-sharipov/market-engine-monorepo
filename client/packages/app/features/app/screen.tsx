@@ -11,11 +11,7 @@ import Empty from 'app/components/UI/Empty';
 import { useRouter } from 'solito/navigation';
 import { useUrlStore } from 'app/store/useUrlStore'
 import { useTokenStore } from 'app/store/useTokenStore';
-
-interface User {
-    id: string
-    email: string
-}
+import { fetchWithAuth } from 'app/features/app/auth/fetchWithAuth'
 
 interface Product {
     id: string;
@@ -30,10 +26,8 @@ interface Product {
     options: any[];
 }
 
-interface Follower {
-    id: string;
-    userId: string;
-    following: string[];
+interface FollowedMarket {
+    marketId: string
 }
 
 
@@ -138,23 +132,15 @@ const HomeScreen = () => {
         }
     }
 
-    const getFollower = async (id: string) => {
+    const getFollowedMarkets = async (storageToken: string) => {
         try {
-            const res = await fetch(`${url}/followings`);
+            const res = await fetchWithAuth(`${url}/followings/mine`, {
+                method: 'GET',
+            }, storageToken);
 
             if (res.ok) {
-                const req = await res.json()
-
-                const userFollowings = req.filter((follower: Follower) => follower.userId === id);
-
-                let userMarkets: string[] = [];
-                userFollowings.forEach((item: any) => {
-                    if (Array.isArray(item.following)) {
-                        userMarkets = [...userMarkets, ...item.following];
-                    }
-                });
-
-                console.log(req, userMarkets)
+                const req: FollowedMarket[] = await res.json()
+                const userMarkets = req.map(item => item.marketId)
 
                 if (userMarkets.length === 0) {
                     fetchProducts()
@@ -171,41 +157,15 @@ const HomeScreen = () => {
         }
     }
 
-    const getUser = async (email: string) => {
-        try {
-            const res = await fetch(`${url}/users`);
-
-            if (res.ok) {
-                const req = await res.json()
-
-                const userId = req.find((user: User) => user.email === email).id
-
-                console.log(req, userId)
-                getFollower(userId)
-            } else {
-                fetchProducts()
-            }
-        } catch (err) {
-            console.log(err)
-            fetchProducts()
-        }
-    }
-
     const renderToken = async (storageToken: string = token) => {
         try {
-            const res = await fetch(`${url}/auth/profile`, {
+            const res = await fetchWithAuth(`${url}/auth/profile`, {
                 method: 'GET',
-                headers: {
-                    'Authorization': `Bearer ${storageToken}`
-                }
-            });
+            }, storageToken);
 
             if (res.ok) {
-                const req = await res.json()
-                console.log(req)
                 setAccount(true)
-
-                getUser(req.email)
+                getFollowedMarkets(storageToken)
             } else {
                 fetchProducts()
             }

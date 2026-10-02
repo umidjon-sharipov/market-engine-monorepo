@@ -40,6 +40,7 @@ import { useScrollStore } from 'app/store/useScrollStore'
 import { useTokenStore } from 'app/store/useTokenStore'
 import { useLocationOpenStore } from 'app/store/useLocationOpenStore'
 import { useUrlStore } from 'app/store/useUrlStore'
+import { fetchWithAuth } from 'app/features/app/auth/fetchWithAuth'
 
 const SearchIcon = () => (
     <UniversalImage
@@ -197,14 +198,12 @@ const Header = () => {
 
     const renderToken = async (token: string) => {
         try {
-            const res = await fetch(`${url}/auth/profile`, {
+            const res = await fetchWithAuth(`${url}/auth/profile`, {
                 method: 'GET',
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                }
-            });
+            }, token)
+            if (!res.ok) throw new Error(`Profilni olish muvaffaqiyatsiz: ${res.status}`)
             const req = await res.json()
-            console.log(req)
+            if (useTokenStore.getState().token !== token) return
             setImage(req.image)
             setFirstName(req.firstName)
         } catch (err) {

@@ -25,7 +25,7 @@ interface ProductCardProps {
     product: Product;
     products: Product[];
     index: number;
-    account?: boolean
+    account: boolean
 }
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);

@@ -13,6 +13,14 @@ export class FollowingsService {
     });
   }
 
+  findMine(userId: string) {
+    return this.followings.findMine(userId);
+  }
+
+  searchMarketsForUser(userId: string, query: string) {
+    return this.followings.searchMarketsForUser(userId, query);
+  }
+
   findOne(id: string) { return this.followings.findOne({ id }); }
 
   create(userId: string, marketId: string) { return this.toggleFollow(userId, marketId); }
