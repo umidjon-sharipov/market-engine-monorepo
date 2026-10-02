@@ -5,7 +5,7 @@ import { FollowingRepository } from './following.repository';
 import { FollowingOwnerGuard } from './following-owner.guard';
 
 @Module({
-    controllers: [FollowingsController],
-    providers: [FollowingsService, FollowingRepository, FollowingOwnerGuard],
+  controllers: [FollowingsController],
+  providers: [FollowingsService, FollowingRepository, FollowingOwnerGuard],
 })
-export class FollowingsModule { }
+export class FollowingsModule {}

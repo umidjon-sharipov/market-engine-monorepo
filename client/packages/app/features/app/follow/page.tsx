@@ -24,20 +24,20 @@ interface Market {
     logo: string
 }
 
-interface FollowTimestamp {
+interface FollowHistory {
     id: string
-    isFollowing: boolean
-    createdAt: string
+    follow: string[]
+    block: string[]
+}
+
+interface FollowItem extends FollowHistory {
+    marketId: string
+    market: Market
     updatedAt: string
 }
 
-interface FollowItem extends FollowTimestamp {
-    marketId: string
-    market: Market
-}
-
 interface MarketSearchResult extends Market {
-    following: FollowTimestamp | null
+    following: FollowHistory | null
 }
 
 const translations = {
@@ -116,26 +116,30 @@ const isMarket = (value: unknown): value is Market =>
     'logo' in value &&
     typeof value.logo === 'string'
 
-const isFollowTimestamp = (value: unknown): value is FollowTimestamp =>
+const isTimestampArray = (value: unknown): value is string[] =>
+    Array.isArray(value) &&
+    value.every(timestamp => typeof timestamp === 'string' && !Number.isNaN(Date.parse(timestamp)))
+
+const isFollowHistory = (value: unknown): value is FollowHistory =>
     typeof value === 'object' &&
     value !== null &&
     'id' in value &&
     typeof value.id === 'string' &&
-    'isFollowing' in value &&
-    typeof value.isFollowing === 'boolean' &&
-    'createdAt' in value &&
-    typeof value.createdAt === 'string' &&
-    'updatedAt' in value &&
-    typeof value.updatedAt === 'string'
+    'follow' in value &&
+    isTimestampArray(value.follow) &&
+    'block' in value &&
+    isTimestampArray(value.block)
 
 const isFollowItemArray = (value: unknown): value is FollowItem[] =>
     Array.isArray(value) &&
     value.every(item =>
         typeof item === 'object' &&
         item !== null &&
-        isFollowTimestamp(item) &&
+        isFollowHistory(item) &&
         'marketId' in item &&
         typeof item.marketId === 'string' &&
+        'updatedAt' in item &&
+        typeof item.updatedAt === 'string' &&
         'market' in item &&
         isMarket(item.market)
     )
@@ -147,7 +151,7 @@ const isSearchResultArray = (value: unknown): value is MarketSearchResult[] =>
         item !== null &&
         isMarket(item) &&
         'following' in item &&
-        (item.following === null || isFollowTimestamp(item.following))
+        (item.following === null || isFollowHistory(item.following))
     )
 
 const FollowComponent = () => {
@@ -266,41 +270,34 @@ const FollowComponent = () => {
             if (!response.ok) throw new Error(`${t.actionError} (${response.status})`)
 
             const data: unknown = await response.json()
-            if (
-                typeof data !== 'object' ||
-                data === null ||
-                !('id' in data) ||
-                typeof data.id !== 'string' ||
-                !('isFollowing' in data) ||
-                typeof data.isFollowing !== 'boolean' ||
-                !('createdAt' in data) ||
-                typeof data.createdAt !== 'string' ||
-                !('updatedAt' in data) ||
-                typeof data.updatedAt !== 'string'
-            ) {
+            if (!isFollowHistory(data) || !('updatedAt' in data) || typeof data.updatedAt !== 'string') {
                 throw new Error(t.actionError)
             }
 
-            const updatedFollow: FollowTimestamp = {
+            const updatedFollow: FollowItem = {
                 id: data.id,
-                isFollowing: data.isFollowing,
-                createdAt: data.createdAt,
+                follow: data.follow,
+                block: data.block,
                 updatedAt: data.updatedAt,
+                marketId: market.id,
+                market,
             }
+            const isFollowing = data.follow.length % 2 === 1
 
-            setFollowedMarkets(current => data.isFollowing
+            setFollowedMarkets(current => isFollowing
                 ? [
-                    {
-                        ...updatedFollow,
-                        marketId: market.id,
-                        market,
-                    },
+                    updatedFollow,
                     ...current.filter(item => item.marketId !== market.id),
                 ]
                 : current.filter(item => item.marketId !== market.id))
 
             setSearchResults(current => current.map(result =>
-                result.id === market.id ? { ...result, following: updatedFollow } : result
+                result.id === market.id
+                    ? {
+                        ...result,
+                        following: { id: data.id, follow: data.follow, block: data.block },
+                    }
+                    : result
             ))
         } catch (requestError) {
             setError(requestError instanceof Error ? requestError.message : t.actionError)
@@ -369,14 +366,14 @@ const FollowComponent = () => {
     )
 
     const renderSearchMarket = (market: MarketSearchResult) => {
-        const followed = market.following?.isFollowing ?? false
+        const followed = (market.following?.follow.length ?? 0) % 2 === 1
         return (
             <MarketCard
                 key={market.id}
                 market={market}
                 followed={followed}
                 timestampLabel={t.followedAt}
-                timestampValue={followed && market.following ? formatDate(market.following.createdAt) : undefined}
+                timestampValue={followed && market.following ? formatDate(market.following.follow.at(-1)) : undefined}
                 marketCaption={t.marketCaption}
                 actionLabel={pendingMarkets.includes(market.id) ? '...' : followed ? t.unfollow : t.follow}
                 actionPending={pendingMarkets.includes(market.id)}

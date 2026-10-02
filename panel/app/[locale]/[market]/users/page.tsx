@@ -27,13 +27,14 @@ interface UserProfile {
     name: string;
     isBlocked?: boolean;
     createdAt?: string;
-    following?: unknown[];
+    followHistory?: unknown[];
+    blockHistory?: unknown[];
     [key: string]: unknown;
 }
 
 interface ActivityEvent {
     id: string;
-    type: "joined" | "followed" | "unfollowed" | "updated";
+    type: "joined" | "followed" | "unfollowed" | "blocked" | "unblocked" | "updated";
     label: string;
     at: string;
     detail: string;
@@ -50,6 +51,8 @@ function validDate(value: unknown) {
 
 function eventType(key: string): ActivityEvent["type"] {
     const normalized = key.toLowerCase();
+    if (normalized.includes("unblock")) return "unblocked";
+    if (normalized.includes("block")) return "blocked";
     if (normalized.includes("unfollow") || normalized.includes("remove")) return "unfollowed";
     if (normalized.includes("follow")) return "followed";
     if (normalized.includes("creat") || normalized.includes("join") || normalized.includes("register")) return "joined";
@@ -66,25 +69,25 @@ function makeActivity(user: UserProfile): ActivityEvent[] {
         if (seen.has(id)) return;
         seen.add(id);
         const type = eventType(key);
-        events.push({ id, type, label: type === "joined" ? "Yangi user qo'shildi" : type === "followed" ? "Follow bosildi" : type === "unfollowed" ? "Follow olib tashlandi" : "Profil yangilandi", at: date.toISOString(), detail });
+        const labels: Record<ActivityEvent["type"], string> = {
+            joined: "Yangi user qo'shildi",
+            followed: "Follow bosildi",
+            unfollowed: "Follow olib tashlandi",
+            blocked: "User bloklandi",
+            unblocked: "User blokdan chiqarildi",
+            updated: "Profil yangilandi",
+        };
+        events.push({ id, type, label: labels[type], at: date.toISOString(), detail });
     };
     addEvent("createdAt", user.createdAt, "Ro'yxatdan o'tgan vaqt");
-    const walk = (value: unknown, detail = "User faolligi") => {
-        if (Array.isArray(value)) {
-            value.forEach((item) => walk(item, detail));
-            return;
-        }
-        if (!value || typeof value !== "object") return;
-        Object.entries(value).forEach(([childKey, childValue]) => {
-            const label = childKey.toLowerCase();
-            if (label.includes("date") || label.includes("time") || label.includes("created") || label.includes("updated") || label.includes("follow")) {
-                if (Array.isArray(childValue)) childValue.forEach((item) => addEvent(childKey, item, detail));
-                else addEvent(childKey, childValue, detail);
-            }
-            if (typeof childValue === "object") walk(childValue, detail);
+    const addHistory = (history: unknown, key: "follow" | "block", detail: string) => {
+        if (!Array.isArray(history)) return;
+        history.forEach((timestamp, index) => {
+            addEvent(`${index % 2 === 0 ? key : `un${key}`}-${index}`, timestamp, detail);
         });
     };
-    walk(user.following, "Followlar tarixi");
+    addHistory(user.followHistory, "follow", "Followlar tarixi");
+    addHistory(user.blockHistory, "block", "Bloklash tarixi");
     return events.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
 }
 
@@ -128,7 +131,23 @@ function UsersContent() {
             if (!res.ok) throw new Error(data.message || "Xatolik yuz berdi");
             setUsers(data.map((item: Record<string, unknown>) => {
                 const userInfo = (item.user || {}) as Record<string, unknown>;
-                return { ...userInfo, id: String(userInfo.id || item.id), userName: String(userInfo.userName || "user"), firstName: String(userInfo.firstName || ""), lastName: String(userInfo.lastName || ""), image: String(userInfo.image || ""), email: String(userInfo.email || "Email kiritilmagan"), name: `${userInfo.firstName || ""} ${userInfo.lastName || ""}`.trim() || "Ism kiritilmagan", phone: String(userInfo.phone || "Kiritilmagan"), bio: String(userInfo.bio || "Kiritilmagan"), followerRecordId: item.id, following: Array.isArray(item.following) ? item.following : [], createdAt: String(item.createdAt || userInfo.createdAt || item.updatedAt || "") } as UserProfile;
+                const blockHistory = Array.isArray(item.block) ? item.block : [];
+                return {
+                    ...userInfo,
+                    id: String(userInfo.id || item.id),
+                    userName: String(userInfo.userName || "user"),
+                    firstName: String(userInfo.firstName || ""),
+                    lastName: String(userInfo.lastName || ""),
+                    image: String(userInfo.image || ""),
+                    email: String(userInfo.email || "Email kiritilmagan"),
+                    name: `${userInfo.firstName || ""} ${userInfo.lastName || ""}`.trim() || "Ism kiritilmagan",
+                    phone: String(userInfo.phone || "Kiritilmagan"),
+                    bio: String(userInfo.bio || "Kiritilmagan"),
+                    isBlocked: blockHistory.length % 2 === 1,
+                    followHistory: Array.isArray(item.follow) ? item.follow : [],
+                    blockHistory,
+                    createdAt: String(item.createdAt || userInfo.createdAt || ""),
+                } as UserProfile;
             }));
         } catch (error) {
             notify.show(error instanceof Error ? error.message : "So'rov yuborilmadi", "error", dark ? "dark" : "light");
@@ -164,9 +183,35 @@ function UsersContent() {
 
     const handleBlockToggle = async (email: string) => {
         try {
-            const res = await fetch(`${API_URL}/followings/block/${market}`, { method: "PATCH", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ email }) });
+            const targetUser = users.find(user => user.email === email);
+            if (!targetUser) throw new Error("Foydalanuvchi topilmadi");
+            const res = await fetch(`${API_URL}/followings/block/${market}`, {
+                method: "PATCH",
+                headers: {
+                    Authorization: ["Bearer", token].join(" "),
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ targetUserId: targetUser.id }),
+            });
             if (!res.ok) throw new Error("User holatini yangilab bo'lmadi");
-            await getUsers();
+            const data: unknown = await res.json();
+            if (
+                typeof data !== "object" ||
+                data === null ||
+                !("block" in data) ||
+                !Array.isArray(data.block) ||
+                !data.block.every(timestamp => typeof timestamp === "string")
+            ) {
+                throw new Error("Server javobi noto'g'ri");
+            }
+            const blockHistory = data.block;
+            const isBlocked = blockHistory.length % 2 === 1;
+            setUsers(current => current.map(user =>
+                user.id === targetUser.id ? { ...user, blockHistory, isBlocked } : user
+            ));
+            setSelectedUser(current =>
+                current?.id === targetUser.id ? { ...current, blockHistory, isBlocked } : current
+            );
             notify.show("User holati yangilandi", "success", dark ? "dark" : "light");
         } catch (error) {
             notify.show(error instanceof Error ? error.message : "So'rov yuborilmadi", "error", dark ? "dark" : "light");

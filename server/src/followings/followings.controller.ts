@@ -1,7 +1,6 @@
 import {
   Body,
   Controller,
-  Delete,
   Get,
   Param,
   ParseUUIDPipe,
@@ -25,7 +24,13 @@ export class FollowingsController {
   constructor(private readonly followings: FollowingsService) {}
 
   @Get()
-  findAll(@Query() query: FollowingsQueryDto) { return this.followings.findAll(query); }
+  @UseGuards(JwtAuthGuard)
+  findAll(
+    @Query() query: FollowingsQueryDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.followings.findAll(req.user.userId, query.marketId);
+  }
 
   @Get('mine')
   @UseGuards(JwtAuthGuard)
@@ -43,23 +48,35 @@ export class FollowingsController {
   }
 
   @Get(':id')
-  findOne(@Param('id', ParseUUIDPipe) id: string) { return this.followings.findOne(id); }
+  @UseGuards(JwtAuthGuard, FollowingOwnerGuard)
+  findOne(@Param('id', ParseUUIDPipe) id: string) {
+    return this.followings.findOne(id);
+  }
 
   @Patch(':marketId')
   @UseGuards(JwtAuthGuard)
   toggleFollow(
     @Param('marketId', ParseUUIDPipe) marketId: string,
     @Req() req: AuthenticatedRequest,
-  ) { return this.followings.toggleFollow(req.user.userId, marketId); }
+  ) {
+    return this.followings.toggleFollow(req.user.userId, marketId);
+  }
 
   @Patch('block/:marketId')
-  @UseGuards(JwtAuthGuard, MarketAccessGuard)
+  @UseGuards(
+    JwtAuthGuard,
+    MarketAccessGuard(
+      'followings',
+      undefined,
+      ['owner', 'admin', 'manager'],
+      undefined,
+      'block',
+    ),
+  )
   toggleBlock(
     @Param('marketId', ParseUUIDPipe) marketId: string,
     @Body() body: ToggleBlockDto,
-  ) { return this.followings.toggleBlock(body.targetUserId, marketId); }
-
-  @Delete(':id')
-  @UseGuards(JwtAuthGuard, FollowingOwnerGuard)
-  delete(@Param('id', ParseUUIDPipe) id: string) { return this.followings.delete(id); }
+  ) {
+    return this.followings.toggleBlock(body.targetUserId, marketId);
+  }
 }

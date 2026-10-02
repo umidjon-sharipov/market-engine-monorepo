@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import { Following, Prisma } from '@prisma/client';
 import { BaseCrudService, RepositoryDelegate } from '../common/services/base-crud.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -18,20 +19,22 @@ export class FollowingRepository extends BaseCrudService<
     super(prisma.following as unknown as RepositoryDelegate<Following>);
   }
 
-  findAllWithRelations(where?: Prisma.FollowingWhereInput) {
+  findAllForUser(userId: string, marketId?: string) {
     return this.prisma.following.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
+      where: { userId, ...(marketId && { marketId }) },
+      orderBy: { updatedAt: 'desc' },
       include: followingInclude,
     });
   }
 
   findMine(userId: string) {
     return this.prisma.following.findMany({
-      where: { userId, isFollowing: true },
+      where: { userId },
       orderBy: { updatedAt: 'desc' },
       include: followingInclude,
-    });
+    }).then(records => records.filter(record =>
+      Array.isArray(record.follow) && record.follow.length % 2 === 1
+    ));
   }
 
   async searchMarketsForUser(userId: string, query: string) {
@@ -47,7 +50,7 @@ export class FollowingRepository extends BaseCrudService<
         logo: true,
         followers: {
           where: { userId },
-          select: { id: true, isFollowing: true, createdAt: true, updatedAt: true },
+          select: { id: true, follow: true, block: true },
           take: 1,
         },
       },
@@ -60,31 +63,67 @@ export class FollowingRepository extends BaseCrudService<
   }
 
   async toggleFollow(userId: string, marketId: string) {
-    const current = await this.prisma.following.findUnique({
-      where: { userId_marketId: { userId, marketId } },
-    });
-    return this.prisma.following.upsert({
-      where: { userId_marketId: { userId, marketId } },
-      create: { user: { connect: { id: userId } }, market: { connect: { id: marketId } } },
-      update: { isFollowing: !(current?.isFollowing ?? false) },
-      include: followingInclude,
-    });
+    const updated = await this.prisma.$queryRaw<Following[]>(Prisma.sql`
+      INSERT INTO "Followings" ("id", "userId", "marketId", "follow", "block", "createdAt", "updatedAt")
+      VALUES (
+        ${randomUUID()}::uuid,
+        ${userId}::uuid,
+        ${marketId}::uuid,
+        jsonb_build_array(to_jsonb(clock_timestamp())),
+        '[]'::jsonb,
+        clock_timestamp(),
+        clock_timestamp()
+      )
+      ON CONFLICT ("userId", "marketId") DO UPDATE
+      SET
+        "follow" = CASE
+          WHEN jsonb_typeof("Followings"."follow") = 'array'
+            THEN "Followings"."follow" || jsonb_build_array(to_jsonb(clock_timestamp()))
+          ELSE jsonb_build_array(to_jsonb(clock_timestamp()))
+        END,
+        "updatedAt" = clock_timestamp()
+      WHERE
+        CASE
+          WHEN jsonb_typeof("Followings"."follow") = 'array'
+            THEN jsonb_array_length("Followings"."follow")
+          ELSE 0
+        END % 2 = 1
+        OR CASE
+          WHEN jsonb_typeof("Followings"."block") = 'array'
+            THEN jsonb_array_length("Followings"."block")
+          ELSE 0
+        END % 2 = 0
+      RETURNING *
+    `);
+
+    if (!updated.length) {
+      throw new ForbiddenException('Bu market sizni bloklaganligi sababli kuzata olmaysiz.');
+    }
+    return updated[0];
   }
 
   async toggleBlock(userId: string, marketId: string) {
-    const current = await this.prisma.following.findUnique({
-      where: { userId_marketId: { userId, marketId } },
-    });
-    return this.prisma.following.upsert({
-      where: { userId_marketId: { userId, marketId } },
-      create: {
-        user: { connect: { id: userId } },
-        market: { connect: { id: marketId } },
-        isFollowing: false,
-        isBlocked: true,
-      },
-      update: { isBlocked: !(current?.isBlocked ?? false) },
-      include: followingInclude,
-    });
+    const updated = await this.prisma.$queryRaw<Following[]>(Prisma.sql`
+      INSERT INTO "Followings" ("id", "userId", "marketId", "follow", "block", "createdAt", "updatedAt")
+      VALUES (
+        ${randomUUID()}::uuid,
+        ${userId}::uuid,
+        ${marketId}::uuid,
+        '[]'::jsonb,
+        jsonb_build_array(to_jsonb(clock_timestamp())),
+        clock_timestamp(),
+        clock_timestamp()
+      )
+      ON CONFLICT ("userId", "marketId") DO UPDATE
+      SET
+        "block" = CASE
+          WHEN jsonb_typeof("Followings"."block") = 'array'
+            THEN "Followings"."block" || jsonb_build_array(to_jsonb(clock_timestamp()))
+          ELSE jsonb_build_array(to_jsonb(clock_timestamp()))
+        END,
+        "updatedAt" = clock_timestamp()
+      RETURNING *
+    `);
+    return updated[0];
   }
 }

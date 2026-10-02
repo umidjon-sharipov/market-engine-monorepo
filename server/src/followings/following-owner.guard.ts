@@ -1,10 +1,12 @@
 import {
+  BadRequestException,
   CanActivate,
   ExecutionContext,
   ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { isUUID } from 'class-validator';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -16,8 +18,12 @@ export class FollowingOwnerGuard implements CanActivate {
       user?: { userId?: string; role?: string };
       params?: { id?: string };
     }>();
+    const id = request.params?.id;
+    if (!id || !isUUID(id)) {
+      throw new BadRequestException('Following ID UUID formatida bo\'lishi kerak.');
+    }
     const following = await this.prisma.following.findUnique({
-      where: { id: request.params?.id },
+      where: { id },
       select: { userId: true },
     });
     if (!following) throw new NotFoundException('Following topilmadi.');

@@ -43,7 +43,7 @@ model Market {
   followers  Following[]
 
   @@index([email])
-  @@index([title(ops: raw("gin_trgm_ops"))], type: Gin)
+  @@index([title(ops: raw("gin_trgm_ops"))], type: Gin, map: "Markets_title_trgm_idx")
   @@map("Markets")
 }
 
@@ -150,21 +150,20 @@ model Follower {
 }
 
 model Following {
-  id          String   @id @default(uuid()) @db.Uuid
-  userId      String   @db.Uuid
-  marketId    String   @db.Uuid
-  isFollowing Boolean  @default(true)
-  isBlocked   Boolean  @default(false)
-  createdAt   DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt   DateTime @updatedAt @db.Timestamptz(6)
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  marketId  String   @db.Uuid
+  follow    Json     @default("[]")
+  block     Json     @default("[]")
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
 
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   market Market @relation(fields: [marketId], references: [id], onDelete: Cascade)
 
   @@unique([userId, marketId])
-  @@index([marketId, isFollowing])
-  @@index([userId, isFollowing])
-  @@index([userId, isFollowing, updatedAt(sort: Desc)])
+  @@index([marketId, updatedAt(sort: Desc)])
+  @@index([userId, updatedAt(sort: Desc)])
   @@map("Followings")
 }
 

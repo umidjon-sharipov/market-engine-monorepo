@@ -1,40 +1,23 @@
 import {
-    Injectable,
-    NotFoundException,
-    ForbiddenException,
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-
-export interface DashboardItem {
-    id: string;
-    Dashboarding: string[];
-    isBlocked: string[];
-}
 
 @Injectable()
 export class DashboardService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findAll(userName: string) {
-    const followers = await this.prisma.follower.findMany({
-      where: {
-        userId: {
-            in: await this.prisma.user
-                .findMany({
-                    where: { userName },
-                    select: { id: true },
-                })
-                .then((users) => users.map((u) => u.id)),
-            },
-      },
+  async findAll(userId: string) {
+    return this.prisma.follower.findMany({
+      where: { userId },
     });
-
-    return followers;
   }
 
-  async usersAll(userName: string, marketId: string) {
+  async usersAll(userId: string, marketId: string) {
     const user = await this.prisma.user.findUnique({
-      where: { userName },
+      where: { id: userId },
       select: { id: true, email: true },
     });
 
@@ -42,67 +25,66 @@ export class DashboardService {
       throw new NotFoundException('Foydalanuvchi topilmadi');
     }
 
-    const [workerCheck, marketCheck] = await Promise.all([
-        this.prisma.worker.findFirst({
-            where: {
-                userId: user.id,
-                marketId: marketId,
-                role: 'manager',
-            },
-            select: { id: true },
-        }),
-        this.prisma.market.findFirst({
-                where: {
-                id: marketId,
-                email: user.email,
-            },
-            select: { id: true },
-        }),
+    const [worker, market] = await Promise.all([
+      this.prisma.worker.findFirst({
+        where: {
+          userId: user.id,
+          marketId: marketId,
+          role: { in: ['admin', 'owner', 'manager'] },
+        },
+        select: { id: true },
+      }),
+      this.prisma.market.findUnique({
+        where: { id: marketId },
+        select: { id: true, email: true },
+      }),
     ]);
 
-    const isManager = Boolean(workerCheck);
-    const isOwner = Boolean(marketCheck);
+    if (!market) throw new NotFoundException('Market topilmadi.');
 
-    if (!isManager && !isOwner) {
+    const isOwner = market.email.toLowerCase() === user.email.toLowerCase();
+    if (!isOwner && !worker) {
       throw new ForbiddenException(
         'Sizda bu market maʼlumotlarini koʻrish uchun huquq yoʻq',
       );
     }
 
-    const followers = await this.prisma.follower.findMany({
-        where: {
-            following: {
-            array_contains: [{ id: marketId }],
-            },
+    const records = await this.prisma.following.findMany({
+      where: { marketId },
+      orderBy: { updatedAt: 'desc' },
+      select: {
+        id: true,
+        follow: true,
+        block: true,
+        createdAt: true,
+        updatedAt: true,
+        user: {
+          select: {
+            id: true,
+            userName: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            phone: true,
+            image: true,
+            bio: true,
+            createdAt: true,
+          },
         },
-        orderBy: {
-            createdAt: 'desc',
-        },
+      },
     });
 
-    const userIds = followers.map((f) => f.userId);
-
-    const users = await this.prisma.user.findMany({
-        where: { id: { in: userIds } },
-    });
-
-    const userMap = new Map(users.map((u) => [u.id, u]));
-
-    return followers.map((follower) => {
-        const followingArray = Array.isArray(follower.following)
-            ? (follower.following as Array<{ id: string }>)
-            : [];
-
-        const matchedFollowing = followingArray.filter(
-            (item) => item.id === marketId,
-        );
-
-        return {
-            id: follower.id,
-            user: userMap.get(follower.userId) || null,
-            following: matchedFollowing.length > 0 ? matchedFollowing : null,
-            createdAt: follower.createdAt,
-        };
-    });
+    return records
+      .filter(
+        (record) => Array.isArray(record.follow) && record.follow.length > 0,
+      )
+      .map((record) => ({
+        id: record.id,
+        user: record.user,
+        follow: record.follow,
+        block: record.block,
+        createdAt: record.user.createdAt,
+        updatedAt: record.updatedAt,
+      }));
   }
 }

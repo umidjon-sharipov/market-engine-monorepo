@@ -1,4 +1,4 @@
-import { Controller, Get, Patch, Param, Body, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Param, UseGuards, Req, ParseUUIDPipe } from '@nestjs/common';
 import { DashboardService } from './dashboard.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
@@ -9,14 +9,12 @@ export class DashboardController {
     @Get()
     @UseGuards(JwtAuthGuard)
     async findAll(@Req() req: any) {
-        const currentUserName = req.user.userName
-        return await this.dashboardService.findAll(currentUserName);
+        return await this.dashboardService.findAll(req.user.userId);
     }
 
     @Get('users/:market')
     @UseGuards(JwtAuthGuard)
-    async usersAll(@Req() req: any, @Param('market') market: string) {
-        const currentUserName = req.user.userName
-        return await this.dashboardService.usersAll(currentUserName, market)
+    async usersAll(@Req() req: any, @Param('market', ParseUUIDPipe) market: string) {
+        return await this.dashboardService.usersAll(req.user.userId, market)
     }
 }

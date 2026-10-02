@@ -1,101 +1,100 @@
 import {
-    CanActivate,
-    ExecutionContext,
-    Injectable,
-    Type,
-    mixin,
+  BadRequestException,
+  CanActivate,
+  ExecutionContext,
+  Injectable,
+  Type,
+  mixin,
 } from '@nestjs/common';
+import type { Request } from 'express';
+import { isUUID } from 'class-validator';
 import { PrismaService } from '../../prisma/prisma.service';
 
+type AuthenticatedRequest = Request & {
+  user?: { email?: string };
+  params?: { marketId?: string };
+  body?: { marketId?: string };
+};
+
 export function MarketAccessGuard(
-    serviceType?: string,
-    userEmail?: string,
-    roles: string[] = ['owner', 'admin'],
-    marketId?: string,
-    method?: string,
+  serviceType?: string,
+  userEmail?: string,
+  roles: string[] = ['owner', 'admin'],
+  marketId?: string,
+  method?: string,
 ): Type<CanActivate> {
-    @Injectable()
-    class MarketAccessGuardClass implements CanActivate {
-        constructor(private readonly prisma: PrismaService) {}
+  @Injectable()
+  class MarketAccessGuardClass implements CanActivate {
+    constructor(private readonly prisma: PrismaService) {}
 
-        async canActivate(context: ExecutionContext): Promise<boolean> {
-            console.log('--- MARKET ACCESS GUARD CHECK ---');
-            console.log('Service Type:', serviceType);
-            console.log('User Email:', userEmail);
-            console.log('Allowed Roles:', roles);
-            console.log('Market ID:', marketId);
-            console.log('Method:', method);
+    async canActivate(context: ExecutionContext): Promise<boolean> {
+      const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
+      const requestEmail = request.user?.email;
+      const effectiveEmail = userEmail ?? requestEmail;
+      const effectiveMarketId =
+        marketId ?? request.params?.marketId ?? request.body?.marketId;
 
-            if (!marketId || !userEmail) {
-                console.log('❌ RAD ETILDI: marketId yoki userEmail berilmagan!');
-                return false;
-            }
+      if (!effectiveMarketId || !effectiveEmail) {
+        return false;
+      }
+      if (!isUUID(effectiveMarketId)) {
+        throw new BadRequestException(
+          "Market ID UUID formatida bo'lishi kerak.",
+        );
+      }
 
-            if (roles.includes('owner')) {
-                const isOwner = await this.prisma.market.findFirst({
-                    where: {
-                        id: marketId,
-                        email: userEmail,
-                    },
-                    select: { id: true },
-                });
+      if (roles.some((role) => role.toLowerCase() === 'owner')) {
+        const isOwner = await this.prisma.market.findFirst({
+          where: {
+            id: effectiveMarketId,
+            email: effectiveEmail,
+          },
+          select: { id: true },
+        });
 
-                if (isOwner) {
-                    console.log('✅ RUXSAT BERILDI: Foydalanuvchi marketning OWNERi!');
-                    return true;
-                }
-            }
+        if (isOwner) return true;
+      }
 
-            console.log('ℹ️ Owner emas. Worker huquqlari tekshirilmoqda...');
+      const user = await this.prisma.user.findUnique({
+        where: { email: effectiveEmail },
+        select: { id: true },
+      });
 
-            const user = await this.prisma.user.findUnique({
-                where: { email: userEmail },
-                select: { id: true },
-            });
+      if (!user) return false;
 
-            if (!user) {
-                console.log('❌ RAD ETILDI: Bunday emailga ega foydalanuvchi topilmadi!');
-                return false;
-            }
+      const workers = await this.prisma.worker.findMany({
+        where: {
+          marketId: effectiveMarketId,
+          userId: user.id,
+        },
+        select: { role: true, permissions: true },
+      });
 
-            const workers = await this.prisma.worker.findMany({
-                where: {
-                    marketId: marketId,
-                    userId: user.id,
-                },
-            });
+      if (!workers.length) return false;
 
-            if (!workers || workers.length === 0) {
-                console.log('❌ RAD ETILDI: Ushbu foydalanuvchi ushbu marketda worker emas!');
-                return false;
-            }
-
-            for (const worker of workers) {
-                const hasValidRole = roles.includes(worker.role.toLowerCase());
-
-        if (hasValidRole) {
-            const rawPermissions = (worker as any).permissions;
-            const permissions: string[] = Array.isArray(rawPermissions)
-                ? rawPermissions
-                : [];
-
-            const hasServiceAccess = permissions.some((perm) => {
-                if (typeof perm !== 'string') return false;
-                const [permService, permMethod] = perm.split(':');
-                return permService === serviceType && (!method || permMethod === method);
-            });
-
-                    if (hasServiceAccess) {
-                        console.log(`✅ RUXSAT BERILDI: Worker rolida (${worker.role}) '${serviceType}' uchun huquq topildi!`);
-                        return true;
-                    }
-                }
-            }
-
-            console.log('❌ RAD ETILDI: Mos keladigan rol yoki service huquqi (permissions) topilmadi!');
-            return false;
+      for (const worker of workers) {
+        if (
+          !roles.some(
+            (role) => role.toLowerCase() === worker.role.toLowerCase(),
+          )
+        ) {
+          continue;
         }
-    }
 
-    return mixin(MarketAccessGuardClass);
+        const hasServiceAccess = worker.permissions.some((permission) => {
+          const [permissionService, permissionMethod] = permission.split(':');
+          return (
+            permissionService === serviceType &&
+            (!method || permissionMethod === method)
+          );
+        });
+
+        if (hasServiceAccess) return true;
+      }
+
+      return false;
+    }
+  }
+
+  return mixin(MarketAccessGuardClass);
 }
