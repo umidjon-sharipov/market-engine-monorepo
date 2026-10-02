@@ -84,7 +84,11 @@ module.exports = {
     'react-native-gesture-handler',
     'react-native-safe-area-context',
     'expo-blur',
-    'react-native-maps'
+    'react-native-maps',
+    'expo-image',
+    'expo-modules-core',
+    'expo-linear-gradient',
+    'app'
   ],
 
   compiler: {
