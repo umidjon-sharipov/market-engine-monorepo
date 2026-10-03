@@ -53,7 +53,7 @@ export default function Map({ isDarkMode = false, onLocationSelect, markers = []
         }
     };
 
-    const tileUrl = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+    const tileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
 
     return (
         <div className={`w-full h-[500px] rounded-2xl overflow-hidden shadow-2xl border transition-all duration-300 z-[0] ${isDarkMode
@@ -70,7 +70,7 @@ export default function Map({ isDarkMode = false, onLocationSelect, markers = []
 
                 <div className={isDarkMode ? "w-full h-full filter invert hue-rotate-180 brightness-75 contrast-125 saturate-150" : "w-full h-full"}>
                     <TileLayer
-                        attribution='&copy; <a href="https://carto.com/">CARTO</a>'
+                        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                         url={tileUrl}
                     />
                 </div>
