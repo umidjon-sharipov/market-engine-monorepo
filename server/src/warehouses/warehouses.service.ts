@@ -24,8 +24,9 @@ export class WarehousesService {
     private readonly prisma: PrismaService,
   ) {}
 
-  findAll() {
+  findAll(marketId: string) {
     return this.warehouses.findAll({
+      where: { marketId },
       orderBy: { createdAt: 'desc' },
       include: { market: { select: { id: true, title: true, logo: true } } },
     });
@@ -36,11 +37,15 @@ export class WarehousesService {
   }
 
   create(body: CreateWarehouseDto) {
-    return this.warehouses.create(this.toCreateInput(body));
+    return this.warehouses
+      .create(this.toCreateInput(body))
+      .catch((error: unknown) => this.throwWarehouseCodeConflict(error));
   }
 
   update(id: string, body: UpdateWarehouseDto) {
-    return this.warehouses.update({ id }, this.toUpdateInput(body));
+    return this.warehouses
+      .update({ id }, this.toUpdateInput(body))
+      .catch((error: unknown) => this.throwWarehouseCodeConflict(error));
   }
 
   delete(id: string) {
@@ -153,7 +158,9 @@ export class WarehousesService {
       where: { warehouseId },
       orderBy: [{ bin: { code: 'asc' } }, { product: { title: 'asc' } }],
       include: {
-        product: { select: { id: true, title: true, images: true, price: true } },
+        product: {
+          select: { id: true, title: true, images: true, price: true },
+        },
         bin: {
           select: {
             id: true,
@@ -270,9 +277,21 @@ export class WarehousesService {
     throw error;
   }
 
+  private throwWarehouseCodeConflict(error: unknown): never {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2002'
+    ) {
+      throw new ConflictException('Bu marketda ombor kodi band.');
+    }
+    throw error;
+  }
+
   private toCreateInput(body: CreateWarehouseDto): Prisma.WarehouseCreateInput {
     return {
       title: body.title,
+      code: body.code?.trim() || null,
+      address: body.address,
       lat: String(body.lat),
       lng: String(body.lng),
       market: { connect: { id: body.marketId } },
@@ -282,9 +301,13 @@ export class WarehousesService {
   private toUpdateInput(body: UpdateWarehouseDto): Prisma.WarehouseUpdateInput {
     return {
       ...(body.title !== undefined && { title: body.title }),
+      ...(body.code !== undefined && { code: body.code.trim() || null }),
+      ...(body.address !== undefined && { address: body.address }),
       ...(body.lat !== undefined && { lat: String(body.lat) }),
       ...(body.lng !== undefined && { lng: String(body.lng) }),
-      ...(body.marketId !== undefined && { market: { connect: { id: body.marketId } } }),
+      ...(body.marketId !== undefined && {
+        market: { connect: { id: body.marketId } },
+      }),
     };
   }
 }

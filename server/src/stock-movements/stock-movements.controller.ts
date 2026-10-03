@@ -3,15 +3,18 @@ import {
   Body,
   Controller,
   ForbiddenException,
+  Get,
   NotFoundException,
   Param,
   ParseUUIDPipe,
+  Query,
   Patch,
   Post,
   Req,
   UseGuards,
 } from '@nestjs/common';
 import { ExecutionContextHost } from '@nestjs/core/helpers/execution-context-host';
+import { MovementStatus, MovementType } from '@prisma/client';
 import type { Request } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { MarketAccessGuard } from '../auth/guards/market-access.guard';
@@ -33,6 +36,29 @@ export class StockMovementsController {
     private readonly movements: StockMovementsService,
     private readonly prisma: PrismaService,
   ) {}
+
+  @Get()
+  async findAll(
+    @Req() request: AuthenticatedRequest,
+    @Query('marketId', ParseUUIDPipe) marketId: string,
+    @Query('type') type?: string,
+    @Query('status') status?: string,
+  ) {
+    if (type && !Object.values(MovementType).includes(type as MovementType)) {
+      throw new BadRequestException('Stock movement turi noto‘g‘ri.');
+    }
+    if (
+      status &&
+      !Object.values(MovementStatus).includes(status as MovementStatus)
+    ) {
+      throw new BadRequestException('Stock movement statusi noto‘g‘ri.');
+    }
+    await this.assertAccess(request, marketId, 'get');
+    return this.movements.findAll(marketId, {
+      type: type as MovementType | undefined,
+      status: status as MovementStatus | undefined,
+    });
+  }
 
   @Post()
   async create(
@@ -73,7 +99,9 @@ export class StockMovementsController {
       where: { id: { in: warehouseIds } },
       select: { marketId: true },
     });
-    const marketIds = [...new Set(warehouses.map((warehouse) => warehouse.marketId))];
+    const marketIds = [
+      ...new Set(warehouses.map((warehouse) => warehouse.marketId)),
+    ];
     if (marketIds.length !== 1) {
       throw new BadRequestException(
         'Stock movement omborlari bir marketga tegishli bo‘lishi shart.',
@@ -86,10 +114,11 @@ export class StockMovementsController {
   private async assertAccess(
     request: AuthenticatedRequest,
     marketId: string,
-    action: 'create' | 'update',
+    action: 'get' | 'create' | 'update',
   ) {
     const email = request.user?.email;
-    if (!email) throw new ForbiddenException('Autentifikatsiya talab qilinadi.');
+    if (!email)
+      throw new ForbiddenException('Autentifikatsiya talab qilinadi.');
     const Guard = MarketAccessGuard(
       'warehouse',
       email,
@@ -100,6 +129,7 @@ export class StockMovementsController {
     const allowed = await new Guard(this.prisma).canActivate(
       new ExecutionContextHost([request]),
     );
-    if (!allowed) throw new ForbiddenException('Stock movement uchun ruxsat yo‘q.');
+    if (!allowed)
+      throw new ForbiddenException('Stock movement uchun ruxsat yo‘q.');
   }
 }

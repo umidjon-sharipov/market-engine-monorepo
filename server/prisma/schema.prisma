@@ -374,6 +374,8 @@ model Vacancy {
 model Warehouse {
   id        String   @id @default(uuid()) @db.Uuid
   title     String   @db.VarChar(255)
+  code      String?  @db.VarChar(100)
+  address   String?  @db.Text
   marketId  String   @db.Uuid
   lat       String   @db.VarChar(50)
   lng       String   @db.VarChar(50)
@@ -388,6 +390,7 @@ model Warehouse {
   stockReservations OrderStockReservation[]
 
   @@index([marketId])
+  @@unique([marketId, code])
   @@map("Warehouses")
 }
 

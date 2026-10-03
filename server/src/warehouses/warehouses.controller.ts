@@ -9,6 +9,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -17,7 +18,10 @@ import type { Request } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { MarketAccessGuard } from '../auth/guards/market-access.guard';
 import { PrismaService } from '../prisma/prisma.service';
-import { CreateStorageBinDto, UpdateStorageBinDto } from './dto/create-storage-bin.dto';
+import {
+  CreateStorageBinDto,
+  UpdateStorageBinDto,
+} from './dto/create-storage-bin.dto';
 import { CreateWarehouseDto } from './dto/create-warehouse.dto';
 import {
   CreateWarehouseZoneDto,
@@ -38,8 +42,13 @@ export class WarehousesController {
   ) {}
 
   @Get()
-  findAll() {
-    return this.warehousesService.findAll();
+  @UseGuards(JwtAuthGuard)
+  async findAll(
+    @Req() request: AuthenticatedRequest,
+    @Query('marketId', ParseUUIDPipe) marketId: string,
+  ) {
+    await this.assertAccess(request, marketId, 'get');
+    return this.warehousesService.findAll(marketId);
   }
 
   @Get(':id/inventory')
@@ -130,16 +139,22 @@ export class WarehousesController {
   ) {
     const marketId = await this.warehousesService.getBinMarketId(binId);
     if (body.zoneId) {
-      const targetMarketId = await this.warehousesService.getZoneMarketId(body.zoneId);
+      const targetMarketId = await this.warehousesService.getZoneMarketId(
+        body.zoneId,
+      );
       if (targetMarketId !== marketId) {
-        throw new BadRequestException('Yacheykani boshqa market zone’iga ko‘chirish mumkin emas.');
+        throw new BadRequestException(
+          'Yacheykani boshqa market zone’iga ko‘chirish mumkin emas.',
+        );
       }
       const [current, targetWarehouseId] = await Promise.all([
         this.warehousesService.getBinWarehouseId(binId),
         this.warehousesService.getZoneWarehouseId(body.zoneId),
       ]);
       if (current.isReferenced && current.warehouseId !== targetWarehouseId) {
-        throw new BadRequestException('Harakatlar yoki qoldiqlar bilan bog‘langan yacheykani boshqa omborga ko‘chirish mumkin emas.');
+        throw new BadRequestException(
+          'Harakatlar yoki qoldiqlar bilan bog‘langan yacheykani boshqa omborga ko‘chirish mumkin emas.',
+        );
       }
     }
     await this.assertAccess(request, marketId, 'update');
@@ -158,7 +173,13 @@ export class WarehousesController {
   }
 
   @Get(':id')
-  findOne(@Param('id', ParseUUIDPipe) id: string) {
+  @UseGuards(JwtAuthGuard)
+  async findOne(
+    @Req() request: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    const marketId = await this.warehousesService.getWarehouseMarketId(id);
+    await this.assertAccess(request, marketId, 'get');
     return this.warehousesService.findOne(id);
   }
 
@@ -179,7 +200,8 @@ export class WarehousesController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: UpdateWarehouseDto,
   ) {
-    const originalMarketId = await this.warehousesService.getWarehouseMarketId(id);
+    const originalMarketId =
+      await this.warehousesService.getWarehouseMarketId(id);
     const marketId = body.marketId ?? originalMarketId;
     await this.assertAccess(request, originalMarketId, 'update');
     if (marketId !== originalMarketId) {
@@ -205,7 +227,8 @@ export class WarehousesController {
     action: 'get' | 'create' | 'update' | 'delete',
   ) {
     const email = request.user?.email;
-    if (!email) throw new ForbiddenException('Autentifikatsiya talab qilinadi.');
+    if (!email)
+      throw new ForbiddenException('Autentifikatsiya talab qilinadi.');
     const Guard = MarketAccessGuard(
       'warehouse',
       email,

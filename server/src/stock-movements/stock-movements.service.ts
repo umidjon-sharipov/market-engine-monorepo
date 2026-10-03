@@ -17,6 +17,27 @@ type InventoryLocation = {
 export class StockMovementsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  findAll(
+    marketId: string,
+    filters: { type?: MovementType; status?: MovementStatus } = {},
+  ) {
+    return this.prisma.stockMovement.findMany({
+      where: {
+        product: { marketId },
+        ...(filters.type && { type: filters.type }),
+        ...(filters.status && { status: filters.status }),
+      },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        product: { select: { id: true, title: true } },
+        fromWarehouse: { select: { id: true, title: true } },
+        fromBin: { select: { id: true, code: true } },
+        toWarehouse: { select: { id: true, title: true } },
+        toBin: { select: { id: true, code: true } },
+      },
+    });
+  }
+
   create(body: CreateStockMovementDto) {
     return this.prisma.$transaction(async (tx) => {
       await this.validateMovement(tx, body);
@@ -31,7 +52,8 @@ export class StockMovementsService {
       return await this.prisma.$transaction(
         async (tx) => {
           const movement = await tx.stockMovement.findUnique({ where: { id } });
-          if (!movement) throw new NotFoundException('Stock movement topilmadi.');
+          if (!movement)
+            throw new NotFoundException('Stock movement topilmadi.');
           if (movement.status === status) return movement;
           if (movement.status !== MovementStatus.PENDING) {
             throw new ConflictException(
@@ -80,7 +102,13 @@ export class StockMovementsService {
     quantity: number,
     tx?: Prisma.TransactionClient,
   ) {
-    if (tx) return this.reserveWithinTransaction(tx, { productId, warehouseId, binId, quantity });
+    if (tx)
+      return this.reserveWithinTransaction(tx, {
+        productId,
+        warehouseId,
+        binId,
+        quantity,
+      });
     return this.prisma.$transaction(
       (transaction) =>
         this.reserveWithinTransaction(transaction, {
@@ -100,7 +128,13 @@ export class StockMovementsService {
     quantity: number,
     tx?: Prisma.TransactionClient,
   ) {
-    if (tx) return this.releaseWithinTransaction(tx, { productId, warehouseId, binId, quantity });
+    if (tx)
+      return this.releaseWithinTransaction(tx, {
+        productId,
+        warehouseId,
+        binId,
+        quantity,
+      });
     return this.prisma.$transaction(
       (transaction) =>
         this.releaseWithinTransaction(transaction, {
@@ -117,10 +151,7 @@ export class StockMovementsService {
     tx: Prisma.TransactionClient,
     movement: CreateStockMovementDto,
   ) {
-    if (
-      movement.type !== MovementType.ADJUSTMENT &&
-      movement.quantity <= 0
-    ) {
+    if (movement.type !== MovementType.ADJUSTMENT && movement.quantity <= 0) {
       throw new BadRequestException('Miqdor noldan katta bo‘lishi kerak.');
     }
 
@@ -169,7 +200,9 @@ export class StockMovementsService {
       movement.type === MovementType.TRANSFER &&
       movement.fromBinId === movement.toBinId
     ) {
-      throw new BadRequestException('Ko‘chirish manzili bir xil bo‘lishi mumkin emas.');
+      throw new BadRequestException(
+        'Ko‘chirish manzili bir xil bo‘lishi mumkin emas.',
+      );
     }
   }
 
@@ -192,10 +225,14 @@ export class StockMovementsService {
     });
     if (!bin) throw new BadRequestException('Storage bin topilmadi.');
     if (bin.zone.warehouseId !== warehouseId) {
-      throw new BadRequestException('Storage bin ko‘rsatilgan omborga tegishli emas.');
+      throw new BadRequestException(
+        'Storage bin ko‘rsatilgan omborga tegishli emas.',
+      );
     }
     if (bin.zone.warehouse.marketId !== marketId) {
-      throw new BadRequestException('Mahsulot va ombor bir marketga tegishli bo‘lishi shart.');
+      throw new BadRequestException(
+        'Mahsulot va ombor bir marketga tegishli bo‘lishi shart.',
+      );
     }
   }
 
@@ -204,29 +241,54 @@ export class StockMovementsService {
     movement: Prisma.StockMovementGetPayload<object>,
   ) {
     if (movement.type === MovementType.INBOUND) {
-      await this.increaseInventory(tx, movement.productId, {
-        warehouseId: movement.toWarehouseId!,
-        binId: movement.toBinId!,
-      }, movement.quantity);
+      await this.increaseInventory(
+        tx,
+        movement.productId,
+        {
+          warehouseId: movement.toWarehouseId!,
+          binId: movement.toBinId!,
+        },
+        movement.quantity,
+      );
     } else if (movement.type === MovementType.OUTBOUND) {
-      await this.decreaseInventory(tx, movement.productId, {
-        warehouseId: movement.fromWarehouseId!,
-        binId: movement.fromBinId!,
-      }, movement.quantity);
+      await this.decreaseInventory(
+        tx,
+        movement.productId,
+        {
+          warehouseId: movement.fromWarehouseId!,
+          binId: movement.fromBinId!,
+        },
+        movement.quantity,
+      );
     } else if (movement.type === MovementType.TRANSFER) {
-      await this.decreaseInventory(tx, movement.productId, {
-        warehouseId: movement.fromWarehouseId!,
-        binId: movement.fromBinId!,
-      }, movement.quantity);
-      await this.increaseInventory(tx, movement.productId, {
-        warehouseId: movement.toWarehouseId!,
-        binId: movement.toBinId!,
-      }, movement.quantity);
+      await this.decreaseInventory(
+        tx,
+        movement.productId,
+        {
+          warehouseId: movement.fromWarehouseId!,
+          binId: movement.fromBinId!,
+        },
+        movement.quantity,
+      );
+      await this.increaseInventory(
+        tx,
+        movement.productId,
+        {
+          warehouseId: movement.toWarehouseId!,
+          binId: movement.toBinId!,
+        },
+        movement.quantity,
+      );
     } else {
-      await this.adjustInventory(tx, movement.productId, {
-        warehouseId: movement.toWarehouseId!,
-        binId: movement.toBinId!,
-      }, movement.quantity);
+      await this.adjustInventory(
+        tx,
+        movement.productId,
+        {
+          warehouseId: movement.toWarehouseId!,
+          binId: movement.toBinId!,
+        },
+        movement.quantity,
+      );
     }
 
     const total = await tx.warehouseInventory.aggregate({
@@ -307,10 +369,20 @@ export class StockMovementsService {
 
   private async reserveWithinTransaction(
     tx: Prisma.TransactionClient,
-    input: { productId: string; warehouseId: string; binId: string; quantity: number },
+    input: {
+      productId: string;
+      warehouseId: string;
+      binId: string;
+      quantity: number;
+    },
   ) {
     this.validateReservationQuantity(input.quantity);
-    await this.assertProductAndBin(tx, input.productId, input.warehouseId, input.binId);
+    await this.assertProductAndBin(
+      tx,
+      input.productId,
+      input.warehouseId,
+      input.binId,
+    );
     const inventory = await tx.warehouseInventory.upsert({
       where: {
         productId_binId: { productId: input.productId, binId: input.binId },
@@ -337,13 +409,20 @@ export class StockMovementsService {
       throw new BadRequestException('Sotuvga ochiq qoldiq yetarli emas.');
     }
     return tx.warehouseInventory.findUniqueOrThrow({
-      where: { productId_binId: { productId: input.productId, binId: input.binId } },
+      where: {
+        productId_binId: { productId: input.productId, binId: input.binId },
+      },
     });
   }
 
   private async releaseWithinTransaction(
     tx: Prisma.TransactionClient,
-    input: { productId: string; warehouseId: string; binId: string; quantity: number },
+    input: {
+      productId: string;
+      warehouseId: string;
+      binId: string;
+      quantity: number;
+    },
   ) {
     this.validateReservationQuantity(input.quantity);
     const updated = await tx.warehouseInventory.updateMany({
@@ -356,10 +435,14 @@ export class StockMovementsService {
       data: { reservedQuantity: { decrement: input.quantity } },
     });
     if (!updated.count) {
-      throw new BadRequestException('Yechish uchun band qilingan miqdor yetarli emas.');
+      throw new BadRequestException(
+        'Yechish uchun band qilingan miqdor yetarli emas.',
+      );
     }
     return tx.warehouseInventory.findUniqueOrThrow({
-      where: { productId_binId: { productId: input.productId, binId: input.binId } },
+      where: {
+        productId_binId: { productId: input.productId, binId: input.binId },
+      },
     });
   }
 
@@ -379,7 +462,9 @@ export class StockMovementsService {
 
   private validateReservationQuantity(quantity: number) {
     if (!Number.isInteger(quantity) || quantity <= 0) {
-      throw new BadRequestException('Band qilish miqdori musbat butun son bo‘lishi shart.');
+      throw new BadRequestException(
+        'Band qilish miqdori musbat butun son bo‘lishi shart.',
+      );
     }
   }
 }

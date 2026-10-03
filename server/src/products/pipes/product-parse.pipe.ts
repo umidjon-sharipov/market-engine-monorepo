@@ -2,7 +2,7 @@ import {
   BadRequestException,
   Injectable,
   PipeTransform,
-  Optional
+  Optional,
 } from '@nestjs/common';
 import {
   CreateProductDto,
@@ -16,7 +16,7 @@ export class ProductParsePipe implements PipeTransform {
 
   transform(value: unknown): CreateProductDto | UpdateProductDto {
     if (!value || typeof value !== 'object' || Array.isArray(value)) {
-      throw new BadRequestException('Product form-data body noto\'g\'ri.');
+      throw new BadRequestException("Product form-data body noto'g'ri.");
     }
 
     const body = { ...(value as Record<string, unknown>) };
@@ -37,8 +37,10 @@ export class ProductParsePipe implements PipeTransform {
     if (marketId) body.marketId = marketId;
     if (warehouseId) body.warehouseId = warehouseId;
     if (title) body.title = title;
-    if (body.price !== undefined) body.price = this.readNumber(body.price, 'price');
-    if (body.quantity !== undefined) body.quantity = this.readNumber(body.quantity, 'quantity');
+    if (body.price !== undefined)
+      body.price = this.readNumber(body.price, 'price');
+    if (body.quantity !== undefined)
+      body.quantity = this.readNumber(body.quantity, 'quantity');
     if (
       body.description !== undefined ||
       body.descriptionUz !== undefined ||
@@ -82,32 +84,48 @@ export class ProductParsePipe implements PipeTransform {
       const searchKeysMatch = key.match(/^searchKeys-(\d+)$/);
 
       if (titleMatch) {
-        this.getOption(options, Number(titleMatch[1])).title = this.readString(value);
+        this.getOption(options, Number(titleMatch[1])).title =
+          this.readString(value);
       } else if (searchKeysMatch) {
         const searchKeys = this.parseJson(value, []);
         if (Array.isArray(searchKeys)) {
           this.getOption(options, Number(searchKeysMatch[1])).searchKeys =
             searchKeys
-              .filter((searchKey): searchKey is string => typeof searchKey === 'string')
+              .filter(
+                (searchKey): searchKey is string =>
+                  typeof searchKey === 'string',
+              )
               .map((searchKey) => searchKey.trim().toLocaleLowerCase())
               .filter(Boolean);
         }
       } else if (itemKeyMatch) {
-        this.getItem(options, Number(itemKeyMatch[1]), Number(itemKeyMatch[2])).key =
-          this.readString(value);
+        this.getItem(
+          options,
+          Number(itemKeyMatch[1]),
+          Number(itemKeyMatch[2]),
+        ).key = this.readString(value);
       } else if (itemValueMatch) {
-        this.getItem(options, Number(itemValueMatch[1]), Number(itemValueMatch[2])).value =
-          this.readNumber(value, 'option value');
+        this.getItem(
+          options,
+          Number(itemValueMatch[1]),
+          Number(itemValueMatch[2]),
+        ).value = this.readNumber(value, 'option value');
       }
     }
 
     return [...options.values()]
       .filter((option) => option.title && option.items.length > 0)
-      .map((option) => ({ ...option, searchKeys: [] }));
+      .map((option) => ({
+        ...option,
+        searchKeys: option.searchKeys
+          .map((key) => key.trim().toLocaleLowerCase())
+          .filter(Boolean),
+      }));
   }
 
   private normalizeOption(value: unknown): ProductOptionDto | null {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    if (!value || typeof value !== 'object' || Array.isArray(value))
+      return null;
     const option = value as Record<string, unknown>;
     const title = this.readString(option.title);
     const rawSearchKeys = this.parseJson(option.searchKeys, []);
@@ -120,7 +138,8 @@ export class ProductParsePipe implements PipeTransform {
     const items = Array.isArray(option.items)
       ? option.items
           .map((item) => {
-            if (!item || typeof item !== 'object' || Array.isArray(item)) return null;
+            if (!item || typeof item !== 'object' || Array.isArray(item))
+              return null;
             const source = item as Record<string, unknown>;
             return {
               key: this.readString(source.key),
@@ -145,7 +164,8 @@ export class ProductParsePipe implements PipeTransform {
     itemIndex: number,
   ) {
     const option = this.getOption(options, optionIndex);
-    if (!option.items[itemIndex]) option.items[itemIndex] = { key: '', value: 0 };
+    if (!option.items[itemIndex])
+      option.items[itemIndex] = { key: '', value: 0 };
     return option.items[itemIndex];
   }
 
@@ -156,7 +176,9 @@ export class ProductParsePipe implements PipeTransform {
   private readNumber(value: unknown, fieldName: string): number {
     const parsed = typeof value === 'number' ? value : Number(value);
     if (!Number.isFinite(parsed) || parsed < 0) {
-      throw new BadRequestException(`${fieldName} musbat raqam bo'lishi kerak.`);
+      throw new BadRequestException(
+        `${fieldName} musbat raqam bo'lishi kerak.`,
+      );
     }
     return parsed;
   }
@@ -172,7 +194,7 @@ export class ProductParsePipe implements PipeTransform {
     try {
       return JSON.parse(value);
     } catch {
-      throw new BadRequestException('JSON formati noto\'g\'ri.');
+      throw new BadRequestException("JSON formati noto'g'ri.");
     }
   }
 }

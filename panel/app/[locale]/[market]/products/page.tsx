@@ -1,6 +1,6 @@
 'use client'
 import Image from "next/image";
-import React, { useState, useEffect } from "react";
+import React, { useCallback, useState, useEffect } from "react";
 import { useThemeStore } from "@/app/_store/useThemeStore";
 import GlassCard from "@/components/admin/GlassCard";
 import GlassInput from "@/components/admin/GlassInput";
@@ -28,6 +28,7 @@ interface ProductOption {
 interface ProductOptionGroup {
     id: string;
     title: string;
+    searchKeys?: string[];
     options: ProductOption[];
 }
 
@@ -84,16 +85,21 @@ const resolveCategoryLabel = (categoryId: string, categories: CategoryData[]): s
     if (!categoryId || categoryId === 'NULL') return 'Tanlanmagan';
 
     const parts = categoryId.split('|');
-    if (parts.length !== 3) return categoryId;
-
-    const [catId, optId, itemId] = parts;
+    if (parts.length < 2) return categoryId;
+    const [catId, optId, ...itemIds] = parts;
     const category = categories.find(c => c.id === catId);
     if (!category) return categoryId;
-
     const option = category.options?.find(o => o.id === optId);
-    const item = option?.items?.find(i => i.id === itemId);
-
-    return [category.title, option?.title, item?.title].filter(Boolean).join(' › ');
+    if (!option) return category.title;
+    const titles = [category.title, option.title];
+    let items = option.items ?? [];
+    for (const itemId of itemIds) {
+        const selected = items.find(item => item.id === itemId);
+        if (!selected) break;
+        titles.push(selected.title);
+        items = selected.children ?? [];
+    }
+    return titles.join(' › ');
 };
 
 const resolveStoredCategoryLabel = (
@@ -135,6 +141,7 @@ const ProductsGet = () => {
     const [categories, setCategories] = useState<CategoryData[]>([]);
     const [discounts, setDiscounts] = useState<DiscountData[]>([]);
     const [loading, setLoading] = useState<boolean>(true);
+    const [loadError, setLoadError] = useState('');
     const [editId, setEditId] = useState<string | null>(null);
     const [isOpen, setIsOpen] = useState(false)
     const [deleteModal, setDeleteModal] = useState<string | null>(null);
@@ -144,7 +151,7 @@ const ProductsGet = () => {
 
     const [imagesLength, setImagesLength] = useState(1)
     const [descr, setDescr] = useState('uz');
-    const [lans, setLans] = useState(['uz', 'en', 'ru']);
+    const lans = descr === 'uz' ? ['uz', 'en', 'ru'] : descr === 'en' ? ['en', 'uz', 'ru'] : ['ru', 'en', 'uz'];
     const [itemsLenght, setItemsLenght] = useState(1)
     const [editOptions, setEditOptions] = useState<ProductOptionGroup[]>([])
     const [gradientIsOpen, setGradientIsOpen] = useState(false);
@@ -182,15 +189,9 @@ const ProductsGet = () => {
         setGradientIsOpen(false);
     };
 
-    useEffect(() => {
-        descr === 'uz' ? setLans(['uz', 'en', 'ru']) :
-            descr === 'en' ? setLans(['en', 'uz', 'ru']) :
-                descr === 'ru' ? setLans(['ru', 'en', 'uz']) : undefined;
-    }, [descr]);
-
-    const fetchData = async () => {
+    const fetchData = useCallback(async () => {
         try {
-            setLoading(true);
+            setLoadError('');
             const [productsRes, categoriesRes, discountsRes] = await Promise.all([
                 fetch(`${API_URL}/products`),
                 fetch(`${API_URL}/categories?marketId=${encodeURIComponent(market)}`, {
@@ -198,50 +199,48 @@ const ProductsGet = () => {
                 }),
                 fetch(`${API_URL}/discounts`),
             ]);
+            if (!productsRes.ok || !categoriesRes.ok || !discountsRes.ok) {
+                throw new Error('Mahsulot, kategoriya yoki chegirma ma’lumotlarini yuklab bo‘lmadi.');
+            }
 
-            if (productsRes.ok) {
-                const req: Product[] = await productsRes.json();
-                const result = req.filter(item => item.marketId === market);
-                setData(result);
+            const req: Product[] = await productsRes.json();
+            const result = req.filter(item => item.marketId === market);
+            setData(result);
 
-                const initialIndices: Record<string, number> = {};
-                const initialSelectedOpts: Record<string, Record<string, number>> = {};
+            const initialIndices: Record<string, number> = {};
+            const initialSelectedOpts: Record<string, Record<string, number>> = {};
 
-                result.forEach(item => {
-                    initialIndices[item.id] = 0;
-                    initialSelectedOpts[item.id] = {};
-                    item.options?.forEach(group => {
-                        if (group.options && group.options.length > 0) {
-                            initialSelectedOpts[item.id][group.title] = group.options[0].value;
-                        }
-                    });
+            result.forEach(item => {
+                initialIndices[item.id] = 0;
+                initialSelectedOpts[item.id] = {};
+                item.options?.forEach(group => {
+                    if (group.options && group.options.length > 0) {
+                        initialSelectedOpts[item.id][group.title] = group.options[0].value;
+                    }
                 });
+            });
 
-                setActiveImageIndices(initialIndices);
-                setSelectedOptions(initialSelectedOpts);
-            }
+            setActiveImageIndices(initialIndices);
+            setSelectedOptions(initialSelectedOpts);
 
-            if (categoriesRes.ok) {
-                const categoriesReq: CategoryData[] = await categoriesRes.json();
-                setCategories(categoriesReq.filter(item => (item.marketId || item.marketid) === market));
-            }
+            const categoriesReq: CategoryData[] = await categoriesRes.json();
+            setCategories(categoriesReq.filter(item => (item.marketId || item.marketid) === market));
 
-            if (discountsRes.ok) {
-                const discountsReq: DiscountData[] = await discountsRes.json();
-                setDiscounts(discountsReq.filter(item => item.market === market));
-            }
+            const discountsReq: DiscountData[] = await discountsRes.json();
+            setDiscounts(discountsReq.filter(item => item.market === market));
         } catch (error) {
             console.error('Xatolik:', error);
+            setLoadError(error instanceof Error ? error.message : 'Mahsulot ma’lumotlarini yuklab bo‘lmadi.');
         } finally {
             setLoading(false);
         }
-    };
+    }, [market, token]);
 
     useEffect(() => {
         if (market) {
-            fetchData();
+            void Promise.resolve().then(() => fetchData());
         }
-    }, [market]);
+    }, [fetchData, market]);
 
     const handleOptionSelect = (productId: string, groupName: string, value: number) => {
         setSelectedOptions(prev => ({
@@ -449,6 +448,12 @@ const ProductsGet = () => {
                         </GlassButton>
                     </div>
                 </GlassCard>
+
+                {loadError && (
+                    <div role="alert" className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+                        {loadError}
+                    </div>
+                )}
 
                 {loading ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -727,6 +732,7 @@ const ProductsGet = () => {
                                         setItemsLenght={setItemsLenght}
                                         defaultTitle={editOptions[index]?.title ?? ''}
                                         defaultItems={editOptions[index]?.options?.map(o => ({ key: o.key, value: o.value })) ?? []}
+                                        defaultSearchKeys={editOptions[index]?.searchKeys ?? []}
                                     />
                                 ))}
                             </div>
