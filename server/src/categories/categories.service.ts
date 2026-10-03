@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { CategoryOptionItem, Prisma } from '@prisma/client';
 import { uploadImageToImgBB } from '../common/helpers/image-upload.helper';
 import { PrismaService } from '../prisma/prisma.service';
 import { CategoryRepository } from './category.repository';
@@ -104,8 +104,8 @@ export class CategoriesService {
 
   private async withItemTrees<T extends { options: Array<{ id: string }> }>(categories: T[]) {
     const optionIds = categories.flatMap((category) => category.options.map((option) => option.id));
-    const items: Prisma.CategoryOptionItem[] = [];
-    let frontier: Prisma.CategoryOptionItem[] = optionIds.length
+    const items: CategoryOptionItem[] = [];
+    let frontier: CategoryOptionItem[] = optionIds.length
       ? await this.prisma.categoryOptionItem.findMany({
           where: { optionId: { in: optionIds }, parentId: null },
         })
