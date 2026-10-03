@@ -1,4 +1,5 @@
-import { Type } from 'class-transformer';
+import { Transform, TransformFnParams, Type } from 'class-transformer';
+import { PartialType } from '@nestjs/mapped-types';
 import {
   IsArray,
   IsNumber,
@@ -25,6 +26,24 @@ export class ProductOptionDto {
   @IsString()
   @MaxLength(255)
   title!: string;
+
+  @Transform(({ value }: TransformFnParams) => {
+    const input: unknown = value;
+    if (Array.isArray(input)) {
+      const array: unknown[] = input;
+      return array;
+    }
+    if (typeof input !== 'string') return input;
+    try {
+      const parsed: unknown = JSON.parse(input);
+      return parsed;
+    } catch {
+      return input;
+    }
+  })
+  @IsArray()
+  @IsString({ each: true })
+  searchKeys: string[] = [];
 
   @IsArray()
   @ValidateNested({ each: true })
@@ -66,6 +85,10 @@ export class CreateProductDto {
   categoryId?: string;
 
   @IsOptional()
+  @IsUUID()
+  categoryItemId?: string;
+
+  @IsOptional()
   @IsArray()
   gradient?: unknown[];
 
@@ -74,3 +97,5 @@ export class CreateProductDto {
   @Type(() => ProductOptionDto)
   options!: ProductOptionDto[];
 }
+
+export class UpdateProductDto extends PartialType(CreateProductDto) {}

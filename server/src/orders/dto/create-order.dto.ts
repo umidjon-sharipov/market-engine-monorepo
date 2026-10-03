@@ -1,4 +1,32 @@
-import { IsNotEmpty, IsString, IsOptional } from 'class-validator';
+import { Type } from 'class-transformer';
+import { Prisma, OrderStatus } from '@prisma/client';
+import {
+    IsArray,
+    IsEnum,
+    IsInt,
+    IsNotEmpty,
+    IsOptional,
+    IsString,
+    IsUUID,
+    Min,
+    ValidateNested,
+} from 'class-validator';
+
+export class OrderStockReservationDto {
+    @IsUUID()
+    productId!: string;
+
+    @IsUUID()
+    warehouseId!: string;
+
+    @IsUUID()
+    binId!: string;
+
+    @Type(() => Number)
+    @IsInt()
+    @Min(1)
+    quantity!: number;
+}
 
 export class CreateOrderDto {
     @IsNotEmpty({ message: "Ism (name) kiritilishi shart" })
@@ -18,9 +46,20 @@ export class CreateOrderDto {
     address!: string;
 
     @IsNotEmpty({ message: "Buyurtma elementlari (items) kiritilishi shart" })
-    items!: any;
+    items!: Prisma.InputJsonValue;
 
     @IsOptional()
-    @IsString({ message: "Status matn shaklida bo'lishi kerak" })
-    status?: string;
+    @IsEnum(OrderStatus)
+    status?: OrderStatus;
+
+    @IsOptional()
+    @IsArray()
+    @ValidateNested({ each: true })
+    @Type(() => OrderStockReservationDto)
+    stockReservations?: OrderStockReservationDto[];
+}
+
+export class UpdateOrderStatusDto {
+    @IsEnum(OrderStatus)
+    status!: OrderStatus;
 }

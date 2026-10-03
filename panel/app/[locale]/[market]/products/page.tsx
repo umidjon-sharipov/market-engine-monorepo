@@ -43,6 +43,7 @@ interface Product {
     quantity?: number;
     discountId: string;
     categoryId: string;
+    categoryItemId?: string | null;
     warehouseId: string;
     marketId: string;
     gradient: string[];
@@ -55,6 +56,7 @@ interface CategoryItem {
     id: string;
     title: string;
     image: string;
+    children: CategoryItem[];
 }
 
 interface CategoryOption {
@@ -92,6 +94,31 @@ const resolveCategoryLabel = (categoryId: string, categories: CategoryData[]): s
     const item = option?.items?.find(i => i.id === itemId);
 
     return [category.title, option?.title, item?.title].filter(Boolean).join(' › ');
+};
+
+const resolveStoredCategoryLabel = (
+    categoryId: string,
+    categoryItemId: string | null | undefined,
+    categories: CategoryData[],
+) => {
+    const category = categories.find((item) => item.id === categoryId);
+    if (!category) return categoryId || 'Tanlanmagan';
+    if (!categoryItemId) return category.title;
+
+    for (const option of category.options ?? []) {
+        const visit = (items: CategoryItem[], path: string[]): string[] | null => {
+            for (const item of items) {
+                const nextPath = [...path, item.title];
+                if (item.id === categoryItemId) return nextPath;
+                const found = visit(item.children ?? [], nextPath);
+                if (found) return found;
+            }
+            return null;
+        };
+        const itemPath = visit(option.items ?? [], []);
+        if (itemPath) return [category.title, option.title, ...itemPath].join(' › ');
+    }
+    return category.title;
 };
 
 const ProductsGet = () => {
@@ -292,7 +319,16 @@ const ProductsGet = () => {
             formData.set('quantity', quantity);
             formData.append('gradient', JSON.stringify(colors));
             formData.append('discountId', discountId);
-            formData.append('categoryId', categoryId);
+            const selectedCategoryParts = categoryId === 'NULL' ? [] : categoryId.split('|');
+            if (selectedCategoryParts.length >= 3) {
+                formData.set('categoryId', selectedCategoryParts[0]);
+                formData.set('categoryItemId', selectedCategoryParts[selectedCategoryParts.length - 1]);
+            } else if (categoryId !== 'NULL') {
+                formData.set('categoryId', categoryId);
+            } else {
+                formData.delete('categoryId');
+                formData.delete('categoryItemId');
+            }
             formData.append('marketId', market);
             formData.append('role', role);
             formData.append('warehouseId', warehouseId);
@@ -354,7 +390,22 @@ const ProductsGet = () => {
         setDescriptionRu(product.description?.ru || '');
         setPrice(product.price?.toString() || '');
         setQuantity(product.quantity?.toString() || '');
-        setCategoryId(product.categoryId || 'NULL');
+        const itemSelection = categories
+            .flatMap((category) => category.options.flatMap((option) => {
+                const findPath = (items: CategoryItem[], parents: string[]): string[] | null => {
+                    for (const item of items) {
+                        const path = [...parents, item.id];
+                        if (item.id === product.categoryItemId) return path;
+                        const nested = findPath(item.children ?? [], path);
+                        if (nested) return nested;
+                    }
+                    return null;
+                };
+                const ids = findPath(option.items ?? [], []);
+                return ids ? [[category.id, option.id, ...ids].join('|')] : [];
+            }))
+            .find(Boolean);
+        setCategoryId(itemSelection || product.categoryId || 'NULL');
         setDiscountId(product.discountId || 'NULL');
         setWarehouseId(product.warehouseId || 'NULL');
         setColors(product.gradient?.length ? product.gradient : ['#3b82f6', '#3b82f6']);
@@ -424,7 +475,7 @@ const ProductsGet = () => {
                             const discountedPrice = discountInfo
                                 ? Math.round(totalPrice * (1 - discountInfo.percentage / 100))
                                 : totalPrice;
-                            const categoryLabel = resolveCategoryLabel(item.categoryId, categories);
+                            const categoryLabel = resolveStoredCategoryLabel(item.categoryId, item.categoryItemId, categories);
 
                             const gradientStyle = item.gradient?.length > 0
                                 ? { background: `linear-gradient(45deg, ${item.gradient.join(', ')})` }

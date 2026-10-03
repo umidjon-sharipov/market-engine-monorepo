@@ -15,6 +15,7 @@ interface SubItem {
     id: string;
     title: string;
     image: string;
+    children: SubItem[];
 }
 
 interface CategoryOption {
@@ -73,6 +74,38 @@ function CategoriesContent({ setCategoryId, categoryId }: { setCategoryId: React
         };
     }, [fetchData]);
 
+    const renderItem = (
+        category: Categorie,
+        option: CategoryOption,
+        item: SubItem,
+        parentIds: string[] = [],
+    ): React.ReactNode => {
+        const itemIds = [...parentIds, item.id];
+        const selectable = !item.children?.length;
+        const selectedValue = [category.id, option.id, ...itemIds].join("|");
+        return (
+            <div key={item.id} className="space-y-1">
+                {selectable ? (
+                    <button
+                        type="button"
+                        onClick={() => setCategoryId(selectedValue)}
+                        className={`${categoryId === selectedValue ? "bg-sky-700/10 border-sky-500" : "bg-black/20 border-white/5"} flex w-full items-center gap-2 rounded-lg border p-1.5`}
+                    >
+                        {item.image ? (
+                            <div className="relative h-8 w-8 flex-shrink-0 overflow-hidden rounded-md">
+                                <Image src={item.image} alt={item.title} fill className="object-cover" />
+                            </div>
+                        ) : <span className="h-8 w-8" />}
+                        <span className="truncate text-xs text-neutral-200">{item.title}</span>
+                    </button>
+                ) : (
+                    <div className="rounded-lg bg-white/5 px-2 py-1 text-xs text-neutral-400">{item.title} — faqat ichki elementni tanlang</div>
+                )}
+                {item.children?.map((child) => renderItem(category, option, child, itemIds))}
+            </div>
+        );
+    };
+
     return (
         loading ? (
             <div className="text-center py-12 text-gray-500 text-lg">Yuklanmoqda...</div>
@@ -123,19 +156,8 @@ function CategoriesContent({ setCategoryId, categoryId }: { setCategoryId: React
                                         {cat.options?.map((opt, idx) => (
                                             <div key={idx} className="bg-white/5 p-3 rounded-xl border border-white/10 space-y-2">
                                                 <span className="font-bold text-xs text-sky-400">{opt.title}</span>
-                                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                                                    {opt.items?.map((item, iIdx) => (
-                                                        <button onClick={() => setCategoryId(`${originalDisc.id}|${opt.id}|${item.id}`)} key={iIdx} className={`${categoryId === `${originalDisc.id}|${opt.id}|${item.id}` ? 'bg-sky-700/10 border border-sky-800/30' : 'bg-black/20 border border-white/5'} flex items-center gap-2 p-1.5 rounded-lg`}>
-                                                            {item.image ? (
-                                                                <div className="relative w-8 h-8 rounded-md overflow-hidden bg-neutral-800 flex-shrink-0">
-                                                                    <Image src={item.image} alt={item.title} fill className="object-cover" />
-                                                                </div>
-                                                            ) : (
-                                                                <div className="w-8 h-8 rounded-md bg-white/10 flex items-center justify-center text-[10px]">Rasm yo&apos;q</div>
-                                                            )}
-                                                            <span className="text-xs truncate text-neutral-200">{item.title}</span>
-                                                        </button>
-                                                    ))}
+                                                <div className="space-y-2">
+                                                    {opt.items?.map((item) => renderItem(originalDisc, opt, item))}
                                                 </div>
                                             </div>
                                         ))}

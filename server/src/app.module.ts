@@ -27,6 +27,7 @@ import { GroupsModule } from './groups/groups.module';
 import { MessagesModule } from './messages/messages.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { StockMovementsModule } from './stock-movements/stock-movements.module';
 
 const getPublicPath = () => {
   const paths = [
@@ -74,6 +75,7 @@ const getPublicPath = () => {
     GroupsModule,
     MessagesModule,
     DashboardModule,
+    StockMovementsModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],
