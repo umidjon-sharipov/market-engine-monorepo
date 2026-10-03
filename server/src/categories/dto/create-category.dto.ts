@@ -1,12 +1,7 @@
-import { IsString, IsNotEmpty, IsArray, ValidateNested, IsOptional, IsUUID, MaxLength } from 'class-validator';
+import { IsString, IsNotEmpty, IsArray, ValidateNested, IsOptional, IsUUID, MaxLength, IsBoolean } from 'class-validator';
 import { Type } from 'class-transformer';
 
-export class SubItemDto {
-    @IsString()
-    @IsOptional()
-    @IsUUID()
-    id?: string;
-
+export class CategoryOptionItemDto {
     @IsString()
     @IsNotEmpty()
     @MaxLength(255)
@@ -15,23 +10,32 @@ export class SubItemDto {
     @IsString()
     @IsOptional()
     image?: string;
+
+    @IsBoolean()
+    @IsOptional()
+    hidden?: boolean;
+
+    @IsArray()
+    @ValidateNested({ each: true })
+    @Type(() => CategoryOptionItemDto)
+    @IsOptional()
+    children?: CategoryOptionItemDto[];
 }
 
 export class CategoryOptionDto {
-    @IsString()
-    @IsOptional()
-    @IsUUID()
-    id?: string;
-
     @IsString()
     @IsNotEmpty()
     @MaxLength(255)
     title!: string;
 
+    @IsBoolean()
+    @IsOptional()
+    hidden?: boolean;
+
     @IsArray()
     @ValidateNested({ each: true })
-    @Type(() => SubItemDto)
-    items!: SubItemDto[];
+    @Type(() => CategoryOptionItemDto)
+    items!: CategoryOptionItemDto[];
 }
 
 export class CreateCategoryDto {
@@ -39,6 +43,10 @@ export class CreateCategoryDto {
     @IsNotEmpty()
     @MaxLength(255)
     title!: string;
+
+    @IsBoolean()
+    @IsOptional()
+    hidden?: boolean;
 
     @IsString()
     @IsNotEmpty()
@@ -56,6 +64,10 @@ export class UpdateCategoryDto {
     @IsOptional()
     @MaxLength(255)
     title?: string;
+
+    @IsBoolean()
+    @IsOptional()
+    hidden?: boolean;
 
     @IsArray()
     @ValidateNested({ each: true })

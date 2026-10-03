@@ -369,6 +369,7 @@ model Category {
   id        String   @id @default(uuid()) @db.Uuid
   marketId  String   @db.Uuid
   title     String   @db.VarChar(255)
+  hidden    Boolean  @default(false)
   createdAt DateTime @default(now()) @db.Timestamptz(6)
 
   market   Market           @relation(fields: [marketId], references: [id], onDelete: Cascade)
@@ -384,6 +385,7 @@ model CategoryOption {
   id         String   @id @default(uuid()) @db.Uuid
   categoryId String   @db.Uuid
   title      String   @db.VarChar(255)
+  hidden     Boolean  @default(false)
   createdAt  DateTime @default(now()) @db.Timestamptz(6)
 
   category Category             @relation(fields: [categoryId], references: [id], onDelete: Cascade)
@@ -395,13 +397,18 @@ model CategoryOption {
 
 model CategoryOptionItem {
   id       String  @id @default(uuid()) @db.Uuid
-  optionId String  @db.Uuid
+  optionId String? @db.Uuid
+  parentId String? @db.Uuid
   title    String  @db.VarChar(255)
   image    String? @db.Text
+  hidden   Boolean @default(false)
 
-  option CategoryOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  option   CategoryOption?      @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  parent   CategoryOptionItem?  @relation("CategoryItemTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children CategoryOptionItem[] @relation("CategoryItemTree")
 
   @@index([optionId])
+  @@index([parentId])
   @@map("CategoryOptionItems")
 }
 

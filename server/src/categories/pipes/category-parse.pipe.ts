@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, PipeTransform } from '@nestjs/common';
-import type { CreateCategoryDto, CategoryOptionDto } from '../dto/create-category.dto';
+import type { CreateCategoryDto, CategoryOptionDto, CategoryOptionItemDto } from '../dto/create-category.dto';
 
 @Injectable()
 export class CategoryParsePipe implements PipeTransform {
@@ -9,6 +9,7 @@ export class CategoryParsePipe implements PipeTransform {
     }
 
     const body = { ...(value as Record<string, unknown>) };
+    if (body.hidden !== undefined) body.hidden = this.parseBoolean(body.hidden, 'hidden');
     if (body.options !== undefined) body.options = this.parseOptions(body.options);
     return body as unknown as CreateCategoryDto;
   }
@@ -28,20 +29,37 @@ export class CategoryParsePipe implements PipeTransform {
         throw new BadRequestException('Category option formati noto\'g\'ri.');
       }
       const source = option as Record<string, unknown>;
-      const items = Array.isArray(source.items) ? source.items : [];
+      if (!Array.isArray(source.items)) throw new BadRequestException('Category option items array bo\'lishi kerak.');
       return {
         title: String(source.title ?? '').trim(),
-        items: items.map((item) => {
-          if (!item || typeof item !== 'object' || Array.isArray(item)) {
-            throw new BadRequestException('Category option item formati noto\'g\'ri.');
-          }
-          const sourceItem = item as Record<string, unknown>;
-          return {
-            title: String(sourceItem.title ?? '').trim(),
-            image: sourceItem.image ? String(sourceItem.image) : undefined,
-          };
-        }),
+        hidden: this.parseBoolean(source.hidden, 'option.hidden'),
+        items: source.items.map((item) => this.parseItem(item)),
       };
     });
+  }
+
+  private parseItem(value: unknown): CategoryOptionItemDto {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      throw new BadRequestException('Category option item formati noto\'g\'ri.');
+    }
+    const item = value as Record<string, unknown>;
+    const children = item.children ?? [];
+    if (!Array.isArray(children)) {
+      throw new BadRequestException('Category item children array bo\'lishi kerak.');
+    }
+
+    return {
+      title: String(item.title ?? '').trim(),
+      image: item.image ? String(item.image) : undefined,
+      hidden: this.parseBoolean(item.hidden, 'item.hidden'),
+      children: children.map((child) => this.parseItem(child)),
+    };
+  }
+
+  private parseBoolean(value: unknown, field: string): boolean | undefined {
+    if (value === undefined || value === null || value === '') return undefined;
+    if (value === true || value === 'true') return true;
+    if (value === false || value === 'false') return false;
+    throw new BadRequestException(`${field} boolean bo'lishi kerak.`);
   }
 }

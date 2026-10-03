@@ -899,9 +899,9 @@ const Header = () => {
                         start={{ x: 0, y: 0 }}
                         end={{ x: 0, y: 1 }}
                         style={{
-                            bottom: 0,
+                            top: 0,
                             left: 0,
-                            height: 100,
+                            height: '100%',
                             flexDirection: 'row',
                             justifyContent: 'center',
                             alignItems: 'center',

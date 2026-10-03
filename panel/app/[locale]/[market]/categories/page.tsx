@@ -1,133 +1,210 @@
 "use client";
 
 import Image from "next/image";
-import React, { useState, useEffect, Suspense } from "react";
+import React, { useEffect, useState } from "react";
 import { useThemeStore } from "@/app/_store/useThemeStore";
 import GlassTable from "@/components/admin/GlassTable";
-import GlassModal from "@/components/admin/GlassModal";
-import GlassButton from "@/components/admin/GlassButton";
-import { useTokenStore } from "@/app/_store/useTokenStore";
-import { useNotification } from "@/components/Notification";
-import { useParams } from "next/navigation";
 import GlassInput from "@/components/admin/GlassInput";
-import { Plus, Trash2, Edit3, Layers, Upload, ChevronDown } from "lucide-react";
+import GlassButton from "@/components/admin/GlassButton";
+import GlassModal from "@/components/admin/GlassModal";
+import { useNotification } from "@/components/Notification";
+import { useTokenStore } from "@/app/_store/useTokenStore";
+import { Trash2, Edit3, Plus, Layers, Upload, ChevronDown } from "lucide-react";
+import { useParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils/cn";
-import { API_URL } from '@/lib/api';
+import { API_URL } from "@/lib/api";
 
-interface SubItem {
+interface CategoryItem {
+    id?: string;
     title: string;
     image: string | File;
+    hidden: boolean;
+    children: CategoryItem[];
 }
 
 interface CategoryOption {
+    id?: string;
     title: string;
-    items: SubItem[];
+    hidden: boolean;
+    items: CategoryItem[];
 }
 
-interface Categorie {
+interface Category {
     id: string;
     title: string;
+    hidden: boolean;
     marketId?: string;
+    marketid?: string;
     options: CategoryOption[];
     createdAt: string;
     [key: string]: unknown;
 }
 
+const emptyItem = (): CategoryItem => ({ title: "", image: "", hidden: false, children: [] });
+
+function HiddenSwitch({ checked, onChange }: { checked: boolean; onChange: (checked: boolean) => void }) {
+    return (
+        <label className="inline-flex items-center gap-2 text-xs text-neutral-400 cursor-pointer whitespace-nowrap">
+            <span>Hidden</span>
+            <input
+                type="checkbox"
+                role="switch"
+                checked={ checked }
+                onChange={ (event) => onChange(event.target.checked) }
+                className="peer sr-only"
+            />
+            <span className="relative h-5 w-9 rounded-full bg-neutral-600 transition peer-checked:bg-sky-500 after:absolute after:left-0.5 after:top-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:transition peer-checked:after:translate-x-4" />
+        </label>
+    );
+}
+
+function ItemEditor({
+    item,
+    onChange,
+    onRemove,
+    fileKey,
+}: {
+    item: CategoryItem;
+    onChange: (item: CategoryItem) => void;
+    onRemove: () => void;
+    fileKey: string;
+}) {
+    const imageSrc = item.image instanceof File ? URL.createObjectURL(item.image) : item.image;
+    const updateChild = (index: number, child: CategoryItem) => {
+        onChange({ ...item, children: item.children.map((entry, childIndex) => childIndex === index ? child : entry) });
+    };
+
+    return (
+        <div className="space-y-3 border-l-2 border-sky-500/30 pl-3">
+            <div className="flex flex-wrap items-center gap-2">
+                <input
+                    placeholder="Item nomi..."
+                    value={ item.title }
+                    onChange={ (event) => onChange({ ...item, title: event.target.value }) }
+                    className="min-w-[150px] flex-1 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-sky-500"
+                />
+                <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-neutral-300">
+                    <span>{ item.image ? "Rasm yuklandi ✓" : "Rasm yuklash" }</span>
+                    <Upload className="h-3.5 w-3.5 text-sky-400" />
+                    <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={ (event) => {
+                            const file = event.target.files?.[0];
+                            if (file) onChange({ ...item, image: file });
+                        } }
+                    />
+                </label>
+                { imageSrc && (
+                    <div className="relative h-8 w-8 flex-shrink-0 overflow-hidden rounded-lg">
+                        <Image src={ imageSrc } alt={ item.title || "Item preview" } fill className="object-cover" unoptimized />
+                    </div>
+                ) }
+                <HiddenSwitch checked={ item.hidden } onChange={ (hidden) => onChange({ ...item, hidden }) } />
+                <button type="button" onClick={ onRemove } className="rounded-lg bg-red-500/10 p-2 text-red-400 hover:bg-red-500/20" aria-label="Itemni o'chirish">
+                    <Trash2 className="h-4 w-4" />
+                </button>
+            </div>
+            <div className="ml-2 space-y-3">
+                { item.children.map((child, index) => (
+                    <ItemEditor
+                        key={ index }
+                        item={ child }
+                        fileKey={ `${fileKey}_${index}` }
+                        onChange={ (updated) => updateChild(index, updated) }
+                        onRemove={ () => onChange({ ...item, children: item.children.filter((_, childIndex) => childIndex !== index) }) }
+                    />
+                )) }
+                <button
+                    type="button"
+                    onClick={ () => onChange({ ...item, children: [...item.children, emptyItem()] }) }
+                    className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-sky-400 hover:bg-sky-500/10"
+                >
+                    <Plus className="h-3.5 w-3.5" /> Ichki item qo'shish
+                </button>
+            </div>
+        </div>
+    );
+}
+
+function CategoryItemPreview({ item }: { item: CategoryItem }) {
+    return (
+        <div className="ml-3 border-l border-white/10 pl-3">
+            <div className="flex items-center gap-2 py-1">
+                { item.image && typeof item.image === "string" ? (
+                    <div className="relative h-7 w-7 flex-shrink-0 overflow-hidden rounded-md">
+                        <Image src={ item.image } alt={ item.title } fill className="object-cover" />
+                    </div>
+                ) : null }
+                <span className="truncate text-xs text-neutral-200">{ item.title }</span>
+                { item.hidden && <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-400">Hidden</span> }
+            </div>
+            { item.children.map((child) => <CategoryItemPreview key={ child.id ?? child.title } item={ child } />) }
+        </div>
+    );
+}
+
 function CategoriesContent() {
     const notify = useNotification();
-    const [loading, setLoading] = useState<boolean>(true);
+    const [loading, setLoading] = useState(true);
     const [isOpen, setIsOpen] = useState(false);
     const [editId, setEditId] = useState<string | null>(null);
     const [expandedRow, setExpandedRow] = useState<string | null>(null);
     const [deleteModal, setDeleteModal] = useState<string | null>(null);
-
-    const {getActiveToken} = useTokenStore((state) => state);
-    const token = getActiveToken()
+    const { getActiveToken } = useTokenStore((state) => state);
+    const token = getActiveToken();
     const dark = useThemeStore((state) => state.theme) === "dark";
     const params = useParams();
     const market = (params?.market as string) || "";
-    const [categories, setCategories] = useState<Categorie[]>([]);
-
+    const [categories, setCategories] = useState<Category[]>([]);
     const [categoryTitle, setCategoryTitle] = useState("");
-    const [optionsList, setOptionsList] = useState<CategoryOption[]>([
-        { title: "", items: [{ title: "", image: "" }] },
-    ]);
+    const [categoryHidden, setCategoryHidden] = useState(false);
+    const [optionsList, setOptionsList] = useState<CategoryOption[]>([]);
 
     const fetchData = async () => {
         try {
             setLoading(true);
             const res = await fetch(`${API_URL}/categories`);
             const req = await res.json();
-
-            if (res.ok && Array.isArray(req)) {
-                const filteredData = req.filter((item: Categorie) => {
-                    const mId = item.marketId || item.marketid;
-                    return mId === market;
-                });
-                setCategories(filteredData);
+            if (!res.ok) throw new Error(req.message || "Kategoriyalarni yuklab bo'lmadi");
+            if (Array.isArray(req)) {
+                setCategories(req.filter((item: Category) => (item.marketId || item.marketid) === market));
             }
-        } catch (err) {
-            console.error("Xatolik:", err);
+        } catch (error) {
+            console.error("Kategoriya yuklashda xatolik:", error);
+            notify.show("Kategoriyalarni yuklab bo'lmadi", "error", dark ? "dark" : "light");
         } finally {
             setLoading(false);
         }
     };
 
     useEffect(() => {
-        fetchData();
+        void fetchData();
     }, [market]);
 
-    const handleAddOptionBlock = () => {
-        setOptionsList([...optionsList, { title: "", items: [{ title: "", image: "" }] }]);
+    const resetForm = () => {
+        setCategoryTitle("");
+        setCategoryHidden(false);
+        setOptionsList([]);
     };
 
-    const handleRemoveOptionBlock = (index: number) => {
-        setOptionsList(optionsList.filter((_, i) => i !== index));
+    const mapItemPayload = (item: CategoryItem, fileKey: string, formData: FormData): Omit<CategoryItem, "id" | "image"> & { image: string } => {
+        const image = item.image instanceof File ? "" : item.image;
+        if (item.image instanceof File) formData.append(`file_${fileKey}`, item.image);
+        return {
+            title: item.title,
+            image,
+            hidden: item.hidden,
+            children: item.children
+                .filter((child) => child.title.trim())
+                .map((child, index) => mapItemPayload(child, `${fileKey}_${index}`, formData)),
+        };
     };
 
-    const handleItemChange = (optIndex: number, itemIndex: number, field: 'title' | 'image', value: string | File) => {
-        const updated = [...optionsList];
-        updated[optIndex].items[itemIndex][field] = value as any;
-
-        const isLastItem = itemIndex === updated[optIndex].items.length - 1;
-        const hasTitle = updated[optIndex].items[itemIndex].title.trim() !== '';
-        const hasImage = updated[optIndex].items[itemIndex].image !== "";
-
-        if (isLastItem && (hasTitle || hasImage)) {
-            updated[optIndex].items.push({ title: "", image: "" });
-        }
-
-        setOptionsList(updated);
-    };
-
-    const handleRemoveSubItem = (optIndex: number, itemIndex: number) => {
-        const updated = [...optionsList];
-        updated[optIndex].items = updated[optIndex].items.filter((_, i) => i !== itemIndex);
-        if (updated[optIndex].items.length === 0) {
-            updated[optIndex].items.push({ title: "", image: "" });
-        }
-        setOptionsList(updated);
-    };
-
-    const handleImageUpload = (optIndex: number, itemIndex: number, e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file) {
-            handleItemChange(optIndex, itemIndex, 'image', file);
-        }
-    };
-
-    const getImageSrc = (image: string | File) => {
-        if (!image) return "";
-        if (typeof image === "object") {
-            return URL.createObjectURL(image);
-        }
-        return image;
-    };
-
-    const handleSubmitForm = async (e: React.FormEvent<HTMLFormElement>) => {
-        e.preventDefault();
-
+    const handleSubmitForm = async (event: React.FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
         if (!market) {
             notify.show("Marketni tanlang!", "error", dark ? "dark" : "light");
             return;
@@ -135,58 +212,40 @@ function CategoriesContent() {
 
         const formData = new FormData();
         formData.append("title", categoryTitle);
-        if (market) {
-            formData.append("marketId", market);
-        }
+        formData.append("marketId", market);
+        formData.append("hidden", String(categoryHidden));
 
-        const cleanedOptions = optionsList.map(opt => ({
-            ...opt,
-            items: opt.items.filter(item => item.title.trim() !== "" || item.image !== "")
-        })).filter(opt => opt.title.trim() !== "" && opt.items.length > 0);
-
-        const optionsPayload = cleanedOptions.map((opt, optIndex) => ({
-            title: opt.title,
-            items: opt.items.map((item, itemIndex) => {
-                if (item.image instanceof File) {
-                    formData.append(`file_${optIndex}_${itemIndex}`, item.image);
-                    return { title: item.title, image: "" };
-                }
-                return { title: item.title, image: item.image };
-            })
-        }));
-
+        const optionsPayload = optionsList
+            .filter((option) => option.title.trim())
+            .map((option, optionIndex) => ({
+                title: option.title.trim(),
+                hidden: option.hidden,
+                items: option.items
+                    .filter((item) => item.title.trim())
+                    .map((item, itemIndex) => mapItemPayload(item, `${optionIndex}_${itemIndex}`, formData)),
+            }));
         formData.append("options", JSON.stringify(optionsPayload));
 
         try {
-            const url = editId
-                ? `${API_URL}/categories/${editId}`
-                : `${API_URL}/categories`;
-
-            const method = editId ? "PATCH" : "POST";
-
-            const res = await fetch(url, {
-                method,
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                },
+            const res = await fetch(editId ? `${API_URL}/categories/${editId}` : `${API_URL}/categories`, {
+                method: editId ? "PATCH" : "POST",
+                headers: { Authorization: `Bearer ${token}` },
                 body: formData,
             });
-
             const req = await res.json();
-
-            if (res.ok) {
-                setIsOpen(false);
-                setEditId(null);
-                notify.show(editId ? "Kategoriya yangilandi" : "Yangi kategoriya qo'shildi", "success", dark ? "dark" : "light");
-                setCategoryTitle("");
-                setOptionsList([{ title: "", items: [{ title: "", image: "" }] }]);
-                fetchData();
-            } else {
-                notify.show(req.message || "Xatolik yuz berdi", "error", dark ? "dark" : "light");
+            if (!res.ok) {
+                notify.show(Array.isArray(req.message) ? req.message.join(", ") : req.message || "Xatolik yuz berdi", "error", dark ? "dark" : "light");
+                return;
             }
-        } catch (err) {
+
+            setIsOpen(false);
+            setEditId(null);
+            resetForm();
+            notify.show(editId ? "Kategoriya yangilandi" : "Yangi kategoriya qo'shildi", "success", dark ? "dark" : "light");
+            await fetchData();
+        } catch (error) {
+            console.error("Kategoriya saqlashda xatolik:", error);
             notify.show("Serverga ulanishda xatolik", "error", dark ? "dark" : "light");
-            console.log(err);
         }
     };
 
@@ -194,337 +253,156 @@ function CategoriesContent() {
         try {
             const res = await fetch(`${API_URL}/categories/${id}`, {
                 method: "DELETE",
-                headers: { Authorization: `Bearer ${token}` }
+                headers: { Authorization: `Bearer ${token}` },
             });
-            if (res.ok) {
-                notify.show("Kategoriya o'chirildi", "success", dark ? "dark" : "light");
-                fetchData();
-            } else {
-                notify.show("O'chirishda xatolik", "error", dark ? "dark" : "light");
-            }
-        } catch (err) {
-            console.log(err);
+            if (!res.ok) throw new Error("Kategoriyani o'chirib bo'lmadi");
+            setDeleteModal(null);
+            notify.show("Kategoriya o'chirildi", "success", dark ? "dark" : "light");
+            await fetchData();
+        } catch (error) {
+            console.error("Kategoriya o'chirishda xatolik:", error);
+            notify.show("O'chirishda xatolik", "error", dark ? "dark" : "light");
         }
     };
 
-    const handleOpenEdit = (cat: Categorie) => {
-        setEditId(cat.id);
-        setCategoryTitle(cat.title);
-        const formattedOptions = cat.options.map(opt => ({
-            ...opt,
-            items: [...opt.items, { title: "", image: "" }]
-        }));
-        setOptionsList(formattedOptions);
+    const openEdit = (category: Category) => {
+        setEditId(category.id);
+        setCategoryTitle(category.title);
+        setCategoryHidden(category.hidden ?? false);
+        setOptionsList(category.options.map((option) => ({
+            ...option,
+            hidden: option.hidden ?? false,
+            items: option.items.map((item) => normalizeItem(item)),
+        })));
         setIsOpen(true);
     };
 
-    const handleOpenCreate = () => {
+    const normalizeItem = (item: CategoryItem): CategoryItem => ({
+        ...item,
+        hidden: item.hidden ?? false,
+        children: (item.children ?? []).map(normalizeItem),
+    });
+
+    const openCreate = () => {
         setEditId(null);
-        setCategoryTitle("");
-        setOptionsList([{ title: "", items: [{ title: "", image: "" }] }]);
+        resetForm();
         setIsOpen(true);
     };
 
     return (
-        <div className="w-full max-w-[1500px] mx-auto p-8">
-            <div className="mb-10 border-l-4 border-sky-500 pl-6 flex justify-between items-center">
+        <div className="mx-auto w-full max-w-[1500px] p-8">
+            <div className="mb-10 flex items-center justify-between border-l-4 border-sky-500 pl-6">
                 <div>
                     <h1 className="text-4xl font-extrabold text-gray-800 dark:text-white">Categories</h1>
-                    <p className="text-sm text-neutral-400 mt-1">Do'kon kategoriyalari va ularning filter optionlari</p>
+                    <p className="mt-1 text-sm text-neutral-400">Do'kon kategoriyalari va ularning ichki elementlari</p>
                 </div>
-
-                <GlassButton onClick={handleOpenCreate}>
-                    <Plus className="w-4 h-4 mr-2 inline" /> Create Category
-                </GlassButton>
+                <GlassButton onClick={ openCreate }><Plus className="mr-2 inline h-4 w-4" /> Create Category</GlassButton>
             </div>
 
-            {loading ? (
-                <div className="text-center py-12 text-gray-500 text-lg">Loading...</div>
+            { loading ? (
+                <div className="py-12 text-center text-lg text-gray-500">Loading...</div>
             ) : categories.length === 0 ? (
-                <div className="text-center py-12 text-neutral-400 text-base bg-white/5 rounded-2xl border border-white/10">
+                <div className="rounded-2xl border border-white/10 bg-white/5 py-12 text-center text-base text-neutral-400">
                     Bu market uchun kategoriyalar topilmadi.
                 </div>
             ) : (
                 <GlassTable
-                    columns={[
+                    columns={ [
                         { key: "title", label: "Kategoriya Nomi" },
                         { key: "createdAt", label: "Yaratilgan Vaqti" },
-                    ]}
-                    data={categories.map(cat => ({
-                        ...cat,
-                        createdAt: new Date(cat.createdAt).toLocaleString()
-                    })) as Record<string, unknown>[]}
-                    actions={(row) => {
-                        const cat = row as unknown as Categorie;
-                        const isExpanded = expandedRow === cat.id;
-
+                    ] }
+                    data={ categories.map((category) => ({ ...category, createdAt: new Date(category.createdAt).toLocaleString() })) as Record<string, unknown>[] }
+                    actions={ (row) => {
+                        const category = row as unknown as Category;
+                        const expanded = expandedRow === category.id;
                         return (
-                            <div className="flex flex-col gap-2 w-full">
+                            <div className="flex w-full flex-col gap-2">
                                 <div className="flex items-center justify-between gap-4">
                                     <button
-                                        onClick={() => setExpandedRow(isExpanded ? null : cat.id)}
-                                        className={cn(
-                                            "px-3 py-1.5 rounded-xl text-xs flex items-center gap-2 border transition",
-                                            dark ? "bg-white/5 border-white/10 hover:bg-white/10 text-sky-400" : "bg-sky-50 border-sky-200 text-sky-600"
-                                        )}
+                                        onClick={ () => setExpandedRow(expanded ? null : category.id) }
+                                        className={ cn("flex items-center gap-2 rounded-xl border px-3 py-1.5 text-xs transition", dark ? "border-white/10 bg-white/5 text-sky-400 hover:bg-white/10" : "border-sky-200 bg-sky-50 text-sky-600") }
                                     >
-                                        <Layers className="w-3.5 h-3.5" />
-                                        <span>{cat.options?.length || 0} ta Option</span>
-                                        <ChevronDown className={cn("w-3.5 h-3.5 transition-transform", isExpanded && "rotate-180")} />
+                                        <Layers className="h-3.5 w-3.5" />
+                                        <span>{ category.options?.length || 0 } ta Option</span>
+                                        { category.hidden && <span className="text-amber-400">Hidden</span> }
+                                        <ChevronDown className={ cn("h-3.5 w-3.5 transition-transform", expanded && "rotate-180") } />
                                     </button>
-
                                     <div className="flex items-center gap-2">
-                                        <button
-                                            onClick={() => handleOpenEdit(cat)}
-                                            className="p-2 bg-sky-500/10 text-sky-400 rounded-xl hover:bg-sky-500/20 transition"
-                                            title="Edit"
-                                        >
-                                            <Edit3 className="w-4 h-4" />
-                                        </button>
-                                        <button
-                                            onClick={() => setDeleteModal(cat.id)}
-                                            className="p-2 bg-red-500/10 text-red-400 rounded-xl hover:bg-red-500/20 transition"
-                                            title="Delete"
-                                        >
-                                            <Trash2 className="w-4 h-4" />
-                                        </button>
+                                        <button onClick={ () => openEdit(category) } className="rounded-xl bg-sky-500/10 p-2 text-sky-400 hover:bg-sky-500/20" title="Edit"><Edit3 className="h-4 w-4" /></button>
+                                        <button onClick={ () => setDeleteModal(category.id) } className="rounded-xl bg-red-500/10 p-2 text-red-400 hover:bg-red-500/20" title="Delete"><Trash2 className="h-4 w-4" /></button>
                                     </div>
                                 </div>
-
                                 <AnimatePresence>
-                                    {isExpanded && (
-                                        <motion.div
-                                            initial={{ opacity: 0, height: 0 }}
-                                            animate={{ opacity: 1, height: "auto" }}
-                                            exit={{ opacity: 0, height: 0 }}
-                                            className="overflow-hidden space-y-2 pt-2 border-t border-white/10"
-                                        >
-                                            {cat.options?.map((opt, idx) => (
-                                                <div key={idx} className="bg-white/5 p-3 rounded-xl border border-white/10 space-y-2">
-                                                    <span className="font-bold text-xs text-sky-400">{opt.title}</span>
-                                                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                                                        {opt.items?.map((item, iIdx) => (
-                                                            <div key={iIdx} className="flex items-center gap-2 bg-black/20 p-1.5 rounded-lg border border-white/5">
-                                                                {item.image ? (
-                                                                    <div className="relative w-8 h-8 rounded-md overflow-hidden bg-neutral-800 flex-shrink-0">
-                                                                        <Image src={typeof item.image === 'string' ? item.image : URL.createObjectURL(item.image)} alt={item.title} fill className="object-cover" />
-                                                                    </div>
-                                                                ) : (
-                                                                    <div className="w-8 h-8 rounded-md bg-white/10 flex items-center justify-center text-[10px]">Rasm yo'q</div>
-                                                                )}
-                                                                <span className="text-xs truncate text-neutral-200">{item.title}</span>
-                                                            </div>
-                                                        ))}
+                                    { expanded && (
+                                        <motion.div initial={ { opacity: 0, height: 0 } } animate={ { opacity: 1, height: "auto" } } exit={ { opacity: 0, height: 0 } } className="space-y-2 overflow-hidden border-t border-white/10 pt-2">
+                                            { category.options?.map((option) => (
+                                                <div key={ option.id ?? option.title } className="space-y-2 rounded-xl border border-white/10 bg-white/5 p-3">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-xs font-bold text-sky-400">{ option.title }</span>
+                                                        { option.hidden && <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-400">Hidden</span> }
                                                     </div>
+                                                    { option.items?.map((item) => <CategoryItemPreview key={ item.id ?? item.title } item={ item } />) }
                                                 </div>
-                                            ))}
+                                            )) }
                                         </motion.div>
-                                    )}
+                                    ) }
                                 </AnimatePresence>
                             </div>
                         );
-                    }}
+                    } }
                 />
-            )}
+            ) }
 
-            <GlassModal size="2xl" title={editId ? "Kategoriyani Tahrirlash" : "Create Category with Options"} open={isOpen} onClose={() => setIsOpen(false)}>
-                <form className="space-y-4 max-h-[75vh] w-full px-1 pb-20" onSubmit={handleSubmitForm}>
-                    <GlassInput
-                        label="Kategoriya Nomi"
-                        placeholder="Masalan: Elektronika, Kiyim-kechak..."
-                        value={categoryTitle}
-                        onChange={(e) => setCategoryTitle(e.target.value)}
-                        required
-                    />
+            <GlassModal size="2xl" title={ editId ? "Kategoriyani Tahrirlash" : "Create Category" } open={ isOpen } onClose={ () => setIsOpen(false) }>
+                <form className="relative max-h-[75vh] w-full space-y-4 overflow-y-auto px-1 pb-20" onSubmit={ handleSubmitForm }>
+                    <GlassInput label="Kategoriya Nomi" placeholder="Masalan: Elektronika, Kiyim-kechak..." value={ categoryTitle } onChange={ (event) => setCategoryTitle(event.target.value) } required />
+                    <HiddenSwitch checked={ categoryHidden } onChange={ setCategoryHidden } />
                     <div className="space-y-4">
                         <div className="flex items-center justify-between">
-                            <label className="text-sm font-semibold text-sky-400 flex items-center gap-2">
-                                <Layers className="w-4 h-4" /> Options & SubItems
-                            </label>
+                            <label className="flex items-center gap-2 text-sm font-semibold text-sky-400"><Layers className="h-4 w-4" /> Options & Items</label>
+                            <button type="button" onClick={ () => setOptionsList([...optionsList, { title: "", hidden: false, items: [] }]) } className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-sky-400 hover:bg-sky-500/10"><Plus className="h-3.5 w-3.5" /> Option</button>
                         </div>
-
-                        {optionsList.map((opt, optIndex) => (
-                            <div
-                                key={optIndex}
-                                className="p-4 rounded-2xl border border-white/10 bg-white/5 space-y-4 relative"
-                            >
-                                <div className="flex items-center gap-3">
-                                    <GlassInput
+                        { optionsList.map((option, optionIndex) => (
+                            <div key={ optionIndex } className="space-y-4 rounded-2xl border border-white/10 bg-white/5 p-4">
+                                <div className="flex flex-wrap items-center gap-3">
+                                    <input
                                         placeholder="Option nomi..."
-                                        value={opt.title}
-                                        onChange={(e) => {
-                                            const value = e.target.value;
-                                            let newOptions = [...optionsList];
-
-                                            if (value.trim() === "" && newOptions.length > 1) {
-                                                newOptions = newOptions.filter((_, i) => i !== optIndex);
-                                            } else {
-                                                newOptions = newOptions.map((item, i) => {
-                                                    if (i === optIndex) {
-                                                        return { ...item, title: value };
-                                                    }
-                                                    return item;
-                                                });
-
-                                                const lastOpt = newOptions[newOptions.length - 1];
-                                                if (optIndex === newOptions.length - 1 && value.trim() !== "" && lastOpt.title.trim() !== "") {
-                                                    newOptions.push({ title: "", items: [{ title: "", image: "" }] });
-                                                }
-                                            }
-
-                                            setOptionsList(newOptions.length > 0 ? newOptions : [{ title: "", items: [{ title: "", image: "" }] }]);
-                                        }}
+                                        value={ option.title }
+                                        onChange={ (event) => setOptionsList(optionsList.map((entry, index) => index === optionIndex ? { ...entry, title: event.target.value } : entry)) }
+                                        className="min-w-[150px] flex-1 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-sky-500"
                                     />
-                                    
-                                    {optionsList.length > 1 && (
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                const newOptions = optionsList.filter((_, i) => i !== optIndex);
-                                                setOptionsList(newOptions.length > 0 ? newOptions : [{ title: "", items: [{ title: "", image: "" }] }]);
-                                            }}
-                                            className="p-3 bg-red-500/20 text-red-400 rounded-2xl hover:bg-red-500/30 transition flex-shrink-0"
-                                        >
-                                            <Trash2 className="w-5 h-5" />
-                                        </button>
-                                    )}
+                                    <HiddenSwitch checked={ option.hidden } onChange={ (hidden) => setOptionsList(optionsList.map((entry, index) => index === optionIndex ? { ...entry, hidden } : entry)) } />
+                                    <button type="button" onClick={ () => setOptionsList(optionsList.filter((_, index) => index !== optionIndex)) } className="rounded-xl bg-red-500/10 p-2 text-red-400 hover:bg-red-500/20" aria-label="Optionni o'chirish"><Trash2 className="h-4 w-4" /></button>
                                 </div>
-
-                                <div className="pl-4 border-l-2 border-sky-500/30 space-y-3">
-                                    <span className="text-xs text-neutral-400 font-medium block">Ichki elementlar</span>
-
-                                    {opt.items.map((subItem, subIndex) => (
-                                        <div key={subIndex} className="flex items-center gap-2">
-                                            <div className="relative flex-1">
-                                                <input
-                                                    placeholder="Item nomi..."
-                                                    value={subItem.title}
-                                                    onChange={(e) => {
-                                                        const value = e.target.value;
-                                                        let newOptions = [...optionsList];
-
-                                                        newOptions = newOptions.map((o, i) => {
-                                                            if (i === optIndex) {
-                                                                let updatedItems = [...o.items];
-
-                                                                if (value.trim() === "" && updatedItems.length > 1) {
-                                                                    updatedItems = updatedItems.filter((_, j) => j !== subIndex);
-                                                                } else {
-                                                                    updatedItems = updatedItems.map((item, j) => {
-                                                                        if (j === subIndex) {
-                                                                            return { ...item, title: value };
-                                                                        }
-                                                                        return item;
-                                                                    });
-
-                                                                    const lastItem = updatedItems[updatedItems.length - 1];
-                                                                    if (subIndex === updatedItems.length - 1 && value.trim() !== "" && lastItem.title.trim() !== "") {
-                                                                        updatedItems.push({ title: "", image: "" });
-                                                                    }
-                                                                }
-
-                                                                return { ...o, items: updatedItems.length > 0 ? updatedItems : [{ title: "", image: "" }] };
-                                                            }
-                                                            return o;
-                                                        });
-
-                                                        setOptionsList(newOptions);
-                                                    }}
-                                                    className="w-full rounded-xl py-2 px-3 text-xs outline-none bg-white/5 border border-white/10 text-white placeholder:text-neutral-500 focus:border-sky-500"
-                                                />
-                                            </div>
-
-                                            <div className="flex items-center gap-2 flex-1">
-                                                <label className="flex-1 cursor-pointer flex items-center justify-between px-3 py-2 rounded-xl text-xs bg-white/5 border border-white/10 hover:bg-white/10 transition text-neutral-300">
-                                                    <span className="truncate">{subItem.image ? "Rasm yuklandi ✓" : "rasm yuklash"}</span>
-                                                    <Upload className="w-3.5 h-3.5 text-sky-400 ml-1" />
-                                                    <input
-                                                        type="file"
-                                                        accept="image/*"
-                                                        className="hidden"
-                                                        onChange={(e) => handleImageUpload(optIndex, subIndex, e)}
-                                                    />
-                                                </label>
-                                                {subItem.image && (
-                                                    <div className="relative w-8 h-8 rounded-lg overflow-hidden border border-white/20 flex-shrink-0">
-                                                        <Image src={getImageSrc(subItem.image)} alt="Preview" fill className="object-cover" />
-                                                    </div>
-                                                )}
-                                            </div>
-
-                                            {opt.items.length > 1 && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        const newOptions = optionsList.map((o, i) => {
-                                                            if (i === optIndex) {
-                                                                const updatedItems = o.items.filter((_, j) => j !== subIndex);
-                                                                return { 
-                                                                    ...o, 
-                                                                    items: updatedItems.length > 0 ? updatedItems : [{ title: "", image: "" }] 
-                                                                };
-                                                            }
-                                                            return o;
-                                                        });
-                                                        setOptionsList(newOptions);
-                                                    }}
-                                                    className="p-2 bg-red-500/10 text-red-400 rounded-xl hover:bg-red-500/20 transition flex-shrink-0"
-                                                >
-                                                    <Trash2 className="w-4 h-4" />
-                                                </button>
-                                            )}
-                                        </div>
-                                    ))}
+                                <div className="space-y-3 pl-2">
+                                    { option.items.map((item, itemIndex) => (
+                                        <ItemEditor
+                                            key={ itemIndex }
+                                            item={ item }
+                                            fileKey={ `${optionIndex}_${itemIndex}` }
+                                            onChange={ (updated) => setOptionsList(optionsList.map((entry, index) => index === optionIndex ? { ...entry, items: entry.items.map((current, childIndex) => childIndex === itemIndex ? updated : current) } : entry)) }
+                                            onRemove={ () => setOptionsList(optionsList.map((entry, index) => index === optionIndex ? { ...entry, items: entry.items.filter((_, childIndex) => childIndex !== itemIndex) } : entry)) }
+                                        />
+                                    )) }
+                                    <button type="button" onClick={ () => setOptionsList(optionsList.map((entry, index) => index === optionIndex ? { ...entry, items: [...entry.items, emptyItem()] } : entry)) } className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-sky-400 hover:bg-sky-500/10">
+                                        <Plus className="h-3.5 w-3.5" /> Item qo'shish
+                                    </button>
                                 </div>
                             </div>
-                        ))}
+                        )) }
                     </div>
-
-                    <div className='p-8'/>
-
-                    <div className="z-[999] flex items-center justify-end gap-3 absolute bottom-0 left-0 w-full p-6 pt-0 backdrop-blur-sm rounded-b-[28px]">
-                        <button
-                            onClick={() => setIsOpen(false)}
-                            type="button"
-                            className="px-4 py-2.5 rounded-xl text-sm font-medium text-zinc-400 hover:text-white hover:bg-white/5 transition-all"
-                        >
-                            Cancel
-                        </button>
-                        <GlassButton
-                            type="submit"
-                            className="px-5 py-2.5 rounded-xl text-sm font-medium bg-sky-500 text-white hover:bg-sky-600 transition-all shadow-lg shadow-sky-500/20 active:scale-95"
-                        >
-                            {editId ? "Update" : "Save"}
-                        </GlassButton>
+                    <div className="absolute bottom-0 left-0 z-[999] flex w-full items-center justify-end gap-3 rounded-b-[28px] bg-black/20 p-6 pt-3 backdrop-blur-sm">
+                        <button type="button" onClick={ () => setIsOpen(false) } className="rounded-xl px-4 py-2 text-sm text-neutral-300 hover:bg-white/10">Bekor qilish</button>
+                        <button type="submit" className="rounded-xl bg-sky-500 px-5 py-2 text-sm font-semibold text-white hover:bg-sky-600">{ editId ? "Saqlash" : "Yaratish" }</button>
                     </div>
                 </form>
             </GlassModal>
 
-            <GlassModal title="Delete category" open={!!deleteModal} onClose={() => setDeleteModal(null)}>
-                <div className="space-y-4">
-                    <p className="text-sm text-neutral-400">Haqiqatan ham bu categoryni o'chirib yubormoqchimisiz?</p>
-
-                    <div className="p-6"></div>
-
-                    <div className="flex items-center justify-end gap-3 absolute bottom-0 left-0 w-full p-6 pt-0 backdrop-blur-sm rounded-b-[28px]">
-                        <button
-                            onClick={() => setDeleteModal(null)}
-                            className="px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-white/5 transition-colors"
-                        >
-                            Cancel
-                        </button>
-                        <button
-                            onClick={() => {
-                                if (deleteModal) {
-                                    handleDeleteCategory(deleteModal);
-                                    setDeleteModal(null);
-                                }
-                            }}
-                            className="px-5 py-2.5 rounded-xl text-sm font-medium bg-red-600 text-white hover:bg-red-500 transition-colors shadow-lg shadow-red-500/20"
-                        >
-                            Delete
-                        </button>
-                    </div>
+            <GlassModal size="sm" title="Kategoriyani o'chirish" open={ !!deleteModal } onClose={ () => setDeleteModal(null) }>
+                <p className="mb-6 text-sm text-neutral-400">Haqiqatan ham bu kategoriyani o'chirmoqchimisiz?</p>
+                <div className="flex justify-end gap-3">
+                    <button onClick={ () => setDeleteModal(null) } className="rounded-xl px-4 py-2 text-sm text-neutral-300 hover:bg-white/10">Bekor qilish</button>
+                    <button onClick={ () => deleteModal && void handleDeleteCategory(deleteModal) } className="rounded-xl bg-red-500 px-4 py-2 text-sm font-semibold text-white hover:bg-red-600">O'chirish</button>
                 </div>
             </GlassModal>
         </div>
@@ -532,9 +410,5 @@ function CategoriesContent() {
 }
 
 export default function CategoriesPage() {
-    return (
-        <Suspense fallback={<div className="p-8 text-center text-white">Yuklanmoqda...</div>}>
-            <CategoriesContent />
-        </Suspense>
-    );
+    return <CategoriesContent />;
 }
