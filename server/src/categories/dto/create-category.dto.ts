@@ -1,77 +1,119 @@
-import { IsString, IsNotEmpty, IsArray, ValidateNested, IsOptional, IsUUID, MaxLength, IsBoolean } from 'class-validator';
-import { Type } from 'class-transformer';
+import {
+  IsString,
+  IsNotEmpty,
+  IsArray,
+  ValidateNested,
+  IsOptional,
+  IsUUID,
+  MaxLength,
+  IsBoolean,
+} from 'class-validator';
+import { plainToInstance, Transform, Type } from 'class-transformer';
+
+const parseMultipartBoolean = ({ value }: { value: unknown }) =>
+  value === 'true' ? true : value === 'false' ? false : value;
+
+const parseMultipartArray = ({ value }: { value: unknown }) => {
+  let parsed = value;
+  if (typeof parsed !== 'string') return parsed;
+  try {
+    parsed = JSON.parse(parsed);
+  } catch {
+    return value;
+  }
+  if (!Array.isArray(parsed)) return parsed;
+  return parsed.map((option) => plainToInstance(CategoryOptionDto, option));
+};
 
 export class CategoryOptionItemDto {
-    @IsString()
-    @IsNotEmpty()
-    @MaxLength(255)
-    title!: string;
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(255)
+  title!: string;
 
-    @IsString()
-    @IsOptional()
-    image?: string;
+  @IsString()
+  @IsOptional()
+  image?: string;
 
-    @IsBoolean()
-    @IsOptional()
-    hidden?: boolean;
+  @Transform(parseMultipartBoolean)
+  @IsBoolean()
+  @IsOptional()
+  hidden?: boolean;
 
-    @IsArray()
-    @ValidateNested({ each: true })
-    @Type(() => CategoryOptionItemDto)
-    @IsOptional()
-    children?: CategoryOptionItemDto[];
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CategoryOptionItemDto)
+  @IsOptional()
+  children?: CategoryOptionItemDto[];
 }
 
 export class CategoryOptionDto {
-    @IsString()
-    @IsNotEmpty()
-    @MaxLength(255)
-    title!: string;
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(255)
+  title!: string;
 
-    @IsBoolean()
-    @IsOptional()
-    hidden?: boolean;
+  @IsString()
+  @IsOptional()
+  image?: string;
 
-    @IsArray()
-    @ValidateNested({ each: true })
-    @Type(() => CategoryOptionItemDto)
-    items!: CategoryOptionItemDto[];
+  @Transform(parseMultipartBoolean)
+  @IsBoolean()
+  @IsOptional()
+  hidden?: boolean;
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CategoryOptionItemDto)
+  items!: CategoryOptionItemDto[];
 }
 
 export class CreateCategoryDto {
-    @IsString()
-    @IsNotEmpty()
-    @MaxLength(255)
-    title!: string;
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(255)
+  title!: string;
 
-    @IsBoolean()
-    @IsOptional()
-    hidden?: boolean;
+  @IsString()
+  @IsOptional()
+  image?: string;
 
-    @IsString()
-    @IsNotEmpty()
-    @IsUUID()
-    marketId!: string;
+  @Transform(parseMultipartBoolean)
+  @IsBoolean()
+  @IsOptional()
+  hidden?: boolean;
 
-    @IsArray()
-    @ValidateNested({ each: true })
-    @Type(() => CategoryOptionDto)
-    options!: CategoryOptionDto[];
+  @IsString()
+  @IsNotEmpty()
+  @IsUUID()
+  marketId!: string;
+
+  @Transform(parseMultipartArray)
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CategoryOptionDto)
+  options!: CategoryOptionDto[];
 }
 
 export class UpdateCategoryDto {
-    @IsString()
-    @IsOptional()
-    @MaxLength(255)
-    title?: string;
+  @IsString()
+  @IsOptional()
+  @MaxLength(255)
+  title?: string;
 
-    @IsBoolean()
-    @IsOptional()
-    hidden?: boolean;
+  @IsString()
+  @IsOptional()
+  image?: string;
 
-    @IsArray()
-    @ValidateNested({ each: true })
-    @Type(() => CategoryOptionDto)
-    @IsOptional()
-    options?: CategoryOptionDto[];
+  @Transform(parseMultipartBoolean)
+  @IsBoolean()
+  @IsOptional()
+  hidden?: boolean;
+
+  @Transform(parseMultipartArray)
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CategoryOptionDto)
+  @IsOptional()
+  options?: CategoryOptionDto[];
 }

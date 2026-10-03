@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useThemeStore } from "@/app/_store/useThemeStore";
 import GlassTable from "@/components/admin/GlassTable";
 import GlassInput from "@/components/admin/GlassInput";
@@ -18,7 +18,7 @@ import { API_URL } from "@/lib/api";
 interface CategoryItem {
     id?: string;
     title: string;
-    image: string | File;
+    image: string | File | null;
     hidden: boolean;
     children: CategoryItem[];
 }
@@ -26,6 +26,7 @@ interface CategoryItem {
 interface CategoryOption {
     id?: string;
     title: string;
+    image: string | File | null;
     hidden: boolean;
     items: CategoryItem[];
 }
@@ -33,6 +34,7 @@ interface CategoryOption {
 interface Category {
     id: string;
     title: string;
+    image: string | null;
     hidden: boolean;
     marketId?: string;
     marketid?: string;
@@ -42,6 +44,38 @@ interface Category {
 }
 
 const emptyItem = (): CategoryItem => ({ title: "", image: "", hidden: false, children: [] });
+
+function ImageField({ label, value, onChange }: { label: string; value: string | File | null; onChange: (value: string | File) => void }) {
+    const preview = useMemo(() => value instanceof File ? URL.createObjectURL(value) : value ?? "", [value]);
+    useEffect(() => {
+        return () => {
+            if (value instanceof File) URL.revokeObjectURL(preview);
+        };
+    }, [preview, value]);
+
+    return (
+        <div className="flex items-center gap-2">
+            <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-neutral-300">
+                <span>{value ? `${label}: rasm tanlandi ✓` : `${label}: rasm yuklash *`}</span>
+                <Upload className="h-3.5 w-3.5 text-sky-400" />
+                <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        if (file) onChange(file);
+                    }}
+                />
+            </label>
+            {preview && (
+                <div className="relative h-8 w-8 flex-shrink-0 overflow-hidden rounded-lg">
+                    <Image src={preview} alt={`${label} preview`} fill className="object-cover" unoptimized />
+                </div>
+            )}
+        </div>
+    );
+}
 
 function HiddenSwitch({ checked, onChange }: { checked: boolean; onChange: (checked: boolean) => void }) {
     return (
@@ -70,7 +104,6 @@ function ItemEditor({
     onRemove: () => void;
     fileKey: string;
 }) {
-    const imageSrc = item.image instanceof File ? URL.createObjectURL(item.image) : item.image;
     const updateChild = (index: number, child: CategoryItem) => {
         onChange({ ...item, children: item.children.map((entry, childIndex) => childIndex === index ? child : entry) });
     };
@@ -84,24 +117,7 @@ function ItemEditor({
                     onChange={ (event) => onChange({ ...item, title: event.target.value }) }
                     className="min-w-[150px] flex-1 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-sky-500"
                 />
-                <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-neutral-300">
-                    <span>{ item.image ? "Rasm yuklandi ✓" : "Rasm yuklash" }</span>
-                    <Upload className="h-3.5 w-3.5 text-sky-400" />
-                    <input
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={ (event) => {
-                            const file = event.target.files?.[0];
-                            if (file) onChange({ ...item, image: file });
-                        } }
-                    />
-                </label>
-                { imageSrc && (
-                    <div className="relative h-8 w-8 flex-shrink-0 overflow-hidden rounded-lg">
-                        <Image src={ imageSrc } alt={ item.title || "Item preview" } fill className="object-cover" unoptimized />
-                    </div>
-                ) }
+                <ImageField label="Item" value={item.image} onChange={(image) => onChange({ ...item, image })} />
                 <HiddenSwitch checked={ item.hidden } onChange={ (hidden) => onChange({ ...item, hidden }) } />
                 <button type="button" onClick={ onRemove } className="rounded-lg bg-red-500/10 p-2 text-red-400 hover:bg-red-500/20" aria-label="Itemni o'chirish">
                     <Trash2 className="h-4 w-4" />
@@ -122,7 +138,7 @@ function ItemEditor({
                     onClick={ () => onChange({ ...item, children: [...item.children, emptyItem()] }) }
                     className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-sky-400 hover:bg-sky-500/10"
                 >
-                    <Plus className="h-3.5 w-3.5" /> Ichki item qo'shish
+                    <Plus className="h-3.5 w-3.5" /> Ichki item qo&apos;shish
                 </button>
             </div>
         </div>
@@ -160,38 +176,48 @@ function CategoriesContent() {
     const market = (params?.market as string) || "";
     const [categories, setCategories] = useState<Category[]>([]);
     const [categoryTitle, setCategoryTitle] = useState("");
+    const [categoryImage, setCategoryImage] = useState<string | File>("");
     const [categoryHidden, setCategoryHidden] = useState(false);
     const [optionsList, setOptionsList] = useState<CategoryOption[]>([]);
 
-    const fetchData = async () => {
-        try {
-            setLoading(true);
-            const res = await fetch(`${API_URL}/categories`);
-            const req = await res.json();
-            if (!res.ok) throw new Error(req.message || "Kategoriyalarni yuklab bo'lmadi");
-            if (Array.isArray(req)) {
-                setCategories(req.filter((item: Category) => (item.marketId || item.marketid) === market));
-            }
-        } catch (error) {
-            console.error("Kategoriya yuklashda xatolik:", error);
-            notify.show("Kategoriyalarni yuklab bo'lmadi", "error", dark ? "dark" : "light");
-        } finally {
-            setLoading(false);
-        }
-    };
+    const fetchData = useCallback(async () => {
+        const res = await fetch(`${API_URL}/categories?marketId=${encodeURIComponent(market)}`, {
+            headers: { Authorization: `Bearer ${token}` },
+        });
+        const req = await res.json();
+        if (!res.ok) throw new Error(req.message || "Kategoriyalarni yuklab bo'lmadi");
+        return Array.isArray(req)
+            ? req.filter((item: Category) => (item.marketId || item.marketid) === market)
+            : [];
+    }, [market, token]);
 
     useEffect(() => {
-        void fetchData();
-    }, [market]);
+        let active = true;
+        fetchData()
+            .then((data) => {
+                if (active) setCategories(data);
+            })
+            .catch((error) => {
+                console.error("Kategoriya yuklashda xatolik:", error);
+                notify.show("Kategoriyalarni yuklab bo'lmadi", "error", dark ? "dark" : "light");
+            })
+            .finally(() => {
+                if (active) setLoading(false);
+            });
+        return () => {
+            active = false;
+        };
+    }, [dark, fetchData, notify]);
 
     const resetForm = () => {
         setCategoryTitle("");
+        setCategoryImage("");
         setCategoryHidden(false);
         setOptionsList([]);
     };
 
     const mapItemPayload = (item: CategoryItem, fileKey: string, formData: FormData): Omit<CategoryItem, "id" | "image"> & { image: string } => {
-        const image = item.image instanceof File ? "" : item.image;
+        const image = typeof item.image === "string" ? item.image : "";
         if (item.image instanceof File) formData.append(`file_${fileKey}`, item.image);
         return {
             title: item.title,
@@ -209,21 +235,44 @@ function CategoriesContent() {
             notify.show("Marketni tanlang!", "error", dark ? "dark" : "light");
             return;
         }
+        const invalidItem = (item: CategoryItem) =>
+            !item.title.trim() ||
+            !item.image ||
+            item.children
+                .filter((child) => child.title.trim() || child.image)
+                .some(invalidItem);
+        const selectedItems = (items: CategoryItem[]) => items.filter((item) => item.title.trim());
+        const hasInvalidOption = optionsList.some((option) =>
+            !option.title.trim() ||
+            !option.image ||
+            selectedItems(option.items).length === 0 ||
+            selectedItems(option.items).some(invalidItem),
+        );
+        if (!categoryTitle.trim() || !categoryImage || optionsList.length === 0 || hasInvalidOption) {
+            notify.show("Kategoriya, har bir option va item uchun nom va rasm kiriting.", "error", dark ? "dark" : "light");
+            return;
+        }
 
         const formData = new FormData();
         formData.append("title", categoryTitle);
-        formData.append("marketId", market);
+        if (!editId) formData.append("marketId", market);
         formData.append("hidden", String(categoryHidden));
+        if (categoryImage instanceof File) formData.append("categoryImage", categoryImage);
+        else formData.append("image", categoryImage);
 
         const optionsPayload = optionsList
             .filter((option) => option.title.trim())
             .map((option, optionIndex) => ({
                 title: option.title.trim(),
+                image: option.image instanceof File ? "" : option.image,
                 hidden: option.hidden,
                 items: option.items
                     .filter((item) => item.title.trim())
                     .map((item, itemIndex) => mapItemPayload(item, `${optionIndex}_${itemIndex}`, formData)),
             }));
+        optionsList.forEach((option, optionIndex) => {
+            if (option.image instanceof File) formData.append(`optionImage_${optionIndex}`, option.image);
+        });
         formData.append("options", JSON.stringify(optionsPayload));
 
         try {
@@ -242,7 +291,7 @@ function CategoriesContent() {
             setEditId(null);
             resetForm();
             notify.show(editId ? "Kategoriya yangilandi" : "Yangi kategoriya qo'shildi", "success", dark ? "dark" : "light");
-            await fetchData();
+            setCategories(await fetchData());
         } catch (error) {
             console.error("Kategoriya saqlashda xatolik:", error);
             notify.show("Serverga ulanishda xatolik", "error", dark ? "dark" : "light");
@@ -258,7 +307,7 @@ function CategoriesContent() {
             if (!res.ok) throw new Error("Kategoriyani o'chirib bo'lmadi");
             setDeleteModal(null);
             notify.show("Kategoriya o'chirildi", "success", dark ? "dark" : "light");
-            await fetchData();
+            setCategories(await fetchData());
         } catch (error) {
             console.error("Kategoriya o'chirishda xatolik:", error);
             notify.show("O'chirishda xatolik", "error", dark ? "dark" : "light");
@@ -268,9 +317,11 @@ function CategoriesContent() {
     const openEdit = (category: Category) => {
         setEditId(category.id);
         setCategoryTitle(category.title);
+        setCategoryImage(category.image ?? "");
         setCategoryHidden(category.hidden ?? false);
         setOptionsList(category.options.map((option) => ({
             ...option,
+            image: option.image ?? "",
             hidden: option.hidden ?? false,
             items: option.items.map((item) => normalizeItem(item)),
         })));
@@ -294,7 +345,7 @@ function CategoriesContent() {
             <div className="mb-10 flex items-center justify-between border-l-4 border-sky-500 pl-6">
                 <div>
                     <h1 className="text-4xl font-extrabold text-gray-800 dark:text-white">Categories</h1>
-                    <p className="mt-1 text-sm text-neutral-400">Do'kon kategoriyalari va ularning ichki elementlari</p>
+                    <p className="mt-1 text-sm text-neutral-400">Do&apos;kon kategoriyalari va ularning ichki elementlari</p>
                 </div>
                 <GlassButton onClick={ openCreate }><Plus className="mr-2 inline h-4 w-4" /> Create Category</GlassButton>
             </div>
@@ -353,14 +404,15 @@ function CategoriesContent() {
                 />
             ) }
 
-            <GlassModal size="2xl" title={ editId ? "Kategoriyani Tahrirlash" : "Create Category" } open={ isOpen } onClose={ () => setIsOpen(false) }>
-                <form className="relative max-h-[75vh] w-full space-y-4 overflow-y-auto px-1 pb-20" onSubmit={ handleSubmitForm }>
+            <GlassModal size="full" title={ editId ? "Kategoriyani Tahrirlash" : "Create Category" } open={ isOpen } onClose={ () => setIsOpen(false) }>
+                <form className="max-h-[75vh] w-full space-y-4 overflow-y-auto px-1 pb-20" onSubmit={ handleSubmitForm }>
                     <GlassInput label="Kategoriya Nomi" placeholder="Masalan: Elektronika, Kiyim-kechak..." value={ categoryTitle } onChange={ (event) => setCategoryTitle(event.target.value) } required />
+                    <ImageField label="Kategoriya" value={categoryImage} onChange={setCategoryImage} />
                     <HiddenSwitch checked={ categoryHidden } onChange={ setCategoryHidden } />
                     <div className="space-y-4">
                         <div className="flex items-center justify-between">
                             <label className="flex items-center gap-2 text-sm font-semibold text-sky-400"><Layers className="h-4 w-4" /> Options & Items</label>
-                            <button type="button" onClick={ () => setOptionsList([...optionsList, { title: "", hidden: false, items: [] }]) } className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-sky-400 hover:bg-sky-500/10"><Plus className="h-3.5 w-3.5" /> Option</button>
+                            <button type="button" onClick={ () => setOptionsList([...optionsList, { title: "", image: "", hidden: false, items: [] }]) } className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-sky-400 hover:bg-sky-500/10"><Plus className="h-3.5 w-3.5" /> Option</button>
                         </div>
                         { optionsList.map((option, optionIndex) => (
                             <div key={ optionIndex } className="space-y-4 rounded-2xl border border-white/10 bg-white/5 p-4">
@@ -370,6 +422,11 @@ function CategoriesContent() {
                                         value={ option.title }
                                         onChange={ (event) => setOptionsList(optionsList.map((entry, index) => index === optionIndex ? { ...entry, title: event.target.value } : entry)) }
                                         className="min-w-[150px] flex-1 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-sky-500"
+                                    />
+                                    <ImageField
+                                        label="Option"
+                                        value={option.image}
+                                        onChange={(image) => setOptionsList(optionsList.map((entry, index) => index === optionIndex ? { ...entry, image } : entry))}
                                     />
                                     <HiddenSwitch checked={ option.hidden } onChange={ (hidden) => setOptionsList(optionsList.map((entry, index) => index === optionIndex ? { ...entry, hidden } : entry)) } />
                                     <button type="button" onClick={ () => setOptionsList(optionsList.filter((_, index) => index !== optionIndex)) } className="rounded-xl bg-red-500/10 p-2 text-red-400 hover:bg-red-500/20" aria-label="Optionni o'chirish"><Trash2 className="h-4 w-4" /></button>
@@ -385,24 +442,35 @@ function CategoriesContent() {
                                         />
                                     )) }
                                     <button type="button" onClick={ () => setOptionsList(optionsList.map((entry, index) => index === optionIndex ? { ...entry, items: [...entry.items, emptyItem()] } : entry)) } className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-sky-400 hover:bg-sky-500/10">
-                                        <Plus className="h-3.5 w-3.5" /> Item qo'shish
+                                        <Plus className="h-3.5 w-3.5" /> Item qo&apos;shish
                                     </button>
                                 </div>
                             </div>
                         )) }
                     </div>
-                    <div className="absolute bottom-0 left-0 z-[999] flex w-full items-center justify-end gap-3 rounded-b-[28px] bg-black/20 p-6 pt-3 backdrop-blur-sm">
-                        <button type="button" onClick={ () => setIsOpen(false) } className="rounded-xl px-4 py-2 text-sm text-neutral-300 hover:bg-white/10">Bekor qilish</button>
-                        <button type="submit" className="rounded-xl bg-sky-500 px-5 py-2 text-sm font-semibold text-white hover:bg-sky-600">{ editId ? "Saqlash" : "Yaratish" }</button>
+                    <div className="flex items-center justify-end gap-3 absolute bottom-0 left-0 w-full p-6 pt-0 backdrop-blur-sm rounded-b-[28px]">
+                        <button
+                            onClick={() => setIsOpen(false)}
+                            type="button"
+                            className="px-4 py-2.5 rounded-xl text-sm font-medium text-zinc-400 hover:text-white hover:bg-white/5 transition-all"
+                        >
+                            Cancel
+                        </button>
+                        <GlassButton
+                            type="submit"
+                            className="px-5 py-2.5 rounded-xl text-sm font-medium bg-sky-500 text-white hover:bg-sky-600 transition-all shadow-lg shadow-sky-500/20"
+                        >
+                            {editId ? "Update" : "Save"}
+                        </GlassButton>
                     </div>
                 </form>
             </GlassModal>
 
             <GlassModal size="sm" title="Kategoriyani o'chirish" open={ !!deleteModal } onClose={ () => setDeleteModal(null) }>
-                <p className="mb-6 text-sm text-neutral-400">Haqiqatan ham bu kategoriyani o'chirmoqchimisiz?</p>
+                <p className="mb-6 text-sm text-neutral-400">Haqiqatan ham bu kategoriyani o&apos;chirmoqchimisiz?</p>
                 <div className="flex justify-end gap-3">
                     <button onClick={ () => setDeleteModal(null) } className="rounded-xl px-4 py-2 text-sm text-neutral-300 hover:bg-white/10">Bekor qilish</button>
-                    <button onClick={ () => deleteModal && void handleDeleteCategory(deleteModal) } className="rounded-xl bg-red-500 px-4 py-2 text-sm font-semibold text-white hover:bg-red-600">O'chirish</button>
+                    <button onClick={ () => deleteModal && void handleDeleteCategory(deleteModal) } className="rounded-xl bg-red-500 px-4 py-2 text-sm font-semibold text-white hover:bg-red-600">O&apos;chirish</button>
                 </div>
             </GlassModal>
         </div>

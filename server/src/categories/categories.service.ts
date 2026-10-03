@@ -1,9 +1,17 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { CategoryOptionItem, Prisma } from '@prisma/client';
 import { uploadImageToImgBB } from '../common/helpers/image-upload.helper';
 import { PrismaService } from '../prisma/prisma.service';
 import { CategoryRepository } from './category.repository';
-import { CategoryOptionItemDto, CreateCategoryDto, UpdateCategoryDto } from './dto/create-category.dto';
+import {
+  CategoryOptionItemDto,
+  CreateCategoryDto,
+  UpdateCategoryDto,
+} from './dto/create-category.dto';
 
 @Injectable()
 export class CategoriesService {
@@ -12,8 +20,9 @@ export class CategoriesService {
     private readonly prisma: PrismaService,
   ) {}
 
-  async findAll() {
+  async findAll(marketId: string) {
     const categories = await this.prisma.category.findMany({
+      where: { marketId },
       orderBy: { createdAt: 'desc' },
       include: { options: true, products: true },
     });
@@ -25,7 +34,8 @@ export class CategoriesService {
       where: { id },
       include: { options: true, products: true },
     });
-    if (!category) throw new NotFoundException('Requested resource was not found');
+    if (!category)
+      throw new NotFoundException('Requested resource was not found');
     return (await this.withItemTrees([category]))[0];
   }
 
@@ -33,18 +43,30 @@ export class CategoriesService {
     return this.categories.create(await this.createInput(body, files));
   }
 
-  async update(id: string, body: UpdateCategoryDto, files: Array<Express.Multer.File>) {
+  async update(
+    id: string,
+    body: UpdateCategoryDto,
+    files: Array<Express.Multer.File>,
+  ) {
     return this.categories.update({ id }, await this.updateInput(body, files));
   }
 
-  delete(id: string) { return this.categories.delete({ id }); }
+  delete(id: string) {
+    return this.categories.delete({ id });
+  }
 
   private async createInput(
     body: CreateCategoryDto,
     files: Array<Express.Multer.File>,
   ): Promise<Prisma.CategoryCreateInput> {
+    const fileMap = new Map(files.map((file) => [file.fieldname, file]));
     return {
       title: body.title,
+      image: await this.requiredImage(
+        body.image,
+        fileMap.get('categoryImage'),
+        'Kategoriya',
+      ),
       hidden: body.hidden ?? false,
       market: { connect: { id: body.marketId } },
       options: { create: await this.optionsInput(body.options ?? [], files) },
@@ -57,8 +79,21 @@ export class CategoriesService {
   ): Promise<Prisma.CategoryUpdateInput> {
     const data: Prisma.CategoryUpdateInput = {};
     if (body.title !== undefined) data.title = body.title;
+    if (
+      body.image !== undefined ||
+      files.some((file) => file.fieldname === 'categoryImage')
+    ) {
+      const categoryImage = files.find(
+        (file) => file.fieldname === 'categoryImage',
+      );
+      data.image = await this.requiredImage(
+        body.image,
+        categoryImage,
+        'Kategoriya',
+      );
+    }
     if (body.hidden !== undefined) data.hidden = body.hidden;
-    if (body.options !== undefined || files.length > 0) {
+    if (body.options !== undefined) {
       data.options = {
         deleteMany: {},
         create: await this.optionsInput(body.options ?? [], files),
@@ -72,14 +107,24 @@ export class CategoriesService {
     files: Array<Express.Multer.File>,
   ) {
     const fileMap = new Map(files.map((file) => [file.fieldname, file]));
-    return Promise.all(options.map(async (option, optionIndex) => ({
-      title: option.title,
-      hidden: option.hidden ?? false,
-      items: {
-        create: await Promise.all(option.items.map((item, itemIndex) =>
-          this.itemInput(item, fileMap, `${optionIndex}_${itemIndex}`))),
-      },
-    })));
+    return Promise.all(
+      options.map(async (option, optionIndex) => ({
+        title: option.title,
+        image: await this.requiredImage(
+          option.image,
+          fileMap.get(`optionImage_${optionIndex}`),
+          `Option "${option.title}"`,
+        ),
+        hidden: option.hidden ?? false,
+        items: {
+          create: await Promise.all(
+            option.items.map((item, itemIndex) =>
+              this.itemInput(item, fileMap, `${optionIndex}_${itemIndex}`),
+            ),
+          ),
+        },
+      })),
+    );
   }
 
   private async itemInput(
@@ -89,21 +134,32 @@ export class CategoriesService {
   ): Promise<Prisma.CategoryOptionItemCreateWithoutOptionInput> {
     return {
       title: item.title,
-      image: await this.itemImage(item.image, fileMap.get(`file_${fileIndex}`)),
+      image: await this.requiredImage(
+        item.image,
+        fileMap.get(`file_${fileIndex}`),
+        `Item "${item.title}"`,
+      ),
       hidden: item.hidden ?? false,
       ...(item.children?.length
         ? {
             children: {
-              create: await Promise.all(item.children.map((child, index) =>
-                this.itemInput(child, fileMap, `${fileIndex}_${index}`))),
+              create: await Promise.all(
+                item.children.map((child, index) =>
+                  this.itemInput(child, fileMap, `${fileIndex}_${index}`),
+                ),
+              ),
             },
           }
         : {}),
     };
   }
 
-  private async withItemTrees<T extends { options: Array<{ id: string }> }>(categories: T[]) {
-    const optionIds = categories.flatMap((category) => category.options.map((option) => option.id));
+  private async withItemTrees<T extends { options: Array<{ id: string }> }>(
+    categories: T[],
+  ) {
+    const optionIds = categories.flatMap((category) =>
+      category.options.map((option) => option.id),
+    );
     const items: CategoryOptionItem[] = [];
     let frontier: CategoryOptionItem[] = optionIds.length
       ? await this.prisma.categoryOptionItem.findMany({
@@ -118,7 +174,9 @@ export class CategoriesService {
       });
     }
 
-    const itemMap = new Map(items.map((item) => [item.id, { ...item, children: [] as typeof items }]));
+    const itemMap = new Map(
+      items.map((item) => [item.id, { ...item, children: [] as typeof items }]),
+    );
     const rootsByOption = new Map<string, typeof items>();
 
     for (const item of items) {
@@ -140,7 +198,14 @@ export class CategoriesService {
     }));
   }
 
-  private itemImage(image: string | undefined, file?: Express.Multer.File) {
-    return file ? uploadImageToImgBB(file) : Promise.resolve(image ?? null);
+  private async requiredImage(
+    image: string | undefined,
+    file: Express.Multer.File | undefined,
+    label: string,
+  ) {
+    const imageUrl = file ? await uploadImageToImgBB(file) : image?.trim();
+    if (!imageUrl)
+      throw new BadRequestException(`${label} uchun rasm yuklash shart.`);
+    return imageUrl;
   }
 }

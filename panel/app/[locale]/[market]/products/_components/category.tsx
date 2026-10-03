@@ -1,16 +1,12 @@
 "use client";
 
 import Image from "next/image";
-import React, { useState, useEffect, Suspense } from "react";
+import React, { useCallback, useState, useEffect, Suspense } from "react";
 import { useThemeStore } from "@/app/_store/useThemeStore";
 import GlassTable from "@/components/admin/GlassTable";
-import GlassModal from "@/components/admin/GlassModal";
-import GlassButton from "@/components/admin/GlassButton";
 import { useTokenStore } from "@/app/_store/useTokenStore";
-import { useNotification } from "@/components/Notification";
 import { useParams } from "next/navigation";
-import GlassInput from "@/components/admin/GlassInput";
-import { Plus, Trash2, Edit3, Layers, Upload, ChevronDown } from "lucide-react";
+import { Layers, ChevronDown } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils/cn";
 import { API_URL } from '@/lib/api';
@@ -48,29 +44,34 @@ function CategoriesContent({ setCategoryId, categoryId }: { setCategoryId: React
     const market = (params?.market as string) || "";
     const [categories, setCategories] = useState<Categorie[]>([]);
 
-    const fetchData = async () => {
-        try {
-            setLoading(true);
-            const res = await fetch(`${API_URL}/categories`);
-            const req = await res.json();
-
-            if (res.ok && Array.isArray(req)) {
-                const filteredData = req.filter((item: Categorie) => {
-                    const mId = item.marketId || item.marketid;
-                    return mId === market;
-                });
-                setCategories(filteredData);
-            }
-        } catch (err) {
-            console.error("Xatolik:", err);
-        } finally {
-            setLoading(false);
-        }
-    };
+    const fetchData = useCallback(async () => {
+        const res = await fetch(`${API_URL}/categories?marketId=${encodeURIComponent(market)}`, {
+            headers: { Authorization: `Bearer ${token}` },
+        });
+        const req = await res.json();
+        if (!res.ok) throw new Error(req.message || "Kategoriyalarni yuklab bo'lmadi");
+        return Array.isArray(req)
+            ? req.filter((item: Categorie) => {
+                const mId = item.marketId || item.marketid;
+                return mId === market;
+            })
+            : [];
+    }, [market, token]);
 
     useEffect(() => {
-        fetchData();
-    }, [market]);
+        let active = true;
+        fetchData()
+            .then((data) => {
+                if (active) setCategories(data);
+            })
+            .catch((error) => console.error("Xatolik:", error))
+            .finally(() => {
+                if (active) setLoading(false);
+            });
+        return () => {
+            active = false;
+        };
+    }, [fetchData]);
 
     return (
         loading ? (
@@ -130,7 +131,7 @@ function CategoriesContent({ setCategoryId, categoryId }: { setCategoryId: React
                                                                     <Image src={item.image} alt={item.title} fill className="object-cover" />
                                                                 </div>
                                                             ) : (
-                                                                <div className="w-8 h-8 rounded-md bg-white/10 flex items-center justify-center text-[10px]">Rasm yo'q</div>
+                                                                <div className="w-8 h-8 rounded-md bg-white/10 flex items-center justify-center text-[10px]">Rasm yo&apos;q</div>
                                                             )}
                                                             <span className="text-xs truncate text-neutral-200">{item.title}</span>
                                                         </button>

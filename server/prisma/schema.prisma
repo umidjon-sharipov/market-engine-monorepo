@@ -369,6 +369,7 @@ model Category {
   id        String   @id @default(uuid()) @db.Uuid
   marketId  String   @db.Uuid
   title     String   @db.VarChar(255)
+  image     String?  @db.Text
   hidden    Boolean  @default(false)
   createdAt DateTime @default(now()) @db.Timestamptz(6)
 
@@ -385,6 +386,7 @@ model CategoryOption {
   id         String   @id @default(uuid()) @db.Uuid
   categoryId String   @db.Uuid
   title      String   @db.VarChar(255)
+  image      String?  @db.Text
   hidden     Boolean  @default(false)
   createdAt  DateTime @default(now()) @db.Timestamptz(6)
 

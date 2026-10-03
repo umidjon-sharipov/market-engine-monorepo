@@ -166,7 +166,9 @@ const ProductsGet = () => {
             setLoading(true);
             const [productsRes, categoriesRes, discountsRes] = await Promise.all([
                 fetch(`${API_URL}/products`),
-                fetch(`${API_URL}/categories`),
+                fetch(`${API_URL}/categories?marketId=${encodeURIComponent(market)}`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                }),
                 fetch(`${API_URL}/discounts`),
             ]);
 
