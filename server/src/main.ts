@@ -13,7 +13,7 @@ async function bootstrap() {
 
   const allowedOrigins = process.env.ALLOW_ORIGINS
     ? JSON.parse(process.env.ALLOW_ORIGINS)
-    : ['http://localhost:3000'];
+    : ['http://localhost:3000', 'http://localhost:3001'];
 
   app.enableCors({
     origin: (origin, callback) => {
@@ -53,7 +53,7 @@ async function bootstrap() {
     new ValidationPipe({
       transform: true,
       whitelist: true,
-      forbidNonWhitelisted: true,
+      forbidNonWhitelisted: false,
       stopAtFirstError: false,
     }),
   );

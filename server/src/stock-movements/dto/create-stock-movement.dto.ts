@@ -1,8 +1,9 @@
 import { MovementType } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
+  IsDateString,
   IsEnum,
-  IsInt,
+  IsNumber,
   IsOptional,
   IsString,
   IsUUID,
@@ -18,9 +19,22 @@ export class CreateStockMovementDto {
   type!: MovementType;
 
   @Type(() => Number)
-  @IsInt()
+  @IsNumber({ maxDecimalPlaces: 3 })
   @Min(0)
   quantity!: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  lotNumber?: string;
+
+  @IsOptional()
+  @IsDateString()
+  expiresAt?: string;
+
+  @IsOptional()
+  @IsUUID()
+  discountId?: string;
 
   @IsOptional()
   @IsUUID()

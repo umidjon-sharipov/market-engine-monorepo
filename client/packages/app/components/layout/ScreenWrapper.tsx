@@ -10,7 +10,7 @@ import { useScrollStore } from 'app/store/useScrollStore'
 export default function ScreenWrapper({ children }: { children: React.ReactNode }) {
     let insets = { bottom: 0, top: 0 }
     const tab = useTabStore(state => state.tab)
-    
+
     const scrollViewRef = useRef<ScrollView>(null);
     const setScrollToTopFunc = useScrollStore((state) => state.setScrollToTopFunc);
 
@@ -25,7 +25,7 @@ export default function ScreenWrapper({ children }: { children: React.ReactNode 
         if (hookInsets) {
             insets = hookInsets
         }
-    } catch (error) {}
+    } catch (error) { }
 
     const { width: windowWidth } = useWindowDimensions()
     const [isHydrated, setIsHydrated] = useState(false)
@@ -38,24 +38,24 @@ export default function ScreenWrapper({ children }: { children: React.ReactNode 
     const isMobileView = currentWidth < 900
 
     return (
-        <View style={styles.outerContainer}>
+        <View style={ styles.outerContainer }>
             <ScrollView
-                ref={scrollViewRef}
-                style={[
+                ref={ scrollViewRef }
+                style={ [
                     styles.scroll,
                     {
                         maxWidth: 1400,
                         width: '100%'
                     }
-                ]}
-                contentContainerStyle={[
+                ] }
+                contentContainerStyle={ [
                     styles.scrollContent,
                     { paddingBottom: insets.bottom || 20 }
-                ]}
-                showsVerticalScrollIndicator={false}
+                ] }
+                showsVerticalScrollIndicator={ false }
             >
-                <View style={[styles.mainBody, { paddingTop: (isMobileView && tab !== 4) ? 90 : 120 }]}>
-                    {children}
+                <View style={ [styles.mainBody, { paddingTop: (isMobileView && tab !== 4) ? 90 : 120 }] }>
+                    { children }
                 </View>
                 <Footer />
             </ScrollView>

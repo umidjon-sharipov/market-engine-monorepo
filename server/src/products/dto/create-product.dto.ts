@@ -1,7 +1,10 @@
 import { Transform, TransformFnParams, Type } from 'class-transformer';
 import { PartialType } from '@nestjs/mapped-types';
+import { UnitOfMeasure } from '@prisma/client';
 import {
   IsArray,
+  IsBoolean,
+  IsEnum,
   IsNumber,
   IsObject,
   IsOptional,
@@ -18,14 +21,22 @@ export class ProductOptionItemDto {
   key!: string;
 
   @Type(() => Number)
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 3 })
   value!: number;
+
+  @IsOptional()
+  @IsString()
+  image?: string;
 }
 
 export class ProductOptionDto {
   @IsString()
   @MaxLength(255)
   title!: string;
+
+  @IsOptional()
+  @IsBoolean()
+  searchEnabled?: boolean;
 
   @Transform(({ value }: TransformFnParams) => {
     const input: unknown = value;
@@ -65,20 +76,11 @@ export class CreateProductDto {
   @Min(0)
   price!: number;
 
-  @Type(() => Number)
-  @IsNumber()
-  @Min(0)
-  quantity!: number;
-
   @IsUUID()
   marketId!: string;
 
-  @IsUUID()
-  warehouseId!: string;
-
-  @IsOptional()
-  @IsUUID()
-  discountId?: string;
+  @IsEnum(UnitOfMeasure)
+  uom!: UnitOfMeasure;
 
   @IsOptional()
   @IsUUID()
@@ -89,8 +91,18 @@ export class CreateProductDto {
   categoryItemId?: string;
 
   @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  categoryPath?: string;
+
+  @IsOptional()
   @IsArray()
   gradient?: unknown[];
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  images?: string[];
 
   @IsArray()
   @ValidateNested({ each: true })

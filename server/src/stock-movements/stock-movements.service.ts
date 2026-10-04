@@ -13,6 +13,11 @@ type InventoryLocation = {
   binId: string;
 };
 
+type InventoryAllocation = {
+  lotNumber: string;
+  quantity: number;
+};
+
 @Injectable()
 export class StockMovementsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -126,6 +131,7 @@ export class StockMovementsService {
     warehouseId: string,
     binId: string,
     quantity: number,
+    lotNumber = '',
     tx?: Prisma.TransactionClient,
   ) {
     if (tx)
@@ -134,6 +140,7 @@ export class StockMovementsService {
         warehouseId,
         binId,
         quantity,
+        lotNumber,
       });
     return this.prisma.$transaction(
       (transaction) =>
@@ -142,6 +149,7 @@ export class StockMovementsService {
           warehouseId,
           binId,
           quantity,
+          lotNumber,
         }),
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
     );
@@ -179,6 +187,26 @@ export class StockMovementsService {
       select: { marketId: true },
     });
     if (!product) throw new BadRequestException('Mahsulot topilmadi.');
+
+    if (movement.discountId) {
+      const discount = await tx.discount.findUnique({
+        where: { id: movement.discountId },
+        select: { marketId: true },
+      });
+      if (!discount || discount.marketId !== product.marketId) {
+        throw new BadRequestException(
+          'Chegirma mahsulot marketiga tegishli emas.',
+        );
+      }
+      if (
+        movement.type !== MovementType.INBOUND &&
+        movement.type !== MovementType.ADJUSTMENT
+      ) {
+        throw new BadRequestException(
+          'Chegirmani faqat kirim yoki inventarizatsiyada belgilash mumkin.',
+        );
+      }
+    }
 
     if (needsSource) {
       await this.assertLocationMarket(
@@ -249,6 +277,7 @@ export class StockMovementsService {
           binId: movement.toBinId!,
         },
         movement.quantity,
+        movement,
       );
     } else if (movement.type === MovementType.OUTBOUND) {
       await this.decreaseInventory(
@@ -259,8 +288,19 @@ export class StockMovementsService {
           binId: movement.fromBinId!,
         },
         movement.quantity,
+        movement.lotNumber ?? '',
       );
     } else if (movement.type === MovementType.TRANSFER) {
+      const sourceLot = await tx.warehouseInventory.findUnique({
+        where: {
+          productId_binId_lotNumber: {
+            productId: movement.productId,
+            binId: movement.fromBinId!,
+            lotNumber: movement.lotNumber ?? '',
+          },
+        },
+        select: { expiresAt: true, discountId: true },
+      });
       await this.decreaseInventory(
         tx,
         movement.productId,
@@ -269,6 +309,7 @@ export class StockMovementsService {
           binId: movement.fromBinId!,
         },
         movement.quantity,
+        movement.lotNumber ?? '',
       );
       await this.increaseInventory(
         tx,
@@ -278,6 +319,11 @@ export class StockMovementsService {
           binId: movement.toBinId!,
         },
         movement.quantity,
+        {
+          ...movement,
+          expiresAt: movement.expiresAt ?? sourceLot?.expiresAt ?? null,
+          discountId: movement.discountId ?? sourceLot?.discountId ?? null,
+        },
       );
     } else {
       await this.adjustInventory(
@@ -288,6 +334,7 @@ export class StockMovementsService {
           binId: movement.toBinId!,
         },
         movement.quantity,
+        movement,
       );
     }
 
@@ -306,15 +353,30 @@ export class StockMovementsService {
     productId: string,
     location: InventoryLocation,
     quantity: number,
+    movement: Prisma.StockMovementGetPayload<object>,
   ) {
+    const lotNumber = movement.lotNumber ?? '';
     await tx.warehouseInventory.upsert({
-      where: { productId_binId: { productId, binId: location.binId } },
-      update: { quantity: { increment: quantity } },
+      where: {
+        productId_binId_lotNumber: {
+          productId,
+          binId: location.binId,
+          lotNumber,
+        },
+      },
+      update: {
+        quantity: { increment: quantity },
+        ...(movement.expiresAt && { expiresAt: movement.expiresAt }),
+        ...(movement.discountId && { discountId: movement.discountId }),
+      },
       create: {
         productId,
         warehouseId: location.warehouseId,
         binId: location.binId,
         quantity,
+        lotNumber,
+        expiresAt: movement.expiresAt,
+        discountId: movement.discountId,
       },
     });
   }
@@ -324,23 +386,42 @@ export class StockMovementsService {
     productId: string,
     location: InventoryLocation,
     quantity: number,
+    lotNumber: string,
   ) {
+    const inventory = await tx.warehouseInventory.findUnique({
+      where: {
+        productId_binId_lotNumber: {
+          productId,
+          binId: location.binId,
+          lotNumber,
+        },
+      },
+      select: { quantity: true, reservedQuantity: true },
+    });
+    if (
+      !inventory ||
+      inventory.quantity - inventory.reservedQuantity < quantity
+    ) {
+      throw new BadRequestException(
+        'Omborda band qilinmagan yetarli qoldiq mavjud emas.',
+      );
+    }
     const update = await tx.warehouseInventory.updateMany({
       where: {
         productId,
         warehouseId: location.warehouseId,
         binId: location.binId,
+        lotNumber,
         quantity: { gte: quantity },
-        reservedQuantity: { gte: quantity },
+        reservedQuantity: inventory.reservedQuantity,
       },
       data: {
         quantity: { decrement: quantity },
-        reservedQuantity: { decrement: quantity },
       },
     });
     if (!update.count) {
       throw new BadRequestException(
-        'Omborda chiqim uchun yetarli zaxiralangan miqdor mavjud emas.',
+        'Ombor qoldig‘i parallel ravishda o‘zgardi. Qayta urinib ko‘ring.',
       );
     }
   }
@@ -350,9 +431,13 @@ export class StockMovementsService {
     productId: string,
     location: InventoryLocation,
     quantity: number,
+    movement: Prisma.StockMovementGetPayload<object>,
   ) {
+    const lotNumber = movement.lotNumber ?? '';
     const existing = await tx.warehouseInventory.findUnique({
-      where: { productId_binId: { productId, binId: location.binId } },
+      where: {
+        productId_binId_lotNumber: { productId, binId: location.binId, lotNumber },
+      },
       select: { reservedQuantity: true },
     });
     if (existing && quantity < existing.reservedQuantity) {
@@ -361,9 +446,22 @@ export class StockMovementsService {
       );
     }
     await tx.warehouseInventory.upsert({
-      where: { productId_binId: { productId, binId: location.binId } },
-      update: { quantity },
-      create: { productId, ...location, quantity },
+      where: {
+        productId_binId_lotNumber: { productId, binId: location.binId, lotNumber },
+      },
+      update: {
+        quantity,
+        ...(movement.expiresAt && { expiresAt: movement.expiresAt }),
+        ...(movement.discountId && { discountId: movement.discountId }),
+      },
+      create: {
+        productId,
+        ...location,
+        quantity,
+        lotNumber,
+        expiresAt: movement.expiresAt,
+        discountId: movement.discountId,
+      },
     });
   }
 
@@ -375,7 +473,7 @@ export class StockMovementsService {
       binId: string;
       quantity: number;
     },
-  ) {
+  ): Promise<InventoryAllocation[]> {
     this.validateReservationQuantity(input.quantity);
     await this.assertProductAndBin(
       tx,
@@ -383,36 +481,42 @@ export class StockMovementsService {
       input.warehouseId,
       input.binId,
     );
-    const inventory = await tx.warehouseInventory.upsert({
-      where: {
-        productId_binId: { productId: input.productId, binId: input.binId },
-      },
-      update: {},
-      create: {
-        productId: input.productId,
-        warehouseId: input.warehouseId,
-        binId: input.binId,
-      },
-      select: { reservedQuantity: true },
-    });
-    const updated = await tx.warehouseInventory.updateMany({
+    const inventory = await tx.warehouseInventory.findMany({
       where: {
         productId: input.productId,
         warehouseId: input.warehouseId,
         binId: input.binId,
-        quantity: { gte: inventory.reservedQuantity + input.quantity },
-        reservedQuantity: inventory.reservedQuantity,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
       },
-      data: { reservedQuantity: { increment: input.quantity } },
+      orderBy: [{ expiresAt: 'asc' }, { updatedAt: 'asc' }],
     });
-    if (!updated.count) {
+    let remaining = input.quantity;
+    const allocations: InventoryAllocation[] = [];
+    for (const lot of inventory) {
+      const available = lot.quantity - lot.reservedQuantity;
+      if (available <= 0) continue;
+      const allocated = Math.min(available, remaining);
+      const updated = await tx.warehouseInventory.updateMany({
+        where: {
+          id: lot.id,
+          quantity: lot.quantity,
+          reservedQuantity: lot.reservedQuantity,
+        },
+        data: { reservedQuantity: { increment: allocated } },
+      });
+      if (!updated.count) {
+        throw new ConflictException(
+          'Ombor qoldig‘i parallel ravishda o‘zgardi. Qayta urinib ko‘ring.',
+        );
+      }
+      allocations.push({ lotNumber: lot.lotNumber, quantity: allocated });
+      remaining -= allocated;
+      if (remaining <= 0) break;
+    }
+    if (remaining > 0) {
       throw new BadRequestException('Sotuvga ochiq qoldiq yetarli emas.');
     }
-    return tx.warehouseInventory.findUniqueOrThrow({
-      where: {
-        productId_binId: { productId: input.productId, binId: input.binId },
-      },
-    });
+    return allocations;
   }
 
   private async releaseWithinTransaction(
@@ -422,6 +526,7 @@ export class StockMovementsService {
       warehouseId: string;
       binId: string;
       quantity: number;
+      lotNumber: string;
     },
   ) {
     this.validateReservationQuantity(input.quantity);
@@ -430,6 +535,7 @@ export class StockMovementsService {
         productId: input.productId,
         warehouseId: input.warehouseId,
         binId: input.binId,
+        lotNumber: input.lotNumber,
         reservedQuantity: { gte: input.quantity },
       },
       data: { reservedQuantity: { decrement: input.quantity } },
@@ -441,7 +547,11 @@ export class StockMovementsService {
     }
     return tx.warehouseInventory.findUniqueOrThrow({
       where: {
-        productId_binId: { productId: input.productId, binId: input.binId },
+        productId_binId_lotNumber: {
+          productId: input.productId,
+          binId: input.binId,
+          lotNumber: input.lotNumber,
+        },
       },
     });
   }
@@ -461,9 +571,9 @@ export class StockMovementsService {
   }
 
   private validateReservationQuantity(quantity: number) {
-    if (!Number.isInteger(quantity) || quantity <= 0) {
+    if (!Number.isFinite(quantity) || quantity <= 0) {
       throw new BadRequestException(
-        'Band qilish miqdori musbat butun son bo‘lishi shart.',
+        'Band qilish miqdori noldan katta bo‘lishi shart.',
       );
     }
   }

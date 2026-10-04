@@ -13,9 +13,7 @@ import Item from "./_components/item";
 import ImageUpload from "./_components/image";
 import { useParams } from "next/navigation";
 import GradientColor from "./_components/gradientColor";
-import Discount from "./_components/discount";
 import Category from "./_components/category";
-import WarehousePage from "./_components/warehouse";
 import { API_URL } from '@/lib/api';
 import { useRoleStore } from "@/app/_store/useRoleStore";
 
@@ -23,12 +21,14 @@ interface ProductOption {
     id: string;
     key: string;
     value: number;
+    image?: string | null;
 }
 
 interface ProductOptionGroup {
     id: string;
     title: string;
     searchKeys?: string[];
+    searchEnabled?: boolean;
     options: ProductOption[];
 }
 
@@ -41,12 +41,10 @@ interface Product {
         ru: string;
     };
     price?: number;
-    quantity?: number;
-    discountId: string;
     categoryId: string;
     categoryItemId?: string | null;
-    warehouseId: string;
     marketId: string;
+    uom: 'PCS' | 'KG' | 'LITRE' | 'METER';
     gradient: string[];
     options: ProductOptionGroup[];
     images: string[];
@@ -74,12 +72,8 @@ interface CategoryData {
     options: CategoryOption[];
 }
 
-interface DiscountData {
-    id: string;
-    title: string;
-    percentage: number;
-    market: string;
-}
+const isUuid = (value: string) =>
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 
 const resolveCategoryLabel = (categoryId: string, categories: CategoryData[]): string => {
     if (!categoryId || categoryId === 'NULL') return 'Tanlanmagan';
@@ -139,7 +133,6 @@ const ProductsGet = () => {
 
     const [data, setData] = useState<Product[]>([]);
     const [categories, setCategories] = useState<CategoryData[]>([]);
-    const [discounts, setDiscounts] = useState<DiscountData[]>([]);
     const [loading, setLoading] = useState<boolean>(true);
     const [loadError, setLoadError] = useState('');
     const [editId, setEditId] = useState<string | null>(null);
@@ -157,17 +150,13 @@ const ProductsGet = () => {
     const [gradientIsOpen, setGradientIsOpen] = useState(false);
     const [categoryOpen, setCategoryOpen] = useState(false)
     const [categoryId, setCategoryId] = useState('NULL')
-    const [discountOpen, setDiscountOpen] = useState(false)
-    const [discountId, setDiscountId] = useState('NULL')
-    const [warehouseOpen, setWarehouseOpen] = useState(false)
-    const [warehouseId, setWarehouseId] = useState('NULL')
-
     const [productTitle, setProductTitle] = useState('')
     const [descriptionUz, setDescriptionUz] = useState('')
     const [descriptionEn, setDescriptionEn] = useState('')
     const [descriptionRu, setDescriptionRu] = useState('')
     const [price, setPrice] = useState('')
-    const [quantity, setQuantity] = useState('')
+    const [uom, setUom] = useState<Product['uom']>('PCS')
+    const [existingImages, setExistingImages] = useState<string[]>([])
 
     const [colors, setColors] = useState<string[]>(['#3b82f6', '#3b82f6']);
 
@@ -192,42 +181,25 @@ const ProductsGet = () => {
     const fetchData = useCallback(async () => {
         try {
             setLoadError('');
-            const [productsRes, categoriesRes, discountsRes] = await Promise.all([
-                fetch(`${API_URL}/products`),
+            if (!isUuid(market)) {
+                throw new Error('URL parametrida yaroqli market UUID topilmadi.');
+            }
+            const [productsRes, categoriesRes] = await Promise.all([
+                fetch(`${API_URL}/products?marketId=${encodeURIComponent(market)}`),
                 fetch(`${API_URL}/categories?marketId=${encodeURIComponent(market)}`, {
                     headers: { Authorization: `Bearer ${token}` },
                 }),
-                fetch(`${API_URL}/discounts`),
             ]);
-            if (!productsRes.ok || !categoriesRes.ok || !discountsRes.ok) {
-                throw new Error('Mahsulot, kategoriya yoki chegirma ma’lumotlarini yuklab bo‘lmadi.');
+            if (!productsRes.ok || !categoriesRes.ok) {
+                throw new Error('Mahsulot yoki kategoriya ma’lumotlarini yuklab bo‘lmadi.');
             }
 
             const req: Product[] = await productsRes.json();
             const result = req.filter(item => item.marketId === market);
             setData(result);
 
-            const initialIndices: Record<string, number> = {};
-            const initialSelectedOpts: Record<string, Record<string, number>> = {};
-
-            result.forEach(item => {
-                initialIndices[item.id] = 0;
-                initialSelectedOpts[item.id] = {};
-                item.options?.forEach(group => {
-                    if (group.options && group.options.length > 0) {
-                        initialSelectedOpts[item.id][group.title] = group.options[0].value;
-                    }
-                });
-            });
-
-            setActiveImageIndices(initialIndices);
-            setSelectedOptions(initialSelectedOpts);
-
             const categoriesReq: CategoryData[] = await categoriesRes.json();
             setCategories(categoriesReq.filter(item => (item.marketId || item.marketid) === market));
-
-            const discountsReq: DiscountData[] = await discountsRes.json();
-            setDiscounts(discountsReq.filter(item => item.market === market));
         } catch (error) {
             console.error('Xatolik:', error);
             setLoadError(error instanceof Error ? error.message : 'Mahsulot ma’lumotlarini yuklab bo‘lmadi.');
@@ -237,7 +209,7 @@ const ProductsGet = () => {
     }, [market, token]);
 
     useEffect(() => {
-        if (market) {
+        if (isUuid(market)) {
             void Promise.resolve().then(() => fetchData());
         }
     }, [fetchData, market]);
@@ -284,10 +256,9 @@ const ProductsGet = () => {
         setDescriptionEn('');
         setDescriptionRu('');
         setPrice('');
-        setQuantity('');
         setCategoryId('NULL');
-        setDiscountId('NULL');
-        setWarehouseId('NULL');
+        setUom('PCS');
+        setExistingImages([]);
         setColors(['#3b82f6', '#3b82f6']);
         setImagesLength(1);
         setItemsLenght(1);
@@ -297,7 +268,7 @@ const ProductsGet = () => {
     const handleCreateProduct = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
 
-        if (!market) {
+        if (!isUuid(market)) {
             notify.show("Marketni tanlang!", 'error', dark ? 'dark' : 'light');
             return;
         }
@@ -315,28 +286,30 @@ const ProductsGet = () => {
             formData.set('descriptionEn', descriptionEn);
             formData.set('descriptionRu', descriptionRu);
             formData.set('price', price);
-            formData.set('quantity', quantity);
+            formData.set('uom', uom);
+            formData.set('images', JSON.stringify(existingImages));
             formData.append('gradient', JSON.stringify(colors));
-            formData.append('discountId', discountId);
             const selectedCategoryParts = categoryId === 'NULL' ? [] : categoryId.split('|');
             if (selectedCategoryParts.length >= 3) {
                 formData.set('categoryId', selectedCategoryParts[0]);
                 formData.set('categoryItemId', selectedCategoryParts[selectedCategoryParts.length - 1]);
+                formData.set('categoryPath', categoryId);
             } else if (categoryId !== 'NULL') {
                 formData.set('categoryId', categoryId);
+                formData.delete('categoryItemId');
+                formData.delete('categoryPath');
             } else {
                 formData.delete('categoryId');
                 formData.delete('categoryItemId');
+                formData.delete('categoryPath');
             }
-            formData.append('marketId', market);
-            formData.append('role', role);
-            formData.append('warehouseId', warehouseId);
+            formData.set('marketId', market);
 
             const res = await fetch(url, {
                 method,
                 headers: {
                     'Authorization': `Bearer ${token}`,
-                    // 'marketId': market,
+                    marketId: market,
                 },
                 body: formData
             });
@@ -351,7 +324,7 @@ const ProductsGet = () => {
                 );
                 setIsOpen(false);
                 resetForm();
-                fetchData();
+                void fetchData();
             } else {
                 notify.show(`${req.message || 'xatolik yuz berdi'}`, 'error', dark ? 'dark' : 'light');
             }
@@ -372,7 +345,7 @@ const ProductsGet = () => {
             });
             if (res.ok) {
                 notify.show("Mahsulot o'chirildi", "success", dark ? "dark" : "light");
-                fetchData();
+                void fetchData();
             } else {
                 notify.show("O'chirishda xatolik", "error", dark ? "dark" : "light");
             }
@@ -388,7 +361,7 @@ const ProductsGet = () => {
         setDescriptionEn(product.description?.en || '');
         setDescriptionRu(product.description?.ru || '');
         setPrice(product.price?.toString() || '');
-        setQuantity(product.quantity?.toString() || '');
+        setUom(product.uom ?? 'PCS');
         const itemSelection = categories
             .flatMap((category) => category.options.flatMap((option) => {
                 const findPath = (items: CategoryItem[], parents: string[]): string[] | null => {
@@ -405,8 +378,7 @@ const ProductsGet = () => {
             }))
             .find(Boolean);
         setCategoryId(itemSelection || product.categoryId || 'NULL');
-        setDiscountId(product.discountId || 'NULL');
-        setWarehouseId(product.warehouseId || 'NULL');
+        setExistingImages(Array.isArray(product.images) ? product.images : []);
         setColors(product.gradient?.length ? product.gradient : ['#3b82f6', '#3b82f6']);
         setEditOptions(product.options || []);
         setItemsLenght(product.options?.length ? product.options.length + 1 : 1);
@@ -424,7 +396,13 @@ const ProductsGet = () => {
         resetForm();
     };
 
-    const getDiscountInfo = (id: string) => discounts.find(d => d.id === id);
+    if (!isUuid(market)) {
+        return (
+            <div role="alert" className="p-10 text-center text-rose-400">
+                URL parametrida yaroqli market UUID topilmadi.
+            </div>
+        );
+    }
 
     return (
         <div className={`min-h-screen transition-colors duration-300 py-6 sm:py-12 px-4 sm:px-6 lg:px-8 ${theme === 'dark' ? 'text-zinc-100' : 'text-zinc-900'}`}>
@@ -476,10 +454,6 @@ const ProductsGet = () => {
                             const hasImages = item.images && item.images.length > 0;
                             const currentImageUrl = hasImages ? item.images[activeIndex] : "https://dummyimage.com/600x600/18181b/a1a1aa";
                             const totalPrice = calculateTotalPrice(item);
-                            const discountInfo = getDiscountInfo(item.discountId);
-                            const discountedPrice = discountInfo
-                                ? Math.round(totalPrice * (1 - discountInfo.percentage / 100))
-                                : totalPrice;
                             const categoryLabel = resolveStoredCategoryLabel(item.categoryId, item.categoryItemId, categories);
 
                             const gradientStyle = item.gradient?.length > 0
@@ -573,11 +547,6 @@ const ProductsGet = () => {
                                                 </>
                                             )}
 
-                                            {discountInfo && (
-                                                <span className="absolute top-3 left-3 sm:top-4 sm:left-4 bg-red-500 text-white text-xs font-bold px-2.5 py-1 rounded-lg z-20 shadow-md">
-                                                    -{discountInfo.percentage}% {discountInfo.title}
-                                                </span>
-                                            )}
                                         </div>
                                     </div>
 
@@ -596,13 +565,8 @@ const ProductsGet = () => {
                                                 <span className={`text-xs block mb-1 ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>Tanlangan Konfiguratsiya Narxi:</span>
                                                 <div className="flex items-baseline gap-2 flex-wrap">
                                                     <span className={`text-xl sm:text-2xl font-extrabold ${theme === 'dark' ? 'text-emerald-400' : 'text-emerald-600'}`}>
-                                                        {discountedPrice.toLocaleString()} UZS
+                                                        {totalPrice.toLocaleString()} UZS
                                                     </span>
-                                                    {discountInfo && (
-                                                        <span className={`text-sm line-through ${theme === 'dark' ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                                            {totalPrice.toLocaleString()} UZS
-                                                        </span>
-                                                    )}
                                                 </div>
                                             </div>
 
@@ -678,20 +642,34 @@ const ProductsGet = () => {
                         <div className="w-full p-2 flex gap-4 h-full max-[650px]:flex-col">
                             <div className="flex flex-row sm:flex-col gap-3 overflow-auto">
                                 {Array.from({ length: imagesLength }).map((_, index) => (
-                                    <ImageUpload key={`img-${editId ?? 'new'}-${index}`} setImagesLength={setImagesLength} index={index} />
+                                    <ImageUpload
+                                        key={`img-${editId ?? 'new'}-${index}`}
+                                        setImagesLength={setImagesLength}
+                                        index={index}
+                                        defaultImage={existingImages[index] ?? ''}
+                                    />
                                 ))}
                             </div>
 
                             <div className="flex flex-col gap-3 h-full overflow-auto flex-1">
                                 <GlassInput label='price' name='price' placeholder="price..." value={price} onChange={(e) => setPrice(e.target.value)} />
-                                <GlassInput label='quantity' name='quantity' placeholder="quantity..." value={quantity} onChange={(e) => setQuantity(e.target.value)} />
+                                <label className="flex flex-col gap-2 text-sm">
+                                    <span>O&apos;lchov birligi</span>
+                                    <select
+                                        name="uom"
+                                        value={uom}
+                                        onChange={(event) => setUom(event.target.value as Product['uom'])}
+                                        className={`rounded-xl border px-3 py-2.5 outline-none ${dark ? 'border-white/10 bg-zinc-900 text-white' : 'border-zinc-200 bg-white text-zinc-900'}`}
+                                    >
+                                        <option value="PCS">PCS — dona</option>
+                                        <option value="KG">KG — kilogramm</option>
+                                        <option value="LITRE">LITRE — litr</option>
+                                        <option value="METER">METER — metr</option>
+                                    </select>
+                                </label>
                                 <GlassButton type="button" onClick={() => setCategoryOpen(true)}>
                                     category select {categoryId !== 'NULL' && `(${resolveCategoryLabel(categoryId, categories)})`}
                                 </GlassButton>
-                                <GlassButton type="button" onClick={() => setDiscountOpen(true)}>
-                                    discount select {discountId !== 'NULL' && getDiscountInfo(discountId) && `(${getDiscountInfo(discountId)?.title})`}
-                                </GlassButton>
-                                <GlassButton type="button" onClick={() => setWarehouseOpen(true)}>warehouse select</GlassButton>
                                 <GlassButton type="button" onClick={() => setGradientIsOpen(true)}>gradient</GlassButton>
                             </div>
                         </div>
@@ -731,8 +709,8 @@ const ProductsGet = () => {
                                         cIndex={index}
                                         setItemsLenght={setItemsLenght}
                                         defaultTitle={editOptions[index]?.title ?? ''}
-                                        defaultItems={editOptions[index]?.options?.map(o => ({ key: o.key, value: o.value })) ?? []}
-                                        defaultSearchKeys={editOptions[index]?.searchKeys ?? []}
+                                        defaultItems={editOptions[index]?.options?.map(o => ({ key: o.key, value: o.value, image: o.image })) ?? []}
+                                        defaultSearchEnabled={editOptions[index]?.searchEnabled ?? false}
                                     />
                                 ))}
                             </div>
@@ -798,28 +776,6 @@ const ProductsGet = () => {
                 </div>
             </GlassModal>
 
-            <GlassModal open={discountOpen} onClose={() => setDiscountOpen(false)} title='Discount' size="3xl">
-                <Discount setDiscountId={setDiscountId} discountId={discountId} />
-
-                <div className="p-6"></div>
-
-                <div className="z-[999] flex items-center justify-end gap-3 absolute bottom-0 left-0 w-full p-6 pt-0 backdrop-blur-sm rounded-b-[28px]">
-                    <button
-                        onClick={() => setDiscountOpen(false)}
-                        type="button"
-                        className="px-4 py-2.5 rounded-xl text-sm font-medium text-zinc-400 hover:text-white hover:bg-white/5 transition-all"
-                    >
-                        Close
-                    </button>
-                    <GlassButton
-                        onClick={() => setDiscountOpen(false)}
-                        className="px-5 py-2.5 rounded-xl text-sm font-medium bg-sky-500 text-white hover:bg-sky-600 transition-all shadow-lg shadow-sky-500/20 active:scale-95"
-                    >
-                        Save
-                    </GlassButton>
-                </div>
-            </GlassModal>
-
             <GlassModal open={categoryOpen} onClose={() => setCategoryOpen(false)} title='Category' size="full">
                 <Category setCategoryId={setCategoryId} categoryId={categoryId} />
 
@@ -835,28 +791,6 @@ const ProductsGet = () => {
                     </button>
                     <GlassButton
                         onClick={() => setCategoryOpen(false)}
-                        className="px-5 py-2.5 rounded-xl text-sm font-medium bg-sky-500 text-white hover:bg-sky-600 transition-all shadow-lg shadow-sky-500/20 active:scale-95"
-                    >
-                        Save
-                    </GlassButton>
-                </div>
-            </GlassModal>
-
-            <GlassModal open={warehouseOpen} onClose={() => setWarehouseOpen(false)} title='Warehouse' size="3xl">
-                <WarehousePage setWarehouseId={setWarehouseId} warehouseId={warehouseId} />
-
-                <div className="p-6"></div>
-
-                <div className="z-[999] flex items-center justify-end gap-3 absolute bottom-0 left-0 w-full p-6 pt-0 backdrop-blur-sm rounded-b-[28px]">
-                    <button
-                        onClick={() => setWarehouseOpen(false)}
-                        type="button"
-                        className="px-4 py-2.5 rounded-xl text-sm font-medium text-zinc-400 hover:text-white hover:bg-white/5 transition-all"
-                    >
-                        Close
-                    </button>
-                    <GlassButton
-                        onClick={() => setWarehouseOpen(false)}
                         className="px-5 py-2.5 rounded-xl text-sm font-medium bg-sky-500 text-white hover:bg-sky-600 transition-all shadow-lg shadow-sky-500/20 active:scale-95"
                     >
                         Save

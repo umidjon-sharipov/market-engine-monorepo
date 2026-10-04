@@ -1,5 +1,5 @@
 'use client'
-import React, { useState, useEffect } from 'react'
+import React, { useState } from 'react'
 import Image from 'next/image'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 
@@ -10,24 +10,15 @@ export default function EditProductPage() {
     const locale = params.locale || 'uz'
     const productId = searchParams.get('id')
 
-    const [title, setTitle] = useState('')
-    const [description, setDescription] = useState('')
-    const [price, setPrice] = useState(0)
-    const [quantity, setQuantity] = useState(0)
-    const [selectedImage, setSelectedImage] = useState('https://i.ibb.co/nNZrjBSD/user.png')
-
-    useEffect(() => {
-        if (productId) {
-            setTitle('iPhone 15 Pro Max')
-            setDescription('Yangi avlod flagman smartfon, titanium korpus.')
-            setPrice(1200)
-            setQuantity(15)
-        }
-    }, [productId])
+    const [title, setTitle] = useState(productId ? 'iPhone 15 Pro Max' : '')
+    const [description, setDescription] = useState(productId ? 'Yangi avlod flagman smartfon, titanium korpus.' : '')
+    const [price, setPrice] = useState(productId ? 1200 : 0)
+    const [uom, setUom] = useState('PCS')
+    const [selectedImage] = useState('https://i.ibb.co/nNZrjBSD/user.png')
 
     const handleUpdate = (e: React.FormEvent) => {
         e.preventDefault()
-        console.log('Updated product:', { id: productId, title, description, price, quantity, selectedImage })
+        console.log('Updated product:', { id: productId, title, description, price, uom, selectedImage })
         router.push(`/${locale}/warehouse/products`)
     }
 
@@ -68,7 +59,7 @@ export default function EditProductPage() {
                                     className="object-cover group-hover:scale-105 transition-transform duration-500"
                                 />
                                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-4">
-                                    <span className="text-xs text-white font-medium">Rasmni o'zgartirish</span>
+                                    <span className="text-xs text-white font-medium">Rasmni o&apos;zgartirish</span>
                                 </div>
                             </div>
 
@@ -110,18 +101,15 @@ export default function EditProductPage() {
                                             className="w-full px-4 py-3.5 rounded-2xl bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/50 backdrop-blur-md transition-all font-medium"
                                         />
                                     </div>
-                                    <div>
-                                        <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-500 dark:text-neutral-400 mb-2">
-                                            Miqdori
-                                        </label>
-                                        <input
-                                            type="number"
-                                            required
-                                            value={quantity}
-                                            onChange={(e) => setQuantity(Number(e.target.value))}
-                                            className="w-full px-4 py-3.5 rounded-2xl bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/50 backdrop-blur-md transition-all font-medium"
-                                        />
-                                    </div>
+                                    <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
+                                        O&apos;lchov birligi
+                                        <select value={uom} onChange={(e) => setUom(e.target.value)} className="mt-2 w-full rounded-2xl border border-black/10 bg-black/5 px-4 py-3.5 text-neutral-900 dark:border-white/10 dark:bg-white/5 dark:text-white">
+                                            <option value="PCS">PCS — dona</option>
+                                            <option value="KG">KG — kilogramm</option>
+                                            <option value="LITRE">LITRE — litr</option>
+                                            <option value="METER">METER — metr</option>
+                                        </select>
+                                    </label>
                                 </div>
 
                                 <div>
@@ -150,7 +138,7 @@ export default function EditProductPage() {
                                     type="submit"
                                     className="px-8 py-4 rounded-2xl font-semibold text-white bg-gradient-to-r from-blue-600 to-sky-500 hover:opacity-90 active:scale-95 shadow-lg shadow-sky-500/30 transition-all duration-200 flex items-center gap-2"
                                 >
-                                    <span>O'zgarishlarni saqlash (Put)</span>
+                                    <span>O&apos;zgarishlarni saqlash (Put)</span>
                                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
                                         <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
                                     </svg>

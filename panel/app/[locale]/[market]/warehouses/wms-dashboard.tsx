@@ -41,10 +41,18 @@ type WarehouseZone = {
 
 type InventoryRow = {
   id: string;
+  lotNumber: string;
+  expiresAt: string | null;
   quantity: number;
   reservedQuantity: number;
   availableQuantity: number;
-  product: { id: string; title: string; images: string[]; price: number };
+  product: {
+    id: string;
+    title: string;
+    images: string[];
+    price: number;
+    uom: Product["uom"];
+  };
   bin: {
     id: string;
     code: string;
@@ -53,12 +61,20 @@ type InventoryRow = {
   };
 };
 
-type Product = { id: string; title: string; marketId: string };
+type Product = {
+  id: string;
+  title: string;
+  marketId: string;
+  uom: "PCS" | "KG" | "LITRE" | "METER";
+};
+type Discount = { id: string; title: string; marketId: string; percentage: number };
 type Movement = {
   id: string;
   type: "INBOUND" | "OUTBOUND" | "TRANSFER" | "ADJUSTMENT";
   status: "PENDING" | "COMPLETED" | "CANCELLED";
   quantity: number;
+  lotNumber?: string | null;
+  expiresAt?: string | null;
   note: string | null;
   createdAt: string;
   product: { id: string; title: string };
@@ -84,6 +100,9 @@ const statusLabels: Record<MovementStatus, string> = {
   COMPLETED: "Yakunlandi",
   CANCELLED: "Bekor qilindi",
 };
+
+const isUuid = (value: string) =>
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 
 const inputClass =
   "w-full rounded-xl border border-white/10 bg-zinc-950/50 px-3 py-2.5 text-sm text-white outline-none transition placeholder:text-zinc-500 focus:border-sky-500";
@@ -124,6 +143,7 @@ export default function WarehouseManagement() {
 
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [discounts, setDiscounts] = useState<Discount[]>([]);
   const [zones, setZones] = useState<WarehouseZone[]>([]);
   const [inventory, setInventory] = useState<InventoryRow[]>([]);
   const [movements, setMovements] = useState<Movement[]>([]);
@@ -152,6 +172,9 @@ export default function WarehouseManagement() {
   const [movementType, setMovementType] = useState<MovementType>("INBOUND");
   const [movementProductId, setMovementProductId] = useState("");
   const [movementQuantity, setMovementQuantity] = useState("1");
+  const [movementLotNumber, setMovementLotNumber] = useState("");
+  const [movementExpiresAt, setMovementExpiresAt] = useState("");
+  const [movementDiscountId, setMovementDiscountId] = useState("");
   const [sourceWarehouseId, setSourceWarehouseId] = useState("");
   const [sourceBinId, setSourceBinId] = useState("");
   const [targetWarehouseId, setTargetWarehouseId] = useState("");
@@ -163,6 +186,7 @@ export default function WarehouseManagement() {
   const selectedWarehouse = warehouses.find(
     (warehouse) => warehouse.id === selectedWarehouseId,
   );
+  const selectedProduct = products.find((product) => product.id === movementProductId);
   const inventoryByBin = useMemo(() => {
     const quantities = new globalThis.Map<string, number>();
     inventory.forEach((row) =>
@@ -174,18 +198,20 @@ export default function WarehouseManagement() {
     return quantities;
   }, [inventory]);
   const loadMainData = useCallback(async () => {
-    if (!marketId || !token) return;
+    if (!isUuid(marketId) || !token) return;
     setError("");
     try {
-      const [warehouseRows, productRows] = await Promise.all([
+      const [warehouseRows, productRows, discountRows] = await Promise.all([
         apiRequest<Warehouse[]>(
           `/warehouses?marketId=${encodeURIComponent(marketId)}`,
           token,
         ),
-        apiRequest<Product[]>("/products", token),
+        apiRequest<Product[]>(`/products?marketId=${encodeURIComponent(marketId)}`, token),
+        apiRequest<Discount[]>("/discounts", token),
       ]);
       setWarehouses(warehouseRows);
       setProducts(productRows.filter((product) => product.marketId === marketId));
+      setDiscounts(discountRows.filter((discount) => discount.marketId === marketId));
       setSelectedWarehouseId((selected) =>
         warehouseRows.some((warehouse) => warehouse.id === selected)
           ? selected
@@ -228,7 +254,7 @@ export default function WarehouseManagement() {
   }, [selectedWarehouseId, token]);
 
   const loadMovements = useCallback(async () => {
-    if (!marketId || !token) return;
+    if (!isUuid(marketId) || !token) return;
     const params = new URLSearchParams({ marketId });
     if (movementTypeFilter) params.set("type", movementTypeFilter);
     if (movementStatusFilter) params.set("status", movementStatusFilter);
@@ -242,19 +268,23 @@ export default function WarehouseManagement() {
   }, [marketId, movementStatusFilter, movementTypeFilter, token]);
 
   useEffect(() => {
-    if (!marketId || !token) return;
+    if (!isUuid(marketId) || !token) {
+      return;
+    }
     let active = true;
     Promise.all([
       apiRequest<Warehouse[]>(
         `/warehouses?marketId=${encodeURIComponent(marketId)}`,
         token,
       ),
-      apiRequest<Product[]>("/products", token),
+      apiRequest<Product[]>(`/products?marketId=${encodeURIComponent(marketId)}`, token),
+      apiRequest<Discount[]>("/discounts", token),
     ])
-      .then(([warehouseRows, productRows]) => {
+      .then(([warehouseRows, productRows, discountRows]) => {
         if (!active) return;
         setWarehouses(warehouseRows);
         setProducts(productRows.filter((product) => product.marketId === marketId));
+        setDiscounts(discountRows.filter((discount) => discount.marketId === marketId));
         setSelectedWarehouseId((selected) =>
           warehouseRows.some((warehouse) => warehouse.id === selected)
             ? selected
@@ -274,7 +304,7 @@ export default function WarehouseManagement() {
   }, [marketId, token]);
 
   useEffect(() => {
-    if (!selectedWarehouseId || !token) return;
+    if (!selectedWarehouseId || !token || !isUuid(marketId)) return;
     let active = true;
     Promise.all([
       apiRequest<WarehouseZone[]>(
@@ -302,7 +332,7 @@ export default function WarehouseManagement() {
     return () => {
       active = false;
     };
-  }, [selectedWarehouseId, token]);
+  }, [marketId, selectedWarehouseId, token]);
 
   useEffect(() => {
     if (!selectedWarehouseId) return;
@@ -364,6 +394,10 @@ export default function WarehouseManagement() {
 
   const submitWarehouse = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!isUuid(marketId)) {
+      setError("URL parametrida yaroqli market UUID topilmadi.");
+      return;
+    }
     setBusy(true);
     setError("");
     try {
@@ -523,12 +557,20 @@ export default function WarehouseManagement() {
     let createdMovementId = "";
     try {
       const quantity = Number(movementQuantity);
+      if (!Number.isFinite(quantity) || quantity < 0 || (movementType !== "ADJUSTMENT" && quantity <= 0)) {
+        throw new Error("Miqdor yaroqli musbat son bo'lishi kerak.");
+      }
       const payload: Record<string, string | number> = {
         productId: movementProductId,
         type: movementType,
         quantity,
         note: movementNote.trim(),
       };
+      if (movementLotNumber.trim()) payload.lotNumber = movementLotNumber.trim();
+      if (movementType === "INBOUND" || movementType === "ADJUSTMENT") {
+        if (movementExpiresAt) payload.expiresAt = new Date(movementExpiresAt).toISOString();
+        if (movementDiscountId) payload.discountId = movementDiscountId;
+      }
       if (movementType === "OUTBOUND" || movementType === "TRANSFER") {
         payload.fromWarehouseId = sourceWarehouseId;
         payload.fromBinId = sourceBinId;
@@ -554,6 +596,9 @@ export default function WarehouseManagement() {
         });
       }
       setMovementNote("");
+      setMovementLotNumber("");
+      setMovementExpiresAt("");
+      setMovementDiscountId("");
       setNotice(
         completeImmediately
           ? "Harakat yaratildi va yakunlandi."
@@ -590,6 +635,14 @@ export default function WarehouseManagement() {
     { id: "inventory", label: "Inventar", icon: WarehouseIcon },
     { id: "movements", label: "Harakatlar", icon: ArrowRightLeft },
   ];
+
+  if (!isUuid(marketId)) {
+    return (
+      <main role="alert" className="p-10 text-center text-rose-300">
+        URL parametrida yaroqli market UUID topilmadi.
+      </main>
+    );
+  }
 
   if (loading) {
     return <div className="p-10 text-center text-zinc-400">WMS yuklanmoqda...</div>;
@@ -732,11 +785,11 @@ export default function WarehouseManagement() {
                 <button type="button" className={secondaryButton} onClick={() => void loadWarehouseData()}><RefreshCw size={15} />Yangilash</button>
               </div>
               <div className="overflow-x-auto rounded-2xl border border-white/10">
-                <table className="w-full min-w-[760px] text-left text-sm">
-                  <thead className="bg-white/5 text-xs uppercase text-zinc-400"><tr><th className="px-4 py-3">Mahsulot</th><th className="px-4 py-3">Zona / yacheyka</th><th className="px-4 py-3 text-right">Amaldagi miqdor</th><th className="px-4 py-3 text-right">Band qilingan</th><th className="px-4 py-3 text-right">Sotuvga ochiq</th></tr></thead>
+                <table className="w-full min-w-[900px] text-left text-sm">
+                  <thead className="bg-white/5 text-xs uppercase text-zinc-400"><tr><th className="px-4 py-3">Mahsulot / lot</th><th className="px-4 py-3">Zona / yacheyka</th><th className="px-4 py-3">Yaroqlilik</th><th className="px-4 py-3 text-right">Amaldagi miqdor</th><th className="px-4 py-3 text-right">Band qilingan</th><th className="px-4 py-3 text-right">Sotuvga ochiq</th></tr></thead>
                   <tbody className="divide-y divide-white/5">
-                    {inventory.map((row) => <tr key={row.id} className="hover:bg-white/[0.025]"><td className="px-4 py-3 font-medium">{row.product.title}</td><td className="px-4 py-3 text-zinc-400">{row.bin.zone.code} · {row.bin.code}</td><td className="px-4 py-3 text-right tabular-nums">{row.quantity}</td><td className="px-4 py-3 text-right tabular-nums text-amber-300">{row.reservedQuantity}</td><td className="px-4 py-3 text-right tabular-nums text-emerald-300">{row.availableQuantity}</td></tr>)}
-                    {!inventory.length && <tr><td colSpan={5} className="px-4 py-10 text-center text-zinc-500">Bu omborda hozircha zaxira yo&apos;q.</td></tr>}
+                    {inventory.map((row) => <tr key={row.id} className="hover:bg-white/[0.025]"><td className="px-4 py-3 font-medium">{row.product.title}<span className="block text-xs text-zinc-500">{row.lotNumber || "Lot ko'rsatilmagan"}</span></td><td className="px-4 py-3 text-zinc-400">{row.bin.zone.code} · {row.bin.code}</td><td className="px-4 py-3 text-zinc-400">{row.expiresAt ? new Date(row.expiresAt).toLocaleDateString() : "—"}</td><td className="px-4 py-3 text-right tabular-nums">{row.quantity} {row.product.uom}</td><td className="px-4 py-3 text-right tabular-nums text-amber-300">{row.reservedQuantity} {row.product.uom}</td><td className="px-4 py-3 text-right tabular-nums text-emerald-300">{row.availableQuantity} {row.product.uom}</td></tr>)}
+                    {!inventory.length && <tr><td colSpan={6} className="px-4 py-10 text-center text-zinc-500">Bu omborda hozircha zaxira yo&apos;q.</td></tr>}
                   </tbody>
                 </table>
               </div>
@@ -749,7 +802,14 @@ export default function WarehouseManagement() {
                 <div className="flex items-center gap-2"><PackagePlus className="text-sky-400" size={19} /><h2 className="font-semibold">Yangi harakat</h2></div>
                 <label className="block space-y-1 text-xs text-zinc-400">Harakat turi<select className={inputClass} value={movementType} onChange={(event) => setMovementType(event.target.value as MovementType)}><option value="INBOUND">Kirim</option><option value="OUTBOUND">Chiqim</option><option value="TRANSFER">Ko&apos;chirish</option><option value="ADJUSTMENT">Inventarizatsiya</option></select></label>
                 <label className="block space-y-1 text-xs text-zinc-400">Mahsulot<select className={inputClass} required value={movementProductId} onChange={(event) => setMovementProductId(event.target.value)}><option value="">Mahsulotni tanlang</option>{products.map((product) => <option key={product.id} value={product.id}>{product.title}</option>)}</select></label>
-                <label className="block space-y-1 text-xs text-zinc-400">{movementType === "ADJUSTMENT" ? "Yangi amaldagi miqdor" : "Miqdor"}<input className={inputClass} type="number" min={movementType === "ADJUSTMENT" ? 0 : 1} step={1} required value={movementQuantity} onChange={(event) => setMovementQuantity(event.target.value)} /></label>
+                <label className="block space-y-1 text-xs text-zinc-400">{movementType === "ADJUSTMENT" ? "Yangi amaldagi miqdor" : "Miqdor"} ({selectedProduct?.uom ?? "PCS"})<input className={inputClass} type="number" min={movementType === "ADJUSTMENT" ? 0 : 0.001} step="0.001" required value={movementQuantity} onChange={(event) => setMovementQuantity(event.target.value)} /></label>
+                <label className="block space-y-1 text-xs text-zinc-400">Lot raqami (ixtiyoriy){movementType === "OUTBOUND" || movementType === "TRANSFER" ? " (manba loti)" : ""}<input className={inputClass} maxLength={100} value={movementLotNumber} onChange={(event) => setMovementLotNumber(event.target.value)} placeholder="LOT-2026-001" /></label>
+                {(movementType === "INBOUND" || movementType === "ADJUSTMENT") && (
+                  <>
+                    <label className="block space-y-1 text-xs text-zinc-400">Yaroqlilik muddati (ixtiyoriy)<input className={inputClass} type="date" value={movementExpiresAt} onChange={(event) => setMovementExpiresAt(event.target.value)} /></label>
+                    <label className="block space-y-1 text-xs text-zinc-400">Chegirma (ixtiyoriy)<select className={inputClass} value={movementDiscountId} onChange={(event) => setMovementDiscountId(event.target.value)}><option value="">Chegirmasiz</option>{discounts.map((discount) => <option key={discount.id} value={discount.id}>{discount.title} · {discount.percentage}%</option>)}</select></label>
+                  </>
+                )}
 
                 {(movementType === "OUTBOUND" || movementType === "TRANSFER") && (
                   <LocationSelector title="Qayerdan" warehouses={warehouses} warehouseId={sourceWarehouseId} binId={sourceBinId} onWarehouseChange={setSourceWarehouseId} onBinChange={setSourceBinId} />
@@ -782,7 +842,7 @@ export default function WarehouseManagement() {
                     <article key={movement.id} className="flex flex-col justify-between gap-3 rounded-2xl border border-white/10 bg-black/10 p-4 lg:flex-row lg:items-center">
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2"><span className="font-semibold">{movementLabels[movement.type]}</span><span className={`rounded-full px-2 py-0.5 text-xs ${movement.status === "COMPLETED" ? "bg-emerald-500/10 text-emerald-300" : movement.status === "CANCELLED" ? "bg-rose-500/10 text-rose-300" : "bg-amber-500/10 text-amber-200"}`}>{statusLabels[movement.status]}</span><span className="text-xs text-zinc-500">{new Date(movement.createdAt).toLocaleString()}</span></div>
-                        <p className="mt-1 truncate text-sm text-zinc-300">{movement.product.title} · {movement.quantity} dona</p>
+                        <p className="mt-1 truncate text-sm text-zinc-300">{movement.product.title} · {movement.quantity} {products.find((product) => product.id === movement.product.id)?.uom ?? ""}{movement.lotNumber ? ` · Lot ${movement.lotNumber}` : ""}{movement.expiresAt ? ` · ${new Date(movement.expiresAt).toLocaleDateString()}` : ""}</p>
                         <p className="mt-1 text-xs text-zinc-500">{movement.fromWarehouse ? `${movement.fromWarehouse.title} / ${movement.fromBin?.code ?? ""} → ` : ""}{movement.toWarehouse ? `${movement.toWarehouse.title} / ${movement.toBin?.code ?? ""}` : ""}{movement.note ? ` · ${movement.note}` : ""}</p>
                       </div>
                       {movement.status === "PENDING" && <div className="flex shrink-0 gap-2"><button className={primaryButton} type="button" onClick={() => void setMovementStatus(movement, "COMPLETED")}><Check size={15} />Yakunlash</button><button className="rounded-xl border border-rose-400/20 px-3 py-2 text-sm text-rose-200 hover:bg-rose-500/10" type="button" onClick={() => void setMovementStatus(movement, "CANCELLED")}>Bekor qilish</button></div>}

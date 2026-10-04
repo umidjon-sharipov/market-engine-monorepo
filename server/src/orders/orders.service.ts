@@ -41,16 +41,25 @@ export class OrdersService {
 
         if (status !== OrderStatus.CANCELLED) {
           for (const reservation of stockReservations) {
-            await this.stockMovements.reserveStock(
+            const allocations = await this.stockMovements.reserveStock(
               reservation.productId,
               reservation.warehouseId,
               reservation.binId,
               reservation.quantity,
               tx,
             );
-            await tx.orderStockReservation.create({
-              data: { ...reservation, orderId: order.id },
-            });
+            for (const allocation of allocations) {
+              await tx.orderStockReservation.create({
+                data: {
+                  orderId: order.id,
+                  productId: reservation.productId,
+                  warehouseId: reservation.warehouseId,
+                  binId: reservation.binId,
+                  lotNumber: allocation.lotNumber,
+                  quantity: allocation.quantity,
+                },
+              });
+            }
           }
         }
         return tx.order.findUniqueOrThrow({
@@ -103,6 +112,7 @@ export class OrdersService {
               reservation.warehouseId,
               reservation.binId,
               reservation.quantity,
+              reservation.lotNumber,
               tx,
             );
             await tx.orderStockReservation.update({

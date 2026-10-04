@@ -37,6 +37,13 @@ enum MovementStatus {
   CANCELLED
 }
 
+enum UnitOfMeasure {
+  PCS
+  KG
+  LITRE
+  METER
+}
+
 model Market {
   id        String   @id @default(uuid()) @db.Uuid
   email     String   @db.VarChar(255)
@@ -185,19 +192,20 @@ model Product {
   title          String          @db.VarChar(255)
   description    Json            @default("[]")
   price          Float           @default(0)
+  uom            UnitOfMeasure   @default(PCS)
   gradient       Json            @default("[]")
   discountId     String?         @db.Uuid
   categoryId     String?         @db.Uuid
   categoryItemId String?         @db.Uuid
   options        ProductOption[]
   images         Json            @default("[]")
-  quantity       Int             @default(0)
+  quantity       Float           @default(0)
   marketId       String          @db.Uuid
-  warehouseId    String          @db.Uuid
+  warehouseId    String?         @db.Uuid
   createdAt      DateTime        @default(now()) @db.Timestamptz(6)
 
   market            Market                  @relation(fields: [marketId], references: [id], onDelete: Cascade)
-  warehouse         Warehouse               @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  warehouse         Warehouse?              @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
   discount          Discount?               @relation(fields: [discountId], references: [id], onDelete: SetNull)
   category          Category?               @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   categoryItem      CategoryOptionItem?     @relation(fields: [categoryItemId], references: [id], onDelete: SetNull)
@@ -215,11 +223,12 @@ model Product {
 }
 
 model ProductOption {
-  id         String   @id @default(uuid()) @db.Uuid
-  productId  String   @db.Uuid
-  title      String   @db.VarChar(255)
-  searchKeys String[] @default([])
-  createdAt  DateTime @default(now()) @db.Timestamptz(6)
+  id            String   @id @default(uuid()) @db.Uuid
+  productId     String   @db.Uuid
+  title         String   @db.VarChar(255)
+  searchKeys    String[] @default([])
+  searchEnabled Boolean  @default(false)
+  createdAt     DateTime @default(now()) @db.Timestamptz(6)
 
   product Product             @relation(fields: [productId], references: [id], onDelete: Cascade)
   items   ProductOptionItem[]
@@ -229,10 +238,11 @@ model ProductOption {
 }
 
 model ProductOptionItem {
-  id       String @id @default(uuid()) @db.Uuid
-  optionId String @db.Uuid
-  key      String @db.VarChar(255)
-  value    Float  @default(0)
+  id       String  @id @default(uuid()) @db.Uuid
+  optionId String  @db.Uuid
+  key      String  @db.VarChar(255)
+  value    Float   @default(0)
+  image    String? @db.Text
 
   option ProductOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
 
@@ -262,8 +272,10 @@ model Discount {
   marketId   String   @map("marketId") @db.Uuid
   createdAt  DateTime @default(now()) @db.Timestamptz(6)
 
-  market   Market    @relation(fields: [marketId], references: [id], onDelete: Cascade)
-  products Product[]
+  market         Market               @relation(fields: [marketId], references: [id], onDelete: Cascade)
+  products       Product[]
+  inventoryLots  WarehouseInventory[]
+  stockMovements StockMovement[]
 
   @@index([marketId, startDate, endDate])
   @@map("Discounts")
@@ -389,8 +401,8 @@ model Warehouse {
   incomingMovements StockMovement[]         @relation("MovementToWarehouse")
   stockReservations OrderStockReservation[]
 
-  @@index([marketId])
   @@unique([marketId, code])
+  @@index([marketId])
   @@map("Warehouses")
 }
 
@@ -427,19 +439,23 @@ model StorageBin {
 }
 
 model WarehouseInventory {
-  id               String   @id @default(uuid()) @db.Uuid
-  productId        String   @db.Uuid
-  warehouseId      String   @db.Uuid
-  binId            String   @db.Uuid
-  quantity         Int      @default(0)
-  reservedQuantity Int      @default(0)
-  updatedAt        DateTime @updatedAt @db.Timestamptz(6)
+  id               String    @id @default(uuid()) @db.Uuid
+  productId        String    @db.Uuid
+  warehouseId      String    @db.Uuid
+  binId            String    @db.Uuid
+  lotNumber        String    @default("") @db.VarChar(100)
+  expiresAt        DateTime? @db.Timestamptz(6)
+  discountId       String?   @db.Uuid
+  quantity         Float     @default(0)
+  reservedQuantity Float     @default(0)
+  updatedAt        DateTime  @updatedAt @db.Timestamptz(6)
 
   product   Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
   warehouse Warehouse  @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
   bin       StorageBin @relation(fields: [binId], references: [id], onDelete: Restrict)
+  discount  Discount?  @relation(fields: [discountId], references: [id], onDelete: SetNull)
 
-  @@unique([productId, binId])
+  @@unique([productId, binId, lotNumber])
   @@index([warehouseId, binId])
   @@map("WarehouseInventories")
 }
@@ -449,7 +465,10 @@ model StockMovement {
   productId       String         @db.Uuid
   type            MovementType
   status          MovementStatus @default(PENDING)
-  quantity        Int
+  quantity        Float
+  lotNumber       String?        @db.VarChar(100)
+  expiresAt       DateTime?      @db.Timestamptz(6)
+  discountId      String?        @db.Uuid
   fromWarehouseId String?        @db.Uuid
   fromBinId       String?        @db.Uuid
   toWarehouseId   String?        @db.Uuid
@@ -463,6 +482,7 @@ model StockMovement {
   fromBin       StorageBin? @relation("MovementFromBin", fields: [fromBinId], references: [id], onDelete: Restrict)
   toWarehouse   Warehouse?  @relation("MovementToWarehouse", fields: [toWarehouseId], references: [id], onDelete: Restrict)
   toBin         StorageBin? @relation("MovementToBin", fields: [toBinId], references: [id], onDelete: Restrict)
+  discount      Discount?   @relation(fields: [discountId], references: [id], onDelete: SetNull)
 
   @@index([productId, createdAt(sort: Desc)])
   @@index([status, createdAt])
@@ -475,7 +495,8 @@ model OrderStockReservation {
   productId   String    @db.Uuid
   warehouseId String    @db.Uuid
   binId       String    @db.Uuid
-  quantity    Int
+  lotNumber   String    @default("") @db.VarChar(100)
+  quantity    Float
   createdAt   DateTime  @default(now()) @db.Timestamptz(6)
   releasedAt  DateTime? @db.Timestamptz(6)
 

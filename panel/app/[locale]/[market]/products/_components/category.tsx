@@ -34,6 +34,9 @@ interface Categorie {
     [key: string]: unknown;
 }
 
+const isUuid = (value: string) =>
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+
 function CategoriesContent({ setCategoryId, categoryId }: { setCategoryId: React.Dispatch<React.SetStateAction<string>>, categoryId: string }) {
     const [loading, setLoading] = useState<boolean>(true);
     const [expandedRow, setExpandedRow] = useState<string | null>(null);
@@ -46,6 +49,9 @@ function CategoriesContent({ setCategoryId, categoryId }: { setCategoryId: React
     const [categories, setCategories] = useState<Categorie[]>([]);
 
     const fetchData = useCallback(async () => {
+        if (!isUuid(market)) {
+            throw new Error('URL parametrida yaroqli market UUID topilmadi.');
+        }
         const res = await fetch(`${API_URL}/categories?marketId=${encodeURIComponent(market)}`, {
             headers: { Authorization: `Bearer ${token}` },
         });
@@ -72,7 +78,7 @@ function CategoriesContent({ setCategoryId, categoryId }: { setCategoryId: React
         return () => {
             active = false;
         };
-    }, [fetchData]);
+    }, [fetchData, market]);
 
     const renderItem = (
         category: Categorie,
@@ -81,26 +87,25 @@ function CategoriesContent({ setCategoryId, categoryId }: { setCategoryId: React
         parentIds: string[] = [],
     ): React.ReactNode => {
         const itemIds = [...parentIds, item.id];
-        const selectable = !item.children?.length;
         const selectedValue = [category.id, option.id, ...itemIds].join("|");
         return (
             <div key={item.id} className="space-y-1">
-                {selectable ? (
-                    <button
-                        type="button"
-                        onClick={() => setCategoryId(selectedValue)}
-                        className={`${categoryId === selectedValue ? "bg-sky-700/10 border-sky-500" : "bg-black/20 border-white/5"} flex w-full items-center gap-2 rounded-lg border p-1.5`}
-                    >
-                        {item.image ? (
-                            <div className="relative h-8 w-8 flex-shrink-0 overflow-hidden rounded-md">
-                                <Image src={item.image} alt={item.title} fill className="object-cover" />
-                            </div>
-                        ) : <span className="h-8 w-8" />}
-                        <span className="truncate text-xs text-neutral-200">{item.title}</span>
-                    </button>
-                ) : (
-                    <div className="rounded-lg bg-white/5 px-2 py-1 text-xs text-neutral-400">{item.title} — faqat ichki elementni tanlang</div>
-                )}
+                <button
+                    type="button"
+                    onClick={() => setCategoryId(selectedValue)}
+                    aria-pressed={categoryId === selectedValue}
+                    className={`${categoryId === selectedValue ? "bg-sky-700/10 border-sky-500" : "bg-black/20 border-white/5"} flex w-full items-center gap-2 rounded-lg border p-1.5`}
+                >
+                    {item.image ? (
+                        <div className="relative h-8 w-8 flex-shrink-0 overflow-hidden rounded-md">
+                            <Image src={item.image} alt={item.title} fill className="object-cover" />
+                        </div>
+                    ) : <span className="h-8 w-8" />}
+                    <span className="truncate text-xs text-neutral-200">{item.title}</span>
+                    <span className="ml-auto text-[10px] text-neutral-500">
+                        {item.children?.length ? "Oraliq kategoriya" : "Mahsulot tanlovi"}
+                    </span>
+                </button>
                 {item.children?.map((child) => renderItem(category, option, child, itemIds))}
             </div>
         );

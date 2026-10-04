@@ -11,12 +11,12 @@ export default function CreateProductPage() {
     const [title, setTitle] = useState('')
     const [description, setDescription] = useState('')
     const [price, setPrice] = useState(0)
-    const [quantity, setQuantity] = useState(0)
-    const [selectedImage, setSelectedImage] = useState('https://i.ibb.co/nNZrjBSD/user.png')
+    const [uom, setUom] = useState('PCS')
+    const [selectedImage] = useState('https://i.ibb.co/nNZrjBSD/user.png')
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault()
-        console.log({ title, description, price, quantity, selectedImage })
+        console.log({ title, description, price, uom, selectedImage })
         router.push(`/${locale}/warehouse/products`)
     }
 
@@ -24,10 +24,10 @@ export default function CreateProductPage() {
         <div className="max-w-4xl mx-auto py-8 px-4 animate-fade-in">
             <div className="mb-8">
                 <h1 className="text-2xl font-bold text-neutral-900 dark:text-white tracking-tight">
-                    Yangi Mahsulot Qo'shish
+                    Yangi Mahsulot Qo&apos;shish
                 </h1>
                 <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">
-                    Mahsulot ma'lumotlarini quyidagi interaktiv karta orqali to'ldiring
+                    Mahsulot ma&apos;lumotlarini quyidagi interaktiv karta orqali to&apos;ldiring
                 </p>
             </div>
 
@@ -58,13 +58,13 @@ export default function CreateProductPage() {
                                     type="button"
                                     className="flex-1 py-3 px-4 rounded-xl bg-sky-500/10 hover:bg-sky-500/20 text-sky-500 border border-sky-500/20 font-medium text-sm transition-all active:scale-95 flex items-center justify-center gap-2"
                                 >
-                                    <span>+ Rasm qo'shish</span>
+                                    <span>+ Rasm qo&apos;shish</span>
                                 </button>
                                 <button
                                     type="button"
                                     className="py-3 px-4 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 font-medium text-sm transition-all active:scale-95"
                                 >
-                                    - O'chirish
+                                    - O&apos;chirish
                                 </button>
                             </div>
                         </div>
@@ -98,18 +98,15 @@ export default function CreateProductPage() {
                                             className="w-full px-4 py-3.5 rounded-2xl bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/50 backdrop-blur-md transition-all font-medium"
                                         />
                                     </div>
-                                    <div>
-                                        <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-500 dark:text-neutral-400 mb-2">
-                                            Ombordagi miqdori
-                                        </label>
-                                        <input
-                                            type="number"
-                                            required
-                                            value={quantity}
-                                            onChange={(e) => setQuantity(Number(e.target.value))}
-                                            className="w-full px-4 py-3.5 rounded-2xl bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/50 backdrop-blur-md transition-all font-medium"
-                                        />
-                                    </div>
+                                    <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
+                                        O&apos;lchov birligi
+                                        <select value={uom} onChange={(e) => setUom(e.target.value)} className="mt-2 w-full rounded-2xl border border-black/10 bg-black/5 px-4 py-3.5 text-neutral-900 dark:border-white/10 dark:bg-white/5 dark:text-white">
+                                            <option value="PCS">PCS — dona</option>
+                                            <option value="KG">KG — kilogramm</option>
+                                            <option value="LITRE">LITRE — litr</option>
+                                            <option value="METER">METER — metr</option>
+                                        </select>
+                                    </label>
                                 </div>
 
                                 <div>

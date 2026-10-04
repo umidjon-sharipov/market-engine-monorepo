@@ -159,7 +159,7 @@ export class WarehousesService {
       orderBy: [{ bin: { code: 'asc' } }, { product: { title: 'asc' } }],
       include: {
         product: {
-          select: { id: true, title: true, images: true, price: true },
+          select: { id: true, title: true, images: true, price: true, uom: true },
         },
         bin: {
           select: {

@@ -3,8 +3,8 @@ import { Prisma, OrderStatus } from '@prisma/client';
 import {
     IsArray,
     IsEnum,
-    IsInt,
     IsNotEmpty,
+    IsNumber,
     IsOptional,
     IsString,
     IsUUID,
@@ -23,8 +23,8 @@ export class OrderStockReservationDto {
     binId!: string;
 
     @Type(() => Number)
-    @IsInt()
-    @Min(1)
+    @IsNumber({ maxDecimalPlaces: 3 })
+    @Min(0.001)
     quantity!: number;
 }
 

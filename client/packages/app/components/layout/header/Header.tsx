@@ -895,24 +895,22 @@ const Header = () => {
 
                     <LinearGradient
                         colors={['rgba(255, 255, 255, 0)', 'rgb(255, 255, 255)']}
-                        location={[0.9, 0.1]}
+                        locations={[0, 1]}
                         start={{ x: 0, y: 0 }}
                         end={{ x: 0, y: 1 }}
                         style={{
-                            top: 0,
+                            position: 'absolute',
+                            bottom: 0,
                             left: 0,
-                            height: '100%',
-                            flexDirection: 'row',
-                            justifyContent: 'center',
-                            alignItems: 'center',
-                            zIndex: 99999,
-                            width: '100%',
+                            right: 0,
+                            height: 100,
+                            zIndex: 10,
                             pointerEvents: 'none',
                             paddingHorizontal: 5000,
                             ...Platform.select({
                                 web: {
                                     position: 'fixed',
-                                    background: 'linear-gradient(to top, rgb(255, 255, 255), rgba(255, 255, 255, 0), rgba(255, 255, 255, 0), rgba(255, 255, 255, 0), rgba(255, 255, 255, 0), rgba(255, 255, 255, 0), rgba(255, 255, 255, 0), rgba(255, 255, 255, 0), rgba(255, 255, 255, 0), rgba(255, 255, 255, 0))'
+                                    background: 'linear-gradient(to top, rgb(255, 255, 255), rgba(255, 255, 255, 0))'
                                 },
                                 default: {
                                     position: 'absolute',
