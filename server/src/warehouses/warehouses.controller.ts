@@ -6,6 +6,7 @@ import {
   ForbiddenException,
   Get,
   Param,
+  ParseIntPipe,
   ParseUUIDPipe,
   Patch,
   Post,
@@ -60,6 +61,21 @@ export class WarehousesController {
     const marketId = await this.warehousesService.getWarehouseMarketId(id);
     await this.assertAccess(request, marketId, 'get');
     return this.warehousesService.findInventory(id);
+  }
+
+  @Get(':id/bins/:binId/inventory')
+  @UseGuards(JwtAuthGuard)
+  async getBinInventory(
+    @Req() request: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('binId', ParseUUIDPipe) binId: string,
+    @Query('search') search = '',
+    @Query('page', new ParseIntPipe({ optional: true })) page = 1,
+    @Query('limit', new ParseIntPipe({ optional: true })) limit = 20,
+  ) {
+    const marketId = await this.warehousesService.getWarehouseMarketId(id);
+    await this.assertAccess(request, marketId, 'get');
+    return this.warehousesService.searchBinInventory(id, binId, search, page, limit);
   }
 
   @Get(':id/zones')
@@ -117,6 +133,20 @@ export class WarehousesController {
     const marketId = await this.warehousesService.getZoneMarketId(zoneId);
     await this.assertAccess(request, marketId, 'get');
     return this.warehousesService.findBins(zoneId);
+  }
+
+  @Get('bins/search')
+  @UseGuards(JwtAuthGuard)
+  async searchBins(
+    @Req() request: AuthenticatedRequest,
+    @Query('warehouseId', ParseUUIDPipe) warehouseId: string,
+    @Query('search') search = '',
+    @Query('page', new ParseIntPipe({ optional: true })) page = 1,
+    @Query('limit', new ParseIntPipe({ optional: true })) limit = 20,
+  ) {
+    const marketId = await this.warehousesService.getWarehouseMarketId(warehouseId);
+    await this.assertAccess(request, marketId, 'get');
+    return this.warehousesService.searchBins(warehouseId, search, page, limit);
   }
 
   @Post('bins')
@@ -232,7 +262,7 @@ export class WarehousesController {
     const Guard = MarketAccessGuard(
       'warehouse',
       email,
-      ['owner', 'admin', 'manager'],
+      ['admin', 'warehouse', 'manager', 'owner'],
       marketId,
       action,
     );

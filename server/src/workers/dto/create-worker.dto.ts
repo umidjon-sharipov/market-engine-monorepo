@@ -1,19 +1,38 @@
-import { IsNotEmpty, IsString, IsUUID, IsOptional } from 'class-validator';
+import {
+  ArrayUnique,
+  IsArray,
+  IsIn,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MaxLength,
+} from 'class-validator';
+import { WORKER_ROLES } from '../worker-permissions';
+import { VALID_WORKER_PERMISSIONS } from '../worker-permissions';
 
 export class CreateWorkerDto {
-    @IsNotEmpty({ message: "Do'kon ID (marketId) kiritilishi shart" })
-    @IsUUID('4', { message: "marketId yaroqli UUID formatida bo'lishi kerak" })
-    marketId!: string;
+  @IsUUID('4')
+  marketId!: string;
 
-    @IsNotEmpty({ message: "Foydalanuvchi idsi kiritilishi shart" })
-    @IsUUID('4', { message: 'userId yaroqli UUID formatida bo\'lishi kerak' })
-    userId!: string;
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  identifier?: string;
 
-    @IsOptional()
-    @IsString({ message: "Rol matn shaklida bo'lishi kerak" })
-    role!: string;
+  @IsOptional()
+  @IsUUID('4')
+  userId?: string;
 
-    @IsNotEmpty()
-    @IsUUID('4', { message: 'vacancyId yaroqli UUID formatida bo\'lishi kerak' })
-    vacancyId!: string;
+  @IsString()
+  @IsNotEmpty()
+  @IsIn(WORKER_ROLES)
+  role!: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @IsString({ each: true })
+  @IsIn(VALID_WORKER_PERMISSIONS, { each: true })
+  permissions?: string[];
 }

@@ -105,6 +105,49 @@ export class WarehousesService {
     });
   }
 
+  async searchBins(
+    warehouseId: string,
+    search: string,
+    page = 1,
+    limit = 20,
+  ) {
+    const safePage = Math.max(1, Math.floor(page));
+    const safeLimit = Math.min(20, Math.max(1, Math.floor(limit)));
+    const where: Prisma.StorageBinWhereInput = {
+      zone: { warehouseId },
+      ...(search.trim()
+        ? {
+            OR: [
+              { code: { contains: search.trim(), mode: 'insensitive' } },
+              { title: { contains: search.trim(), mode: 'insensitive' } },
+              {
+                zone: {
+                  title: { contains: search.trim(), mode: 'insensitive' },
+                },
+              },
+            ],
+          }
+        : {}),
+    };
+    const [data, total] = await this.prisma.$transaction([
+      this.prisma.storageBin.findMany({
+        where,
+        orderBy: [{ code: 'asc' }, { id: 'asc' }],
+        skip: (safePage - 1) * safeLimit,
+        take: safeLimit,
+        include: { zone: { select: { id: true, code: true, title: true } } },
+      }),
+      this.prisma.storageBin.count({ where }),
+    ]);
+    return {
+      data,
+      page: safePage,
+      limit: safeLimit,
+      total,
+      hasMore: safePage * safeLimit < total,
+    };
+  }
+
   async createBin(body: CreateStorageBinDto) {
     await this.requireZone(body.zoneId);
     try {
@@ -175,6 +218,61 @@ export class WarehousesService {
       ...row,
       availableQuantity: row.quantity - row.reservedQuantity,
     }));
+  }
+
+  async searchBinInventory(
+    warehouseId: string,
+    binId: string,
+    search: string,
+    page = 1,
+    limit = 20,
+  ) {
+    const bin = await this.prisma.storageBin.findFirst({
+      where: { id: binId, zone: { warehouseId } },
+      select: { id: true },
+    });
+    if (!bin) throw new NotFoundException('Yacheyka ushbu omborga tegishli emas.');
+
+    const safePage = Math.max(1, Math.floor(page));
+    const safeLimit = Math.min(20, Math.max(1, Math.floor(limit)));
+    const where: Prisma.WarehouseInventoryWhereInput = {
+      warehouseId,
+      binId,
+      quantity: { gt: 0 },
+      ...(search.trim()
+        ? { product: { title: { contains: search.trim(), mode: 'insensitive' } } }
+        : {}),
+    };
+    const [rows, total] = await this.prisma.$transaction([
+      this.prisma.warehouseInventory.findMany({
+        where,
+        orderBy: [{ product: { title: 'asc' } }, { expiresAt: 'asc' }],
+        skip: (safePage - 1) * safeLimit,
+        take: safeLimit,
+        select: {
+          id: true,
+          productId: true,
+          lotNumber: true,
+          quantity: true,
+          reservedQuantity: true,
+          expiresAt: true,
+          product: {
+            select: { id: true, title: true, uom: true, options: { include: { items: true } } },
+          },
+        },
+      }),
+      this.prisma.warehouseInventory.count({ where }),
+    ]);
+    return {
+      data: rows.map((row) => ({
+        ...row,
+        availableQuantity: row.quantity - row.reservedQuantity,
+      })),
+      page: safePage,
+      limit: safeLimit,
+      total,
+      hasMore: safePage * safeLimit < total,
+    };
   }
 
   async getWarehouseMarketId(warehouseId: string) {

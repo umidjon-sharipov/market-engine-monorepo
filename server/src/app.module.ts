@@ -28,6 +28,8 @@ import { MessagesModule } from './messages/messages.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { StockMovementsModule } from './stock-movements/stock-movements.module';
+import { PickPointsModule } from './pickpoints/pickpoints.module';
+import { WarehouseTasksModule } from './warehouse-tasks/warehouse-tasks.module';
 
 const getPublicPath = () => {
   const paths = [
@@ -76,6 +78,8 @@ const getPublicPath = () => {
     MessagesModule,
     DashboardModule,
     StockMovementsModule,
+    PickPointsModule,
+    WarehouseTasksModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],

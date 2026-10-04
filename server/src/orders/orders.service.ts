@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateOrderDto, UpdateOrderStatusDto } from './dto/create-order.dto';
-import { OrderStatus, Prisma } from '@prisma/client';
+import { OrderStatus, Prisma, WarehouseTaskStatus } from '@prisma/client';
 import { StockMovementsService } from '../stock-movements/stock-movements.service';
 
 @Injectable()
@@ -49,7 +49,7 @@ export class OrdersService {
               tx,
             );
             for (const allocation of allocations) {
-              await tx.orderStockReservation.create({
+              const reservationRecord = await tx.orderStockReservation.create({
                 data: {
                   orderId: order.id,
                   productId: reservation.productId,
@@ -58,13 +58,35 @@ export class OrdersService {
                   lotNumber: allocation.lotNumber,
                   quantity: allocation.quantity,
                 },
+                select: { id: true },
+              });
+              const warehouse = await tx.warehouse.findUniqueOrThrow({
+                where: { id: reservation.warehouseId },
+                select: { marketId: true },
+              });
+              await tx.warehouseTask.create({
+                data: {
+                  marketId: warehouse.marketId,
+                  assignedWorkerId: null,
+                  warehouseId: reservation.warehouseId,
+                  sourceBinId: reservation.binId,
+                  productId: reservation.productId,
+                  orderId: order.id,
+                  reservationId: reservationRecord.id,
+                  quantity: allocation.quantity,
+                  status: WarehouseTaskStatus.OPEN,
+                  note: `Order pick task for ${order.id}`,
+                },
               });
             }
           }
         }
         return tx.order.findUniqueOrThrow({
           where: { id: order.id },
-          include: { stockReservations: true },
+          include: {
+            stockReservations: true,
+            warehouseTasks: { orderBy: { createdAt: 'asc' } },
+          },
         });
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
@@ -120,6 +142,21 @@ export class OrdersService {
               data: { releasedAt: new Date() },
             });
           }
+          await tx.warehouseTask.updateMany({
+            where: {
+              orderId: order.id,
+              status: {
+                notIn: [
+                  WarehouseTaskStatus.COMPLETED,
+                  WarehouseTaskStatus.CANCELLED,
+                ],
+              },
+            },
+            data: {
+              status: WarehouseTaskStatus.CANCELLED,
+              cancelledAt: new Date(),
+            },
+          });
         }
         return tx.order.update({
           where: { id },

@@ -33,7 +33,7 @@ interface optionItem {
 interface optionGroup {
     id: string;
     title: string;
-    options: optionItem;
+    options: optionItem[];
 }
 
 interface Product {
@@ -55,7 +55,7 @@ const ProductID = () => {
     const lan = useLanStorage(state => state.lan);
     const inputValue = useInputStorage(state => state.input);
     const pathname = usePathname();
-    const [selectedOptions, setSelectedOptions] = useState<Record<string, Record<string, number>>>({});
+    const [selectedOptions, setSelectedOptions] = useState<Record<string, Record<string, string>>>({});
     const { width: windowWidth } = useWindowDimensions();
     const router = useRouter();
     const isTabletView = windowWidth < 1000 && windowWidth > 500;
@@ -63,6 +63,7 @@ const ProductID = () => {
 
     const searchParams = useSearchParams();
     const searchId = searchParams?.get('id');
+    const optionQuery = searchParams?.get('options') ?? null;
 
     const pathSegments = pathname?.split('/')[2]?.split(',') || [];
     const productIdToFind = searchId || pathSegments[0];
@@ -77,20 +78,53 @@ const ProductID = () => {
     const { cart, toggleCart } = useCartStore();
 
     const product: Product | undefined = products.find(p => String(p.id) === String(productIdToFind));
-    const isInCart = cart.some(item => String(item.id) === String(product?.id));
+    const currentSelections = product ? selectedOptions[String(product.id)] ?? {} : {};
+    const isInCart = cart.some(item =>
+        String(item.id) === String(product?.id) &&
+        Object.keys(item.optionSelections ?? {}).length === Object.keys(currentSelections).length &&
+        Object.entries(currentSelections).every(([groupId, optionId]) => item.optionSelections?.[groupId] === optionId)
+    );
     const toggleYoqtirilgan = useYoqtirilganStore(state => state.toggleYoqtirilgan);
     const yoqtirilganIds = useYoqtirilganStore(state => state.yoqtirilganIds);
     const setModal = useModalStore(state => state.setModal)
     const modal = useModalStore(state => state.modal)
 
-    const handleOptionSelect = (productId: string, groupName: string, priceValue: number) => {
-        setSelectedOptions(prev => ({
-            ...prev,
-            [productId]: {
-                ...(prev[productId] || {}),
-                [groupName]: priceValue
+    useEffect(() => {
+        if (!product) return;
+
+        let parsedSelections: Record<string, string> = {};
+        if (optionQuery) {
+            try {
+                const parsed: unknown = JSON.parse(optionQuery);
+                if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+                    parsedSelections = Object.fromEntries(
+                        Object.entries(parsed).filter((entry): entry is [string, string] => typeof entry[1] === 'string')
+                    );
+                }
+            } catch {
+                parsedSelections = {};
             }
+        }
+
+        const validSelections = Object.fromEntries(product.options.flatMap(group => {
+            const selectedId = parsedSelections[group.id];
+            return selectedId && group.options.some(option => option.id === selectedId)
+                ? [[group.id, selectedId] as [string, string]]
+                : [];
         }));
+        setSelectedOptions(previous => ({ ...previous, [String(product.id)]: validSelections }));
+    }, [product, optionQuery]);
+
+    const handleOptionSelect = (productId: string, groupId: string, optionId: string) => {
+        const nextSelections = {
+            ...(selectedOptions[productId] ?? {}),
+            [groupId]: optionId,
+        };
+        setSelectedOptions(previous => ({ ...previous, [productId]: nextSelections }));
+
+        const params = new URLSearchParams(searchParams?.toString() ?? '');
+        params.set('options', JSON.stringify(nextSelections));
+        router.replace(`${pathname ?? ''}?${params.toString()}`);
     };
 
     useEffect(() => {
@@ -238,27 +272,12 @@ const ProductID = () => {
     }, [url]);
 
 
-    const [totalPrice, setTotalPrice] = useState(calculateTotalPrice(product))
-
-
-    const calculateTotalPrice = (product: Product) => {
-        if (!product || !product.id) return 0
-
-        const productSelections = selectedOptions[product.id] || {};
-        let optionsSum = product.price || 0;
-
-        Object.values(productSelections).forEach(value => {
-            if (typeof value === 'number') {
-                optionsSum += value;
-            }
-        });
-
-        setTotalPrice(optionsSum)
-    };
-
-    useEffect(() => {
-        calculateTotalPrice(product)
-    }, [selectedOptions])
+    const totalPrice = product
+        ? product.price + product.options.reduce((sum, group) => {
+            const selectedId = currentSelections[group.id];
+            return sum + (group.options.find(option => option.id === selectedId)?.value ?? 0);
+        }, 0)
+        : 0;
 
 
     if (loading) {
@@ -399,7 +418,7 @@ const ProductID = () => {
                                                                     return (
                                                                         <TouchableOpacity
                                                                             key={valIdx}
-                                                                            onPress={() => handleOptionSelect(product.id, optGroup.id, opt.value)}
+                                                                            onPress={() => handleOptionSelect(String(product.id), optGroup.id, opt.id)}
                                                                             activeOpacity={0.7}
                                                                             style={[
                                                                                 styles.optionButton,
@@ -538,7 +557,7 @@ const ProductID = () => {
                                             onPressOut={handleButtonPressOut}
                                             onPress={(e: any) => {
                                                 e.stopPropagation();
-                                                toggleCart(product.id);
+                                                toggleCart(product.id, currentSelections);
                                             }}
                                             style={[styles.button, isInCart ? styles.buttonInCart : styles.button, { width: '100%' }]}>
                                             <Text style={[styles.buttonText, isInCart && styles.buttonTextInCart]}>{isInCart ? 'savatda ✓' : 'savatga qo\'shish'}</Text>
@@ -634,7 +653,7 @@ const ProductID = () => {
                                                         return (
                                                             <TouchableOpacity
                                                                 key={valIdx}
-                                                                onPress={() => handleOptionSelect(product.id, optGroup.id, opt.value)}
+                                                                onPress={() => handleOptionSelect(String(product.id), optGroup.id, opt.id)}
                                                                 activeOpacity={0.7}
                                                                 style={[
                                                                     styles.optionButton,

@@ -53,6 +53,56 @@ export class ProductsService {
     });
   }
 
+  async search(
+    marketId: string,
+    search: string,
+    page = 1,
+    limit = 20,
+  ) {
+    const safePage = Math.max(1, Math.floor(page));
+    const safeLimit = Math.min(20, Math.max(1, Math.floor(limit)));
+    const terms = search
+      .trim()
+      .toLocaleLowerCase()
+      .split(/\s+/)
+      .filter(Boolean);
+    const where: Prisma.ProductWhereInput = {
+      marketId,
+      ...(terms.length
+        ? {
+            OR: [
+              { title: { contains: search.trim(), mode: 'insensitive' } },
+              {
+                options: {
+                  some: {
+                    searchEnabled: true,
+                    searchKeys: { hasSome: terms },
+                  },
+                },
+              },
+            ],
+          }
+        : {}),
+    };
+    const [data, total] = await this.prisma.$transaction([
+      this.prisma.product.findMany({
+        where,
+        orderBy: [{ title: 'asc' }, { id: 'asc' }],
+        skip: (safePage - 1) * safeLimit,
+        take: safeLimit,
+        select: { id: true, title: true, marketId: true, uom: true },
+      }),
+      this.prisma.product.count({ where }),
+    ]);
+    return {
+      data,
+      page: safePage,
+      limit: safeLimit,
+      total,
+      hasMore: safePage * safeLimit < total,
+    };
+  }
+
   async createProduct(
     body: CreateProductDto,
     files: Array<Express.Multer.File>,

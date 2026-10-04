@@ -16,14 +16,19 @@ interface Product {
     discountId: string;
     images: string[];
     quantity: number;
-    options: any[];
+    options: { id: string; title: string; options: { id: string; key: string; value: number }[] }[];
 }
 
-const CardProduct = ({ product, index }: { product: Product; index?: number }) => {
+interface CartItem {
+    id: string;
+    quantity: number;
+    optionSelections: Record<string, string>;
+}
+
+const CardProduct = ({ product, cartItem, index = 0 }: { product: Product; cartItem: CartItem; index?: number }) => {
     const { width: windowWidth } = useWindowDimensions();
     const [isMounted, setIsMounted] = useState(false);
 
-    const cart = useCartStore(state => state.cart);
     const toggleCart = useCartStore(state => state.toggleCart);
 
     const yoqtirilganIds = useYoqtirilganStore(state => state.yoqtirilganIds);
@@ -57,11 +62,17 @@ const CardProduct = ({ product, index }: { product: Product; index?: number }) =
         return () => clearTimeout(timer);
     }, [index, fadeAnim, slideAnim]);
 
-    const isInCart = cart.some(item => item.id === product.id);
     const isFavorite = isMounted && yoqtirilganIds.includes(product.id);
 
-    const cartItem = cart.find(item => item.id === product.id);
-    const quantity = cartItem ? cartItem.quantity : 1;
+    const optionSelections = cartItem.optionSelections ?? {};
+    const quantity = cartItem.quantity;
+    const selectedOptions = product.options.flatMap(group => {
+        const option = group.options.find(item => item.id === optionSelections[group.id]);
+        return option ? [`${group.title}: ${option.key}`] : [];
+    });
+    const linePrice = product.price + product.options.reduce((sum, group) => (
+        sum + (group.options.find(option => option.id === optionSelections[group.id])?.value ?? 0)
+    ), 0);
     const oldPrice = product.price * 1.5;
 
     const scaleAnim = useRef(new Animated.Value(0)).current;
@@ -70,7 +81,7 @@ const CardProduct = ({ product, index }: { product: Product; index?: number }) =
         inputRange: [0, 1],
         outputRange: [1, 1.4],
     });
-    
+
     const handleFavoritePress = (e: any) => {
         e.stopPropagation();
         toggleYoqtirilgan(product.id);
@@ -133,7 +144,7 @@ const CardProduct = ({ product, index }: { product: Product; index?: number }) =
                             {product.title}
                         </Text>
 
-                        <Pressable onPress={() => toggleCart(product.id)} style={styles.deleteButton}>
+                        <Pressable onPress={() => toggleCart(product.id, optionSelections)} style={styles.deleteButton}>
                             <Text style={[styles.deleteText, isSmall && styles.deleteTextSmall]}>Yo'q qilish</Text>
                         </Pressable>
                     </View>
@@ -141,22 +152,25 @@ const CardProduct = ({ product, index }: { product: Product; index?: number }) =
                     <View style={styles.metaInfo}>
                         <Text style={styles.metaText}>Sotuvchi: <Text style={styles.metaValue}>Premium Store</Text></Text>
                         <Text style={styles.metaText}>Kategoriya: <Text style={styles.metaValue}>{product.categoryId}</Text></Text>
+                        {selectedOptions.map(option => (
+                            <Text key={option} style={styles.metaText}>{option}</Text>
+                        ))}
                     </View>
 
                     <View style={[styles.footerRow, isSmall && styles.footerRowSmall]}>
                         <View style={[styles.counterContainer, isSmall && styles.counterContainerSmall]}>
-                            <Pressable style={[styles.counterBtn, isSmall && styles.counterBtnSmall]} onPress={() => decrementQuantity(product.id)}>
+                            <Pressable style={[styles.counterBtn, isSmall && styles.counterBtnSmall]} onPress={() => decrementQuantity(product.id, optionSelections)}>
                                 <Text style={styles.counterBtnText}>-</Text>
                             </Pressable>
                             <Text style={[styles.counterValue, isSmall && styles.counterValueSmall]}>{quantity}</Text>
-                            <Pressable style={[styles.counterBtn, isSmall && styles.counterBtnSmall]} onPress={() => incrementQuantity(product.id)}>
+                            <Pressable style={[styles.counterBtn, isSmall && styles.counterBtnSmall]} onPress={() => incrementQuantity(product.id, optionSelections)}>
                                 <Text style={styles.counterBtnText}>+</Text>
                             </Pressable>
                         </View>
 
                         <View style={[styles.priceContainer, isSmall && styles.priceContainerSmall]}>
                             <Text style={[styles.currentPrice, isSmall && styles.currentPriceSmall]}>
-                                {product.price} so'm
+                                {linePrice} so'm
                             </Text>
                             <Text style={[styles.oldPrice, isSmall && styles.oldPriceSmall]}>
                                 {oldPrice} so'm

@@ -34,7 +34,7 @@ export class StockMovementsService {
       },
       orderBy: { createdAt: 'desc' },
       include: {
-        product: { select: { id: true, title: true } },
+        product: { select: { id: true, title: true, uom: true } },
         fromWarehouse: { select: { id: true, title: true } },
         fromBin: { select: { id: true, code: true } },
         toWarehouse: { select: { id: true, title: true } },

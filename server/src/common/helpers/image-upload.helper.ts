@@ -15,7 +15,7 @@ export async function uploadImageToImgBB(file: { buffer: Buffer; originalname: s
     return new Promise((resolve, reject) => {
         const uploadStream = cloudinary.uploader.upload_stream(
             {
-                folder: 'shop_app',
+                folder: 'market_engine',
                 resource_type: 'auto',
                 format: 'webp'
             },

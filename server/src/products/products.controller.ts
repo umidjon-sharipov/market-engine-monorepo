@@ -5,6 +5,8 @@ import {
     Get,
     Param,
     ParseUUIDPipe,
+    ParseIntPipe,
+    NotFoundException,
     Patch,
     Post,
     Query,
@@ -37,6 +39,31 @@ export class ProductsController {
         @Query('marketId') marketId?: string,
     ) {
         return this.productsService.findAll(search, marketId);
+    }
+
+    @Get('search')
+    @UseGuards(JwtAuthGuard)
+    async search(
+        @Req() req: any,
+        @Query('marketId', ParseUUIDPipe) marketId: string,
+        @Query('search') search = '',
+        @Query('page', new ParseIntPipe({ optional: true })) page = 1,
+        @Query('limit', new ParseIntPipe({ optional: true })) limit = 20,
+    ) {
+        const GuardClass = MarketAccessGuard(
+            'product',
+            req.user?.email,
+            ['owner', 'admin', 'warehouse'],
+            marketId,
+            'get',
+        );
+        const allowed = await new GuardClass(this.prisma).canActivate({
+            switchToHttp: () => ({ getRequest: () => req }),
+        } as any);
+        if (!allowed) {
+            throw new ForbiddenException('Mahsulotlarni ko‘rish uchun ruxsat yo‘q.');
+        }
+        return this.productsService.search(marketId, search, page, limit);
     }
 
     @Post()
@@ -88,12 +115,24 @@ export class ProductsController {
     ) {
         const parsePipe = new ProductParsePipe(true);
         const body = parsePipe.transform(req.body) as UpdateProductDto;
+        const currentProduct = await this.prisma.product.findUnique({
+            where: { id },
+            select: { marketId: true },
+        });
+        if (!currentProduct) {
+            throw new NotFoundException('Mahsulot topilmadi.');
+        }
+        if (body.marketId && body.marketId !== currentProduct.marketId) {
+            throw new BadRequestException(
+                'Mahsulotni boshqa marketga ko‘chirish mumkin emas.',
+            );
+        }
 
         const GuardClass = MarketAccessGuard(
             'product',
             req.user?.email,
             ['owner', 'admin', 'warehouse'],
-            body.marketId,
+            currentProduct.marketId,
             'update',
         );
         const instance = new GuardClass(this.prisma);

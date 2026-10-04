@@ -51,6 +51,7 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
     const role = useRoleStore(state => state.role)
     const setRole = useRoleStore(state => state.setRole)
+    const [workerPermissions, setWorkerPermissions] = useState<string[]>([])
     const notify = useNotification()
 
     const params = useParams()
@@ -67,7 +68,7 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
             const res = await fetch(`${API_URL}/auth/profile`, {
                 method: 'GET',
                 headers: {
-                    'Authorization': `Bearer ${token}`
+                    'Authorization': ['Bearer', token].join(' ')
                 }
             });
 
@@ -84,13 +85,18 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
     }
 
     const handleRole = async () => {
-        if (!token || !market) return;
+        setWorkerPermissions([])
+        if (!token || !market) {
+            setRole('')
+            return
+        }
+        setRole('')
         try {
             const res = await fetch(`${API_URL}/role`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
+                    'Authorization': ['Bearer', token].join(' ')
                 },
                 body: JSON.stringify({ marketId: market })
             })
@@ -99,11 +105,25 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
 
             if (res.ok) {
                 setRole(req.role)
+                if (req.role === 'owner') {
+                    setWorkerPermissions(['*'])
+                } else {
+                    const workersRes = await fetch(`${API_URL}/workers/get`, {
+                        headers: { Authorization: ['Bearer', token].join(' ') }
+                    })
+                    const workers = workersRes.ok ? await workersRes.json() : []
+                    const worker = Array.isArray(workers)
+                        ? workers.find((item: { marketId?: string }) => item.marketId === market)
+                        : undefined
+                    setWorkerPermissions(Array.isArray(worker?.permissions) ? worker.permissions : [])
+                }
                 notify.show(`${req.role || 'owner'}`, "success", dark ? 'dark' : 'light')
             } else {
+                setWorkerPermissions([])
                 notify.show(`${req.message}`, "error", dark ? 'dark' : 'light')
             }
         } catch (err) {
+            setWorkerPermissions([])
             notify.show(`So'rov yuborilmadi`, "error", dark ? 'dark' : 'light')
         }
     }
@@ -115,7 +135,7 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
 
     useEffect(() => {
         handleRole()
-    }, [market])
+    }, [market, token])
 
     useEffect(() => {
         renderToken(token);
@@ -142,7 +162,7 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
         else if (newPath === 'nimadir') setTab(3)
         else if (['categories', 'discounts', 'discountsDashboard', 'sliders'].includes(newPath)) setTab(4)
         else if (newPath === 'vacancy') setTab(5)
-        else if (newPath === 'users') setTab(6)
+        else if (newPath === 'users' || newPath === 'workers') setTab(6)
         else if (['inquiries-all', 'complaints-all', 'work-all-chats'].includes(newPath)) setTab(7)
         else if (newPath === 'settings') setTab(8)
         else { setTab(1) }
@@ -150,35 +170,47 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
 
     // ===============================================================
 
+    const canWorker = (permission: string) =>
+        role === 'owner' || workerPermissions.includes('*') || workerPermissions.includes(permission);
+    const canAnyWorker = (...permissions: string[]) =>
+        role === 'owner' || workerPermissions.includes('*') || permissions.some(permission => workerPermissions.includes(permission));
+
     const warehouse = [
         { label: 'Dashboard', href: '/dashboard' },
         { label: 'Warehouses', href: '/warehouses' },
-    ];
+    ].filter((item) => item.label === 'Dashboard' ? canWorker('dashboard:get') : canWorker('warehouse:get'));
 
     const products = [
         { label: 'Products', href: '/products' },
         { label: 'Comments', href: '/comments' },
         { label: 'Reactions', href: '/reactions' },
         { label: 'Reports', href: '/reports' },
-    ];
+    ].filter((item) =>
+        item.label === 'Products' ? canWorker('product:get')
+            : item.label === 'Comments' ? canWorker('comment:get')
+                : item.label === 'Reactions' ? canWorker('reaction:get')
+                    : canWorker('dashboard:get'));
 
     const stockLevels = [
         { label: 'Real-time Stock', href: '/real-time-stock' },
         { label: 'Dead Stock', href: '/dead-stock' },
         { label: 'Low Stock Alerts', href: '/low-stock-alerts' },
-    ];
+    ].filter(() => canWorker('stock:get'));
 
     const stockMovement = [
         { label: 'Incoming Flow', href: '/incoming-flow' },
         { label: 'Outgoing Flow', href: '/outgoing-flow' },
         { label: 'Internal Transfers', href: '/internal-transfers' },
-    ];
+    ].filter((item) =>
+        item.label === 'Incoming Flow' ? canWorker('warehouse:income')
+            : item.label === 'Outgoing Flow' ? canWorker('warehouse:expense')
+                : canAnyWorker('warehouse:income', 'warehouse:expense'));
 
     const salesPerformance = [
         { label: 'Top Products', href: '/top-products' },
         { label: 'Category Sales', href: '/category-sales' },
         { label: 'Peak Hours/Days', href: '/peak-hours-days' },
-    ];
+    ].filter(() => canWorker('order:get'));
 
     const demandForecasting = [
         { label: 'Predicted Shortages', href: '/predicted-shortages' },
@@ -208,48 +240,43 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
     const catalogCategories = [
         { label: 'Categories List', href: '/categories' },
         { label: 'Category CRUD', href: '/categories/manage' },
-    ];
+    ].filter(() => canWorker('category:get'));
 
     const catalogSearch = [
         { label: 'Search Keywords', href: '/search-keywords' },
         { label: 'Filters & Attributes', href: '/attributes' },
-    ];
+    ].filter(() => canWorker('product:get'));
 
     const discounts = [
         { label: 'Dashboard', href: '/discountsDashboard' },
         { label: 'Discounts', href: '/discounts' }
-    ];
+    ].filter(() => canWorker('discount:get'));
 
-    const users = [
+    const users = canWorker('user:show') ? [
         { label: 'All Users', href: '/users' },
-        { label: 'New Users', href: '/new-users' },
-        { label: 'Blocked Users', href: '/blocked-users' },
-    ];
+        ...(canWorker('user:block') ? [{ label: 'Blocked Users', href: '/blocked-users' }] : []),
+    ] : [];
 
-    const workers = [
-        { label: 'All workers', href: '/all-workers' },
-        { label: 'Admins', href: '/admins' },
-        { label: 'Warehouses', href: '/warehouses' },
-        { label: 'Salers', href: '/salers' },
-        { label: 'Managers', href: '/managers' },
-    ];
+    const workers = canWorker('worker:get')
+        ? [{ label: 'Manage workers', href: `/${locale}/${market.replaceAll(' ', '_')}/workers` }]
+        : [];
 
     const workRelated = [
         { label: 'All Chats', href: '/work-all-chats' },
         { label: 'General Work Group', href: '/work-general-group' },
         { label: 'Direct Messages', href: '/work-direct-messages' },
-    ];
+    ].filter(() => canWorker('message:get'));
 
     const customerInquiries = [
         { label: 'All Inquiries', href: '/inquiries-all' },
         { label: 'Important Inquiries', href: '/inquiries-important' },
         { label: 'Unimportant Inquiries', href: '/inquiries-unimportant' },
-    ];
+    ].filter(() => canWorker('message:get'));
 
     const complaints = [
         { label: 'All Complaints', href: '/complaints-all' },
         { label: 'New Complaints', href: '/complaints-new' },
-    ];
+    ].filter(() => canWorker('comment:get'));
 
     const hasSubMenu = [2, 3, 4, 6, 7].includes(tab);
 
@@ -257,27 +284,28 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
         if (tab === 2) {
             return (
                 <div onClick={onItemClick} className="flex flex-col gap-3">
-                    <div className={`backdrop-blur-2xl rounded-3xl ${dark ? "bg-neutral-900/40 border-white/10 text-white shadow-xl shadow-black/20" : "bg-white/40 border-white/60 text-neutral-900 shadow-xl shadow-black/5"}`}>
+                    {warehouse.length > 0 && <div className={`backdrop-blur-2xl rounded-3xl ${dark ? "bg-neutral-900/40 border-white/10 text-white shadow-xl shadow-black/20" : "bg-white/40 border-white/60 text-neutral-900 shadow-xl shadow-black/5"}`}>
                         <GlassMenu title="Warehouse" items={warehouse} defaultOpen={true} />
-                    </div>
-                    <div className={`backdrop-blur-2xl rounded-3xl ${dark ? "bg-neutral-900/40 border-white/10 text-white shadow-xl shadow-black/20" : "bg-white/40 border-white/60 text-neutral-900 shadow-xl shadow-black/5"}`}>
+                    </div>}
+                    {products.length > 0 && <div className={`backdrop-blur-2xl rounded-3xl ${dark ? "bg-neutral-900/40 border-white/10 text-white shadow-xl shadow-black/20" : "bg-white/40 border-white/60 text-neutral-900 shadow-xl shadow-black/5"}`}>
                         <GlassMenu title="Products" items={products} defaultOpen={true} />
-                    </div>
+                    </div>}
                 </div>
             );
         }
         if (tab === 3) {
             return (
                 <div onClick={onItemClick} className="flex flex-col gap-3">
-                    <div className={`backdrop-blur-2xl rounded-3xl ${dark ? "bg-neutral-900/40 border-white/10 text-white shadow-xl shadow-black/20" : "bg-white/40 border-white/60 text-neutral-900 shadow-xl shadow-black/5"}`}>
+                    {canAnyWorker('stock:get', 'warehouse:get') && <div className={`backdrop-blur-2xl rounded-3xl ${dark ? "bg-neutral-900/40 border-white/10 text-white shadow-xl shadow-black/20" : "bg-white/40 border-white/60 text-neutral-900 shadow-xl shadow-black/5"}`}>
                         <GlassMenu title="Stock Levels" items={stockLevels} defaultOpen={true} />
-                    </div>
-                    <div className={`backdrop-blur-2xl rounded-3xl ${dark ? "bg-neutral-900/40 border-white/10 text-white shadow-xl shadow-black/20" : "bg-white/40 border-white/60 text-neutral-900 shadow-xl shadow-black/5"}`}>
+                    </div>}
+                    {canAnyWorker('warehouse:income', 'warehouse:expense') && <div className={`backdrop-blur-2xl rounded-3xl ${dark ? "bg-neutral-900/40 border-white/10 text-white shadow-xl shadow-black/20" : "bg-white/40 border-white/60 text-neutral-900 shadow-xl shadow-black/5"}`}>
                         <GlassMenu title="Stock Movement" items={stockMovement} defaultOpen={true} />
-                    </div>
-                    <div className={`backdrop-blur-2xl rounded-3xl ${dark ? "bg-neutral-900/40 border-white/10 text-white shadow-xl shadow-black/20" : "bg-white/40 border-white/60 text-neutral-900 shadow-xl shadow-black/5"}`}>
+                    </div>}
+                    {canWorker('order:get') && <div className={`backdrop-blur-2xl rounded-3xl ${dark ? "bg-neutral-900/40 border-white/10 text-white shadow-xl shadow-black/20" : "bg-white/40 border-white/60 text-neutral-900 shadow-xl shadow-black/5"}`}>
                         <GlassMenu title="Performance" items={salesPerformance} defaultOpen={true} />
-                    </div>
+                    </div>}
+                    {canWorker('dashboard:get') && <>
                     <div className={`backdrop-blur-2xl rounded-3xl ${dark ? "bg-neutral-900/40 border-white/10 text-white shadow-xl shadow-black/20" : "bg-white/40 border-white/60 text-neutral-900 shadow-xl shadow-black/5"}`}>
                         <GlassMenu title="Demand Forecasting" items={demandForecasting} defaultOpen={true} />
                     </div>
@@ -293,48 +321,51 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
                     <div className={`backdrop-blur-2xl rounded-3xl ${dark ? "bg-neutral-900/40 border-white/10 text-white shadow-xl shadow-black/20" : "bg-white/40 border-white/60 text-neutral-900 shadow-xl shadow-black/5"}`}>
                         <GlassMenu title="Fulfillment" items={fulfillment} defaultOpen={true} />
                     </div>
+                    </>}
                 </div>
             );
         }
         if (tab === 4) {
             return (
                 <div onClick={onItemClick} className="flex flex-col gap-3">
-                    <div className={`backdrop-blur-2xl rounded-3xl ${dark ? "bg-neutral-900/40 border-white/10 text-white shadow-xl shadow-black/20" : "bg-white/40 border-white/60 text-neutral-900 shadow-xl shadow-black/5"}`}>
+                    {catalogCategories.length > 0 && <div className={`backdrop-blur-2xl rounded-3xl ${dark ? "bg-neutral-900/40 border-white/10 text-white shadow-xl shadow-black/20" : "bg-white/40 border-white/60 text-neutral-900 shadow-xl shadow-black/5"}`}>
                         <GlassMenu title="Catalog Categories" items={catalogCategories} defaultOpen={true} />
-                    </div>
-                    <div className={`backdrop-blur-2xl rounded-3xl ${dark ? "bg-neutral-900/40 border-white/10 text-white shadow-xl shadow-black/20" : "bg-white/40 border-white/60 text-neutral-900 shadow-xl shadow-black/5"}`}>
+                    </div>}
+                    {catalogSearch.length > 0 && <div className={`backdrop-blur-2xl rounded-3xl ${dark ? "bg-neutral-900/40 border-white/10 text-white shadow-xl shadow-black/20" : "bg-white/40 border-white/60 text-neutral-900 shadow-xl shadow-black/5"}`}>
                         <GlassMenu title="Catalog Search" items={catalogSearch} defaultOpen={true} />
-                    </div>
-                    <div className={`backdrop-blur-2xl rounded-3xl ${dark ? "bg-neutral-900/40 border-white/10 text-white shadow-xl shadow-black/20" : "bg-white/40 border-white/60 text-neutral-900 shadow-xl shadow-black/5"}`}>
+                    </div>}
+                    {discounts.length > 0 && <div className={`backdrop-blur-2xl rounded-3xl ${dark ? "bg-neutral-900/40 border-white/10 text-white shadow-xl shadow-black/20" : "bg-white/40 border-white/60 text-neutral-900 shadow-xl shadow-black/5"}`}>
                         <GlassMenu title="Discounts" items={discounts} defaultOpen={true} />
-                    </div>
+                    </div>}
                 </div>
             );
         }
         if (tab === 6) {
             return (
                 <div onClick={onItemClick} className="flex flex-col gap-3">
-                    <div className={`backdrop-blur-2xl rounded-3xl ${dark ? "bg-neutral-900/40 border-white/10 text-white shadow-xl shadow-black/20" : "bg-white/40 border-white/60 text-neutral-900 shadow-xl shadow-black/5"}`}>
-                        <GlassMenu title="Workers" items={workers} defaultOpen={true} />
-                    </div>
-                    <div className={`backdrop-blur-2xl rounded-3xl ${dark ? "bg-neutral-900/40 border-white/10 text-white shadow-xl shadow-black/20" : "bg-white/40 border-white/60 text-neutral-900 shadow-xl shadow-black/5"}`}>
+                    {canWorker('worker:get') && (
+                        <div className={`backdrop-blur-2xl rounded-3xl ${dark ? "bg-neutral-900/40 border-white/10 text-white shadow-xl shadow-black/20" : "bg-white/40 border-white/60 text-neutral-900 shadow-xl shadow-black/5"}`}>
+                            <GlassMenu title="Workers" items={workers} defaultOpen={true} />
+                        </div>
+                    )}
+                    {users.length > 0 && <div className={`backdrop-blur-2xl rounded-3xl ${dark ? "bg-neutral-900/40 border-white/10 text-white shadow-xl shadow-black/20" : "bg-white/40 border-white/60 text-neutral-900 shadow-xl shadow-black/5"}`}>
                         <GlassMenu title="Users" items={users} defaultOpen={true} />
-                    </div>
+                    </div>}
                 </div>
             );
         }
         if (tab === 7) {
             return (
                 <div onClick={onItemClick} className="flex flex-col gap-3">
-                    <div className={`backdrop-blur-2xl rounded-3xl ${dark ? "bg-neutral-900/40 border-white/10 text-white shadow-xl shadow-black/20" : "bg-white/40 border-white/60 text-neutral-900 shadow-xl shadow-black/5"}`}>
+                    {workRelated.length > 0 && <div className={`backdrop-blur-2xl rounded-3xl ${dark ? "bg-neutral-900/40 border-white/10 text-white shadow-xl shadow-black/20" : "bg-white/40 border-white/60 text-neutral-900 shadow-xl shadow-black/5"}`}>
                         <GlassMenu title="Work Related" items={workRelated} defaultOpen={true} />
-                    </div>
-                    <div className={`backdrop-blur-2xl rounded-3xl ${dark ? "bg-neutral-900/40 border-white/10 text-white shadow-xl shadow-black/20" : "bg-white/40 border-white/60 text-neutral-900 shadow-xl shadow-black/5"}`}>
+                    </div>}
+                    {customerInquiries.length > 0 && <div className={`backdrop-blur-2xl rounded-3xl ${dark ? "bg-neutral-900/40 border-white/10 text-white shadow-xl shadow-black/20" : "bg-white/40 border-white/60 text-neutral-900 shadow-xl shadow-black/5"}`}>
                         <GlassMenu title="Customer Inquiries" items={customerInquiries} defaultOpen={true} />
-                    </div>
-                    <div className={`backdrop-blur-2xl rounded-3xl ${dark ? "bg-neutral-900/40 border-white/10 text-white shadow-xl shadow-black/20" : "bg-white/40 border-white/60 text-neutral-900 shadow-xl shadow-black/5"}`}>
+                    </div>}
+                    {complaints.length > 0 && <div className={`backdrop-blur-2xl rounded-3xl ${dark ? "bg-neutral-900/40 border-white/10 text-white shadow-xl shadow-black/20" : "bg-white/40 border-white/60 text-neutral-900 shadow-xl shadow-black/5"}`}>
                         <GlassMenu title="Complaints" items={complaints} defaultOpen={true} />
-                    </div>
+                    </div>}
                 </div>
             );
         }
@@ -354,10 +385,11 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
             if (isMobile) setIsMobileMenuOpen(false);
         };
 
-        if (role === 'owner' || role === 'admin') {
+        if (role === 'owner' || role === 'admin' || workerPermissions.length > 0) {
             return (
                 <>
                     <Link
+                        hidden={!canWorker('dashboard:get')}
                         href={`/${locale}/${market.replaceAll(' ', '_')}/dashboard`}
                         onClick={() => handleDirectNav(1)}
                         title="Dashboard"
@@ -376,6 +408,7 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
                     </Link>
 
                     <button
+                        hidden={!canAnyWorker('product:get', 'warehouse:get')}
                         onClick={() => handleTabClick(2)}
                         title="Products & Warehouses"
                         className={`group relative flex items-center justify-center w-11 h-11 rounded-2xl transition-all duration-300 ease-out active:scale-90 ${dark ? "hover:bg-white/10 text-neutral-300 hover:text-white" : "hover:bg-black/5 text-neutral-700 hover:text-neutral-900"}`}
@@ -390,6 +423,7 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
                     </button>
 
                     <button
+                        hidden={!canAnyWorker('stock:get', 'warehouse:income', 'warehouse:expense', 'order:get')}
                         onClick={() => handleTabClick(3)}
                         title="Analytics & Stock"
                         className={`group relative flex items-center justify-center w-11 h-11 rounded-2xl transition-all duration-300 ease-out active:scale-90 ${dark ? "hover:bg-white/10 text-neutral-300 hover:text-white" : "hover:bg-black/5 text-neutral-700 hover:text-neutral-900"}`}
@@ -404,6 +438,7 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
                     </button>
 
                     <button
+                        hidden={!canAnyWorker('category:get', 'discount:get')}
                         onClick={() => handleTabClick(4)}
                         title="Categories & Discounts"
                         className={`group relative flex items-center justify-center w-11 h-11 rounded-2xl transition-all duration-300 ease-out active:scale-90 ${dark ? "hover:bg-white/10 text-neutral-300 hover:text-white" : "hover:bg-black/5 text-neutral-700 hover:text-neutral-900"}`}
@@ -418,6 +453,7 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
                     </button>
 
                     <Link
+                        hidden={!canWorker('vacancy:get')}
                         href={`/${locale}/${market.replaceAll(' ', '_')}/vacancy`}
                         onClick={() => handleDirectNav(5)}
                         title="Vacancies"
@@ -435,7 +471,7 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
                         <Briefcase className={`w-5 h-5 relative z-10 transition-transform group-hover:scale-110 ${tab === 5 ? 'text-sky-400' : ''}`} />
                     </Link>
 
-                    <button
+                    {(canWorker('worker:get') || canWorker('user:show')) && <button
                         onClick={() => handleTabClick(6)}
                         title="Users & Workers"
                         className={`group relative flex items-center justify-center w-11 h-11 rounded-2xl transition-all duration-300 ease-out active:scale-90 ${dark ? "hover:bg-white/10 text-neutral-300 hover:text-white" : "hover:bg-black/5 text-neutral-700 hover:text-neutral-900"}`}
@@ -447,9 +483,10 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
                             />
                         )}
                         <Users className={`w-5 h-5 relative z-10 transition-transform group-hover:scale-110 ${tab === 6 ? 'text-sky-400' : ''}`} />
-                    </button>
+                    </button>}
 
                     <button
+                        hidden={!canAnyWorker('message:get', 'comment:get')}
                         onClick={() => handleTabClick(7)}
                         title="Messages & Inquiries"
                         className={`group relative flex items-center justify-center w-11 h-11 rounded-2xl transition-all duration-300 ease-out active:scale-90 ${dark ? "hover:bg-white/10 text-neutral-300 hover:text-white" : "hover:bg-black/5 text-neutral-700 hover:text-neutral-900"}`}
@@ -546,7 +583,7 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
             );
         }
 
-        if (role === 'warehouse') {
+        if (role === 'warehouse' && workerPermissions.length > 0) {
             return (
                 <>
                     <Link
@@ -880,4 +917,3 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
         </div>
     );
 }
-

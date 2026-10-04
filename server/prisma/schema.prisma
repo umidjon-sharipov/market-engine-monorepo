@@ -37,6 +37,16 @@ enum MovementStatus {
   CANCELLED
 }
 
+enum WarehouseTaskStatus {
+  OPEN
+  ASSIGNED
+  PICKING
+  PICKED
+  IN_TRANSIT
+  COMPLETED
+  CANCELLED
+}
+
 enum UnitOfMeasure {
   PCS
   KG
@@ -53,14 +63,15 @@ model Market {
   lng       Float
   createdAt DateTime @default(now()) @map("createdAt") @db.Timestamptz(6)
 
-  products   Product[]
-  sliders    Slider[]
-  discounts  Discount[]
-  workers    Worker[]
-  vacancies  Vacancy[]
-  warehouses Warehouse[]
-  categories Category[]
-  followers  Following[]
+  products       Product[]
+  sliders        Slider[]
+  discounts      Discount[]
+  workers        Worker[]
+  vacancies      Vacancy[]
+  warehouses     Warehouse[]
+  warehouseTasks WarehouseTask[]
+  categories     Category[]
+  followers      Following[]
 
   @@index([email])
   @@index([title(ops: raw("gin_trgm_ops"))], type: Gin, map: "Markets_title_trgm_idx")
@@ -213,6 +224,7 @@ model Product {
   inventories       WarehouseInventory[]
   stockMovements    StockMovement[]
   stockReservations OrderStockReservation[]
+  warehouseTasks    WarehouseTask[]
 
   @@index([marketId, createdAt(sort: Desc)])
   @@index([warehouseId])
@@ -244,7 +256,8 @@ model ProductOptionItem {
   value    Float   @default(0)
   image    String? @db.Text
 
-  option ProductOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  option         ProductOption   @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  warehouseTasks WarehouseTask[]
 
   @@index([optionId])
   @@map("ProductOptionItems")
@@ -291,6 +304,7 @@ model Order {
   status            OrderStatus             @default(NEW)
   createdAt         DateTime                @default(now()) @db.Timestamptz(6)
   stockReservations OrderStockReservation[]
+  warehouseTasks    WarehouseTask[]
 
   @@index([status, createdAt(sort: Desc)])
   @@map("Orders")
@@ -346,10 +360,14 @@ model Worker {
   vacancyId String?  @db.Uuid
   createdAt DateTime @default(now()) @db.Timestamptz(6)
 
-  market      Market?  @relation(fields: [marketId], references: [id], onDelete: Cascade)
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  vacancy     Vacancy? @relation(fields: [vacancyId], references: [id], onDelete: SetNull)
-  permissions String[]
+  market                    Market?         @relation(fields: [marketId], references: [id], onDelete: Cascade)
+  user                      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vacancy                   Vacancy?        @relation(fields: [vacancyId], references: [id], onDelete: SetNull)
+  permissions               String[]
+  assignedWarehouseTasks    WarehouseTask[] @relation("WarehouseTaskAssignedWorker")
+  createdWarehouseTasks     WarehouseTask[] @relation("WarehouseTaskCreatorWorker")
+  pickedWarehouseTasks      WarehouseTask[] @relation("WarehouseTaskPickerWorker")
+  transportedWarehouseTasks WarehouseTask[] @relation("WarehouseTaskTransporterWorker")
 
   @@unique([marketId, userId, role])
   @@index([userId])
@@ -393,17 +411,38 @@ model Warehouse {
   lng       String   @db.VarChar(50)
   createdAt DateTime @default(now()) @db.Timestamptz(6)
 
-  market            Market                  @relation(fields: [marketId], references: [id], onDelete: Cascade)
-  products          Product[]
-  zones             WarehouseZone[]
-  inventories       WarehouseInventory[]
-  outgoingMovements StockMovement[]         @relation("MovementFromWarehouse")
-  incomingMovements StockMovement[]         @relation("MovementToWarehouse")
-  stockReservations OrderStockReservation[]
+  market               Market                  @relation(fields: [marketId], references: [id], onDelete: Cascade)
+  products             Product[]
+  zones                WarehouseZone[]
+  inventories          WarehouseInventory[]
+  outgoingMovements    StockMovement[]         @relation("MovementFromWarehouse")
+  incomingMovements    StockMovement[]         @relation("MovementToWarehouse")
+  stockReservations    OrderStockReservation[]
+  pickPoints           PickPoint[]
+  sourceWarehouseTasks WarehouseTask[]         @relation("WarehouseTaskSourceWarehouse")
+  targetWarehouseTasks WarehouseTask[]         @relation("WarehouseTaskTargetWarehouse")
 
   @@unique([marketId, code])
   @@index([marketId])
   @@map("Warehouses")
+}
+
+model PickPoint {
+  id                  String   @id @default(uuid()) @db.Uuid
+  warehouseId         String   @db.Uuid
+  title               String   @db.VarChar(255)
+  address             String?  @db.Text
+  latitude            Float
+  longitude           Float
+  serviceRadiusMeters Float    @default(1000)
+  isActive            Boolean  @default(true)
+  createdAt           DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt           DateTime @updatedAt @db.Timestamptz(6)
+
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+
+  @@index([warehouseId])
+  @@map("PickPoints")
 }
 
 model WarehouseZone {
@@ -428,11 +467,13 @@ model StorageBin {
   title     String?  @db.VarChar(255)
   createdAt DateTime @default(now()) @db.Timestamptz(6)
 
-  zone              WarehouseZone           @relation(fields: [zoneId], references: [id], onDelete: Cascade)
-  inventories       WarehouseInventory[]
-  outgoingMovements StockMovement[]         @relation("MovementFromBin")
-  incomingMovements StockMovement[]         @relation("MovementToBin")
-  reservations      OrderStockReservation[]
+  zone                 WarehouseZone           @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+  inventories          WarehouseInventory[]
+  outgoingMovements    StockMovement[]         @relation("MovementFromBin")
+  incomingMovements    StockMovement[]         @relation("MovementToBin")
+  reservations         OrderStockReservation[]
+  sourceWarehouseTasks WarehouseTask[]         @relation("WarehouseTaskSourceBin")
+  targetWarehouseTasks WarehouseTask[]         @relation("WarehouseTaskTargetBin")
 
   @@index([zoneId])
   @@map("StorageBins")
@@ -489,6 +530,54 @@ model StockMovement {
   @@map("StockMovements")
 }
 
+model WarehouseTask {
+  id                     String              @id @default(uuid()) @db.Uuid
+  marketId               String              @db.Uuid
+  assignedWorkerId       String?             @db.Uuid
+  creatorWorkerId        String?             @db.Uuid
+  pickerWorkerId         String?             @db.Uuid
+  transporterWorkerId    String?             @db.Uuid
+  warehouseId            String              @db.Uuid
+  sourceBinId            String              @db.Uuid
+  destinationWarehouseId String?             @db.Uuid
+  destinationBinId       String?             @db.Uuid
+  productId              String              @db.Uuid
+  optionItemId           String?             @db.Uuid
+  orderId                String?             @db.Uuid
+  reservationId          String?             @unique @db.Uuid
+  quantity               Float
+  status                 WarehouseTaskStatus @default(ASSIGNED)
+  note                   String?             @db.Text
+  assignedAt             DateTime?           @db.Timestamptz(6)
+  startedAt              DateTime?           @db.Timestamptz(6)
+  pickedAt               DateTime?           @db.Timestamptz(6)
+  transportedAt          DateTime?           @db.Timestamptz(6)
+  completedAt            DateTime?           @db.Timestamptz(6)
+  cancelledAt            DateTime?           @db.Timestamptz(6)
+  createdAt              DateTime            @default(now()) @db.Timestamptz(6)
+  updatedAt              DateTime            @updatedAt @db.Timestamptz(6)
+
+  market               Market                 @relation(fields: [marketId], references: [id], onDelete: Cascade)
+  assignedWorker       Worker?                @relation("WarehouseTaskAssignedWorker", fields: [assignedWorkerId], references: [id], onDelete: Restrict)
+  creatorWorker        Worker?                @relation("WarehouseTaskCreatorWorker", fields: [creatorWorkerId], references: [id], onDelete: SetNull)
+  pickerWorker         Worker?                @relation("WarehouseTaskPickerWorker", fields: [pickerWorkerId], references: [id], onDelete: SetNull)
+  transporterWorker    Worker?                @relation("WarehouseTaskTransporterWorker", fields: [transporterWorkerId], references: [id], onDelete: SetNull)
+  warehouse            Warehouse              @relation("WarehouseTaskSourceWarehouse", fields: [warehouseId], references: [id], onDelete: Restrict)
+  sourceBin            StorageBin             @relation("WarehouseTaskSourceBin", fields: [sourceBinId], references: [id], onDelete: Restrict)
+  destinationWarehouse Warehouse?             @relation("WarehouseTaskTargetWarehouse", fields: [destinationWarehouseId], references: [id], onDelete: Restrict)
+  destinationBin       StorageBin?            @relation("WarehouseTaskTargetBin", fields: [destinationBinId], references: [id], onDelete: Restrict)
+  product              Product                @relation(fields: [productId], references: [id], onDelete: Restrict)
+  optionItem           ProductOptionItem?     @relation(fields: [optionItemId], references: [id], onDelete: SetNull)
+  order                Order?                 @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  reservation          OrderStockReservation? @relation(fields: [reservationId], references: [id], onDelete: SetNull)
+
+  @@index([marketId, status, createdAt(sort: Desc)])
+  @@index([assignedWorkerId, status])
+  @@index([productId])
+  @@index([orderId])
+  @@map("WarehouseTasks")
+}
+
 model OrderStockReservation {
   id          String    @id @default(uuid()) @db.Uuid
   orderId     String    @db.Uuid
@@ -500,10 +589,11 @@ model OrderStockReservation {
   createdAt   DateTime  @default(now()) @db.Timestamptz(6)
   releasedAt  DateTime? @db.Timestamptz(6)
 
-  order     Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product   Product    @relation(fields: [productId], references: [id], onDelete: Restrict)
-  warehouse Warehouse  @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
-  bin       StorageBin @relation(fields: [binId], references: [id], onDelete: Restrict)
+  order         Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product       Product        @relation(fields: [productId], references: [id], onDelete: Restrict)
+  warehouse     Warehouse      @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  bin           StorageBin     @relation(fields: [binId], references: [id], onDelete: Restrict)
+  warehouseTask WarehouseTask?
 
   @@index([orderId])
   @@index([productId, binId])

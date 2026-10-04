@@ -70,7 +70,14 @@ export class StockMovementsController {
       select: { marketId: true },
     });
     if (!product) throw new NotFoundException('Mahsulot topilmadi.');
-    await this.assertAccess(request, product.marketId, 'create');
+    if (body.type === MovementType.INBOUND) {
+      await this.assertAccess(request, product.marketId, 'income');
+    } else if (body.type === MovementType.TRANSFER) {
+      await this.assertAccess(request, product.marketId, 'expense');
+      await this.assertAccess(request, product.marketId, 'income');
+    } else {
+      await this.assertAccess(request, product.marketId, 'expense');
+    }
     return this.movements.create(body);
   }
 
@@ -85,6 +92,7 @@ export class StockMovementsController {
       select: {
         fromWarehouseId: true,
         toWarehouseId: true,
+        type: true,
       },
     });
     if (!movement) throw new NotFoundException('Stock movement topilmadi.');
@@ -107,14 +115,23 @@ export class StockMovementsController {
         'Stock movement omborlari bir marketga tegishli bo‘lishi shart.',
       );
     }
-    await this.assertAccess(request, marketIds[0], 'update');
+    if (body.status === 'CANCELLED') {
+      await this.assertAccess(request, marketIds[0], 'update');
+    } else if (movement.type === MovementType.INBOUND) {
+      await this.assertAccess(request, marketIds[0], 'income');
+    } else if (movement.type === MovementType.TRANSFER) {
+      await this.assertAccess(request, marketIds[0], 'expense');
+      await this.assertAccess(request, marketIds[0], 'income');
+    } else {
+      await this.assertAccess(request, marketIds[0], 'expense');
+    }
     return this.movements.updateStatus(id, body.status);
   }
 
   private async assertAccess(
     request: AuthenticatedRequest,
     marketId: string,
-    action: 'get' | 'create' | 'update',
+    action: 'get' | 'create' | 'update' | 'income' | 'expense',
   ) {
     const email = request.user?.email;
     if (!email)
@@ -122,7 +139,7 @@ export class StockMovementsController {
     const Guard = MarketAccessGuard(
       'warehouse',
       email,
-      ['owner', 'admin', 'manager'],
+      ['admin', 'warehouse', 'manager', 'owner'],
       marketId,
       action,
     );
