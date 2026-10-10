@@ -1,6 +1,22 @@
 @import "tailwindcss";
 @import "react-datepicker/dist/react-datepicker.css";
 
+@keyframes marquee {
+    0% {
+        transform: translateX(0%);
+    }
+
+    100% {
+        transform: translateX(-50%);
+    }
+}
+
+.animate-marquee {
+    display: flex;
+    width: max-content;
+    animation: marquee 16s linear infinite;
+}
+
 * {
     box-sizing: border-box;
 
@@ -238,6 +254,6 @@ input[type=number] {
     outline: none !important;
 }
 
-.diogram > * {
+.diogram>* {
     outline: none !important;
 }

@@ -1,19 +1,11 @@
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
 
-interface selectMarketState {
+interface SelectMarketState {
     selectMarket: string
-    setSelectMarket: (selectMarket: string) => void
+    setSelectMarket: (market: string) => void
 }
 
-export const useSelectMarketStore = create<selectMarketState>()(
-    persist(
-        (set) => ({
-            selectMarket: '',
-            setSelectMarket: (selectMarket) => set({ selectMarket: selectMarket }),
-        }),
-        {
-            name: 'selectMarket-storage',
-        }
-    )
-)
+export const useSelectMarketStore = create<SelectMarketState>((set) => ({
+    selectMarket: '',
+    setSelectMarket: (selectMarket) => set({ selectMarket }),
+}))

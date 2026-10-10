@@ -5,7 +5,7 @@ import { useParams, usePathname, useRouter, useSearchParams } from "next/navigat
 import { Pencil, Plus, Search, Trash2, Users, X } from "lucide-react";
 import { useTokenStore } from "@/app/_store/useTokenStore";
 import { useThemeStore } from "@/app/_store/useThemeStore";
-import { useRoleStore } from "@/app/_store/useRoleStore";
+import { usePermissionsStore } from "@/app/_store/usePermissionsStore";
 import { API_URL } from "@/lib/api";
 import { useNotification } from "@/components/Notification";
 
@@ -63,7 +63,7 @@ function WorkersContent() {
     const { market = "" } = useParams<{ market: string }>();
     const token = useTokenStore((state) => state.getActiveToken());
     const dark = useThemeStore((state) => state.theme === "dark");
-    const currentRole = useRoleStore((state) => state.role);
+    const { permissions, setPermissions } = usePermissionsStore();
     const notification = useNotification();
     const [result, setResult] = useState<WorkerResponse>({
         data: [], total: 0, page: 1, limit: 20, totalPages: 0,
@@ -73,9 +73,6 @@ function WorkersContent() {
     const [formOpen, setFormOpen] = useState(false);
     const [identifier, setIdentifier] = useState("");
     const [role, setRole] = useState("warehouse");
-    const [permissions, setPermissions] = useState<string[]>(ROLE_PERMISSIONS.warehouse);
-    const [myPermissions, setMyPermissions] = useState<string[]>([]);
-    const [permissionsLoaded, setPermissionsLoaded] = useState(false);
     const [editing, setEditing] = useState<Worker | null>(null);
     const [editRole, setEditRole] = useState("warehouse");
     const [editPermissions, setEditPermissions] = useState<string[]>([]);
@@ -93,37 +90,6 @@ function WorkersContent() {
         () => [...new Set(Object.values(ROLE_PERMISSIONS).flat())].sort(),
         [],
     );
-    const can = useCallback((action: string) => currentRole === "owner" || (permissionsLoaded && (myPermissions.includes("*") || myPermissions.includes(`worker:${action}`))), [currentRole, myPermissions, permissionsLoaded]);
-
-    useEffect(() => {
-        let active = true;
-        const loadPermissions = async () => {
-            if (!token || !market) {
-                if (active) setPermissionsLoaded(true);
-                return;
-            }
-            try {
-                const response = await fetch(`${API_URL}/workers/get`, {
-                    headers: { Authorization: `Bearer ${token}` },
-                });
-                if (currentRole === "owner") {
-                    if (active) setMyPermissions(["*"]);
-                    return;
-                }
-                const workers = response.ok ? await response.json() : [];
-                const worker = Array.isArray(workers)
-                    ? workers.find((item: { marketId?: string }) => item.marketId === market)
-                    : undefined;
-                if (active) setMyPermissions(Array.isArray(worker?.permissions) ? worker.permissions : []);
-            } catch {
-                if (active) setMyPermissions([]);
-            } finally {
-                if (active) setPermissionsLoaded(true);
-            }
-        };
-        void loadPermissions();
-        return () => { active = false; };
-    }, [currentRole, market, token]);
 
     const updateFilter = useCallback((key: string, value: string, resetPage = true) => {
         const next = new URLSearchParams(searchParams.toString());
@@ -267,82 +233,82 @@ function WorkersContent() {
                     <h1 className="flex items-center gap-3 text-2xl font-semibold"><Users className="h-6 w-6 text-sky-500" /> Ishchilar</h1>
                     <p className="mt-1 text-sm opacity-65">Market xodimlari, rollari va ruxsatlarini boshqaring.</p>
                 </div>
-                {can("create") && <button
+                { permissions.includes('all:all') || permissions.includes('workers:create') && <button
                     type="button"
-                    onClick={() => setFormOpen((open) => !open)}
+                    onClick={ () => setFormOpen((open) => !open) }
                     className="flex items-center gap-2 rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-sky-500"
                 >
-                    {formOpen ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-                    {formOpen ? "Yopish" : "Ishchi qo‘shish"}
-                </button>}
+                    { formOpen ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" /> }
+                    { formOpen ? "Yopish" : "Ishchi qo‘shish" }
+                </button> }
             </header>
 
-            {formOpen && can("create") && (
-                <form onSubmit={submitNew} className={`grid gap-4 rounded-2xl border p-5 md:grid-cols-2 ${cardClass}`}>
+            { formOpen && permissions.includes('all:all') || permissions.includes('workers:create') && (
+                <form onSubmit={ submitNew } className={ `grid gap-4 rounded-2xl border p-5 md:grid-cols-2 ${cardClass}` }>
                     <label className="space-y-1.5 text-sm">
                         <span>Email yoki username</span>
-                        <input required value={identifier} onChange={(event) => setIdentifier(event.target.value)} className={`w-full rounded-xl border px-3 py-2.5 outline-none focus:border-sky-500 ${inputClass}`} placeholder="name@example.com yoki username" />
+                        <input required value={ identifier } onChange={ (event) => setIdentifier(event.target.value) } className={ `w-full rounded-xl border px-3 py-2.5 outline-none focus:border-sky-500 ${inputClass}` } placeholder="name@example.com yoki username" />
                     </label>
                     <label className="space-y-1.5 text-sm">
                         <span>Rol</span>
-                        <select value={role} onChange={(event) => {
+                        <select value={ role } onChange={ (event) => {
                             setRole(event.target.value);
                             setPermissions(ROLE_PERMISSIONS[event.target.value]);
-                        }} className={`w-full rounded-xl border px-3 py-2.5 ${inputClass}`}>
-                            {Object.keys(ROLE_PERMISSIONS).map((option) => <option key={option} value={option}>{option}</option>)}
+                        } } className={ `w-full rounded-xl border px-3 py-2.5 ${inputClass}` }>
+                            { Object.keys(ROLE_PERMISSIONS).map((option) => <option key={ option } value={ option }>{ option }</option>) }
                         </select>
                     </label>
                     <PermissionPicker
-                        permissions={ROLE_PERMISSIONS[role]}
-                        selected={permissions}
-                        onToggle={(permission) => togglePermission(permission, permissions, setPermissions)}
-                        dark={dark}
+                        permissions={ ROLE_PERMISSIONS[role] }
+                        selected={ permissions }
+                        onToggle={ (permission) => togglePermission(permission, permissions, setPermissions) }
+                        dark={ dark }
                     />
                     <div className="flex items-end">
-                        <button disabled={saving} className="rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50">{saving ? "Saqlanmoqda…" : "Qo‘shish"}</button>
+                        <button disabled={ saving } className="rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50">{ saving ? "Saqlanmoqda…" : "Qo‘shish" }</button>
                     </div>
                 </form>
-            )}
+            ) }
 
-            <div className={`grid gap-3 rounded-2xl border p-4 md:grid-cols-[minmax(220px,1fr)_180px_220px_120px] ${cardClass}`}>
-                <label className={`flex items-center gap-2 rounded-xl border px-3 ${inputClass}`}>
+            <div className={ `grid gap-3 rounded-2xl border p-4 md:grid-cols-[minmax(220px,1fr)_180px_220px_120px] ${cardClass}` }>
+                <label className={ `flex items-center gap-2 rounded-xl border px-3 ${inputClass}` }>
                     <Search className="h-4 w-4 shrink-0 opacity-50" />
-                    <input value={query} onChange={(event) => updateFilter("search", event.target.value)} className="min-w-0 flex-1 bg-transparent py-2.5 text-sm outline-none" placeholder="Email, username yoki ism..." />
+                    <input value={ query } onChange={ (event) => updateFilter("search", event.target.value) } className="min-w-0 flex-1 bg-transparent py-2.5 text-sm outline-none" placeholder="Email, username yoki ism..." />
                 </label>
-                <select value={roleFilter} onChange={(event) => updateFilter("role", event.target.value)} className={`rounded-xl border px-3 py-2 text-sm ${inputClass}`}>
+                <select value={ roleFilter } onChange={ (event) => updateFilter("role", event.target.value) } className={ `rounded-xl border px-3 py-2 text-sm ${inputClass}` }>
                     <option value="">Barcha rollar</option>
-                    {Object.keys(ROLE_PERMISSIONS).map((option) => <option key={option} value={option}>{option}</option>)}
+                    { Object.keys(ROLE_PERMISSIONS).map((option) => <option key={ option } value={ option }>{ option }</option>) }
                 </select>
-                <fieldset className={`rounded-xl border px-3 py-2 text-sm ${inputClass}`}>
-                    <legend className="px-1 opacity-65">Ruxsatlar ({permissionFilters.length})</legend>
+                <fieldset className={ `rounded-xl border px-3 py-2 text-sm ${inputClass}` }>
+                    <legend className="px-1 opacity-65">Ruxsatlar ({ permissionFilters.length })</legend>
                     <div className="flex max-h-28 flex-wrap gap-x-3 gap-y-1 overflow-y-auto">
-                        {allPermissions.map((permission) => (
-                            <label key={permission} className="flex cursor-pointer items-center gap-1.5 whitespace-nowrap text-xs">
+                        { allPermissions.map((permission) => (
+                            <label key={ permission } className="flex cursor-pointer items-center gap-1.5 whitespace-nowrap text-xs">
                                 <input
                                     type="checkbox"
-                                    checked={permissionFilters.includes(permission)}
-                                    onChange={() => {
+                                    checked={ permissionFilters.includes(permission) }
+                                    onChange={ () => {
                                         const nextPermissions = permissionFilters.includes(permission)
                                             ? permissionFilters.filter((value) => value !== permission)
                                             : [...permissionFilters, permission].sort();
                                         updateFilter("permissions", nextPermissions.join(","));
-                                    }}
+                                    } }
                                     className="accent-sky-500"
                                 />
-                                {permission}
+                                { permission }
                             </label>
-                        ))}
+                        )) }
                     </div>
                 </fieldset>
-                <select value={limit} onChange={(event) => updateFilter("limit", event.target.value)} className={`rounded-xl border px-3 py-2 text-sm ${inputClass}`}>
-                    {[10, 20, 50].map((value) => <option key={value} value={value}>{value} / sahifa</option>)}
+                <select value={ limit } onChange={ (event) => updateFilter("limit", event.target.value) } className={ `rounded-xl border px-3 py-2 text-sm ${inputClass}` }>
+                    { [10, 20, 50].map((value) => <option key={ value } value={ value }>{ value } / sahifa</option>) }
                 </select>
             </div>
 
-            <div className={`overflow-hidden rounded-2xl border ${cardClass}`}>
+            <div className={ `overflow-hidden rounded-2xl border ${cardClass}` }>
                 <div className="overflow-x-auto">
                     <table className="w-full min-w-[760px] text-left text-sm">
-                        <thead className={dark ? "bg-white/5 text-neutral-400" : "bg-black/5 text-neutral-500"}>
+                        <thead className={ dark ? "bg-white/5 text-neutral-400" : "bg-black/5 text-neutral-500" }>
                             <tr>
                                 <th className="px-5 py-3 font-medium">Foydalanuvchi</th>
                                 <th className="px-5 py-3 font-medium">Rol</th>
@@ -351,69 +317,69 @@ function WorkersContent() {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-current/10">
-                            {loading ? (
-                                <tr><td colSpan={4} className="px-5 py-10 text-center opacity-60">Yuklanmoqda…</td></tr>
+                            { loading ? (
+                                <tr><td colSpan={ 4 } className="px-5 py-10 text-center opacity-60">Yuklanmoqda…</td></tr>
                             ) : result.data.length === 0 ? (
-                                <tr><td colSpan={4} className="px-5 py-10 text-center opacity-60">Ishchi topilmadi.</td></tr>
+                                <tr><td colSpan={ 4 } className="px-5 py-10 text-center opacity-60">Ishchi topilmadi.</td></tr>
                             ) : result.data.map((worker) => (
-                                <tr key={worker.id} className="align-top">
+                                <tr key={ worker.id } className="align-top">
                                     <td className="px-5 py-4">
-                                        <div className="font-medium">{[worker.user.firstName, worker.user.lastName].filter(Boolean).join(" ") || worker.user.userName || worker.user.email}</div>
-                                        <div className="mt-1 text-xs opacity-60">{worker.user.email}{worker.user.userName ? ` · @${worker.user.userName}` : ""}</div>
+                                        <div className="font-medium">{ [worker.user.firstName, worker.user.lastName].filter(Boolean).join(" ") || worker.user.userName || worker.user.email }</div>
+                                        <div className="mt-1 text-xs opacity-60">{ worker.user.email }{ worker.user.userName ? ` · @${worker.user.userName}` : "" }</div>
                                     </td>
-                                    <td className="px-5 py-4"><span className="rounded-lg bg-sky-500/10 px-2.5 py-1 text-sky-500">{worker.role}</span></td>
-                                    <td className="px-5 py-4"><div className="flex max-w-xl flex-wrap gap-1.5">{worker.permissions.map((permission) => <span key={permission} className="rounded-md bg-current/5 px-2 py-1 text-xs opacity-75">{permission}</span>)}</div></td>
+                                    <td className="px-5 py-4"><span className="rounded-lg bg-sky-500/10 px-2.5 py-1 text-sky-500">{ worker.role }</span></td>
+                                    <td className="px-5 py-4"><div className="flex max-w-xl flex-wrap gap-1.5">{ worker.permissions.map((permission) => <span key={ permission } className="rounded-md bg-current/5 px-2 py-1 text-xs opacity-75">{ permission }</span>) }</div></td>
                                     <td className="px-5 py-4">
                                         <div className="flex justify-end gap-2">
-                                            {can("update") && <button aria-label="Tahrirlash" onClick={() => startEdit(worker)} className="rounded-lg border border-current/10 p-2 hover:bg-current/5"><Pencil className="h-4 w-4" /></button>}
-                                            {can("delete") && <button aria-label="O‘chirish" onClick={() => void deleteWorker(worker)} className="rounded-lg border border-rose-500/20 p-2 text-rose-500 hover:bg-rose-500/10"><Trash2 className="h-4 w-4" /></button>}
+                                            { permissions.includes('all:all') || permissions.includes('workers:update') && <button aria-label="Tahrirlash" onClick={ () => startEdit(worker) } className="rounded-lg border border-current/10 p-2 hover:bg-current/5"><Pencil className="h-4 w-4" /></button> }
+                                            { permissions.includes('all:all') || permissions.includes('workers:delete') && <button aria-label="O‘chirish" onClick={ () => void deleteWorker(worker) } className="rounded-lg border border-rose-500/20 p-2 text-rose-500 hover:bg-rose-500/10"><Trash2 className="h-4 w-4" /></button> }
                                         </div>
                                     </td>
                                 </tr>
-                            ))}
+                            )) }
                         </tbody>
                     </table>
                 </div>
                 <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-current/10 px-5 py-3 text-sm">
-                    <span className="opacity-60">{result.total} ta ishchi</span>
+                    <span className="opacity-60">{ result.total } ta ishchi</span>
                     <div className="flex items-center gap-3">
-                        <button disabled={page <= 1} onClick={() => updateFilter("page", String(page - 1), false)} className="rounded-lg border border-current/10 px-3 py-1.5 disabled:opacity-40">Oldingi</button>
-                        <span>{page} / {Math.max(result.totalPages, 1)}</span>
-                        <button disabled={page >= result.totalPages} onClick={() => updateFilter("page", String(page + 1), false)} className="rounded-lg border border-current/10 px-3 py-1.5 disabled:opacity-40">Keyingi</button>
+                        <button disabled={ page <= 1 } onClick={ () => updateFilter("page", String(page - 1), false) } className="rounded-lg border border-current/10 px-3 py-1.5 disabled:opacity-40">Oldingi</button>
+                        <span>{ page } / { Math.max(result.totalPages, 1) }</span>
+                        <button disabled={ page >= result.totalPages } onClick={ () => updateFilter("page", String(page + 1), false) } className="rounded-lg border border-current/10 px-3 py-1.5 disabled:opacity-40">Keyingi</button>
                     </div>
                 </footer>
             </div>
 
-            {editing && can("update") && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setEditing(null)}>
-                    <div className={`max-h-[90vh] w-full max-w-2xl space-y-5 overflow-y-auto rounded-2xl border p-5 ${cardClass}`}>
+            { editing && (permissions.includes('all:all') || permissions.includes('workers:update')) && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" role="presentation" onMouseDown={ (event) => event.target === event.currentTarget && setEditing(null) }>
+                    <div className={ `max-h-[90vh] w-full max-w-2xl space-y-5 overflow-y-auto rounded-2xl border p-5 ${cardClass}` }>
                         <div className="flex items-center justify-between">
-                            <div><h2 className="text-lg font-semibold">Ishchini tahrirlash</h2><p className="mt-1 text-sm opacity-60">{editing.user.email}</p></div>
-                            <button aria-label="Yopish" onClick={() => setEditing(null)} className="rounded-lg p-2 hover:bg-current/5"><X className="h-5 w-5" /></button>
+                            <div><h2 className="text-lg font-semibold">Ishchini tahrirlash</h2><p className="mt-1 text-sm opacity-60">{ editing.user.email }</p></div>
+                            <button aria-label="Yopish" onClick={ () => setEditing(null) } className="rounded-lg p-2 hover:bg-current/5"><X className="h-5 w-5" /></button>
                         </div>
                         <label className="block space-y-1.5 text-sm">
                             <span>Rol</span>
-                            <select value={editRole} onChange={(event) => {
+                            <select value={ editRole } onChange={ (event) => {
                                 const nextRole = event.target.value;
                                 setEditRole(nextRole);
                                 setEditPermissions((current) => current.filter((permission) => ROLE_PERMISSIONS[nextRole].includes(permission)));
-                            }} className={`w-full rounded-xl border px-3 py-2.5 ${inputClass}`}>
-                                {Object.keys(ROLE_PERMISSIONS).map((option) => <option key={option} value={option}>{option}</option>)}
+                            } } className={ `w-full rounded-xl border px-3 py-2.5 ${inputClass}` }>
+                                { Object.keys(ROLE_PERMISSIONS).map((option) => <option key={ option } value={ option }>{ option }</option>) }
                             </select>
                         </label>
                         <PermissionPicker
-                            permissions={ROLE_PERMISSIONS[editRole]}
-                            selected={editPermissions}
-                            onToggle={(permission) => togglePermission(permission, editPermissions, setEditPermissions)}
-                            dark={dark}
+                            permissions={ ROLE_PERMISSIONS[editRole] }
+                            selected={ editPermissions }
+                            onToggle={ (permission) => togglePermission(permission, editPermissions, setEditPermissions) }
+                            dark={ dark }
                         />
                         <div className="flex justify-end gap-2">
-                            <button onClick={() => setEditing(null)} className="rounded-xl border border-current/10 px-4 py-2 text-sm">Bekor qilish</button>
-                            <button disabled={saving} onClick={() => void saveEdit()} className="rounded-xl bg-sky-600 px-4 py-2 text-sm text-white disabled:opacity-50">{saving ? "Saqlanmoqda…" : "Saqlash"}</button>
+                            <button onClick={ () => setEditing(null) } className="rounded-xl border border-current/10 px-4 py-2 text-sm">Bekor qilish</button>
+                            <button disabled={ saving } onClick={ () => void saveEdit() } className="rounded-xl bg-sky-600 px-4 py-2 text-sm text-white disabled:opacity-50">{ saving ? "Saqlanmoqda…" : "Saqlash" }</button>
                         </div>
                     </div>
                 </div>
-            )}
+            ) }
         </section>
     );
 }
@@ -433,17 +399,17 @@ function PermissionPicker({
         <fieldset className="space-y-2 md:col-span-2">
             <legend className="text-sm font-medium">Ruxsatlar</legend>
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                {permissions.map((permission) => (
-                    <label key={permission} className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-xs ${dark ? "border-white/10 bg-white/[0.03]" : "border-black/10 bg-black/[0.02]"}`}>
-                        <input type="checkbox" checked={selected.includes(permission)} onChange={() => onToggle(permission)} className="accent-sky-500" />
-                        {permission}
+                { permissions.map((permission) => (
+                    <label key={ permission } className={ `flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-xs ${dark ? "border-white/10 bg-white/[0.03]" : "border-black/10 bg-black/[0.02]"}` }>
+                        <input type="checkbox" checked={ selected.includes(permission) } onChange={ () => onToggle(permission) } className="accent-sky-500" />
+                        { permission }
                     </label>
-                ))}
+                )) }
             </div>
         </fieldset>
     );
 }
 
 export default function WorkersPage() {
-    return <Suspense fallback={<div className="p-8">Yuklanmoqda…</div>}><WorkersContent /></Suspense>;
+    return <Suspense fallback={ <div className="p-8">Yuklanmoqda…</div> }><WorkersContent /></Suspense>;
 }

@@ -15,7 +15,7 @@ import { useParams } from "next/navigation";
 import GradientColor from "./_components/gradientColor";
 import Category from "./_components/category";
 import { API_URL } from '@/lib/api';
-import { useRoleStore } from "@/app/_store/useRoleStore";
+import { usePermissionsStore } from "@/app/_store/usePermissionsStore";
 
 interface ProductOption {
     id: string;
@@ -122,7 +122,7 @@ const resolveStoredCategoryLabel = (
 };
 
 const ProductsGet = () => {
-    const role = useRoleStore(state => state.role)
+    const permissions = usePermissionsStore(state => state.permissions);
     const theme = useThemeStore(state => state.theme);
     const dark = theme === 'dark';
     const notify = useNotification()
@@ -340,7 +340,6 @@ const ProductsGet = () => {
                 headers: {
                     Authorization: `Bearer ${token}`,
                     marketId: market,
-                    role: role,
                 }
             });
             if (res.ok) {
