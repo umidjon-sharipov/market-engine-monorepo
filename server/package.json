@@ -5,6 +5,7 @@
   "author": "Umidjon Sharipov",
   "private": true,
   "main": "api/vercel.ts",
+  "type": "module",
   "license": "UNLICENSED",
   "scripts": {
     "build": "prisma generate && nest build && tsc-alias",

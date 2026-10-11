@@ -24,7 +24,8 @@ import {
     LogOut,
     Bell,
     Mail,
-    Store
+    Store,
+    BrainCircuit
 } from "lucide-react";
 import { useNotification } from "@/components/Notification";
 import { API_URL } from '@/lib/api';
@@ -146,7 +147,8 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
         else if (newPath === 'vacancy') setTab(5)
         else if (newPath === 'users' || newPath === 'workers') setTab(6)
         else if (['inquiries-all', 'complaints-all', 'work-all-chats'].includes(newPath)) setTab(7)
-        else if (newPath === 'settings') setTab(8)
+        else if (newPath === 'ai') setTab(8)
+        else if (newPath === 'settings') setTab(9)
         else { setTab(1) }
     }, [pathname])
 
@@ -466,10 +468,13 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
                 </button> }
 
                 <Link
-                    href={ `/${locale}/settings` }
+                    href={ `/${locale}/${market.replaceAll(' ', '_')}/ai` }
                     onClick={ () => handleDirectNav(8) }
-                    title="Settings"
-                    className={ `group relative flex items-center justify-center w-11 h-11 rounded-2xl transition-all duration-300 ease-out active:scale-90 ${dark ? "hover:bg-white/10 text-neutral-300 hover:text-white" : "hover:bg-black/5 text-neutral-700 hover:text-neutral-900"}` }
+                    title="AI"
+                    className={ `group relative flex items-center justify-center w-11 h-11 rounded-2xl transition-all duration-300 ease-out active:scale-90 ${dark
+                        ? "hover:bg-white/10 text-neutral-300 hover:text-white"
+                        : "hover:bg-black/5 text-neutral-700 hover:text-neutral-900"
+                        }` }
                 >
                     { tab === 8 && (
                         <motion.div
@@ -477,14 +482,29 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
                             className="absolute inset-0 rounded-2xl bg-sky-500/20 border border-sky-400/40 shadow-[0_0_15px_rgba(14,165,233,0.3)]"
                         />
                     ) }
-                    <Settings className={ `w-5 h-5 relative z-10 transition-transform group-hover:scale-110 ${tab === 8 ? 'text-sky-400' : ''}` } />
+                    <BrainCircuit className={ `w-5 h-5 relative z-10 transition-transform group-hover:scale-110 ${tab === 8 ? 'text-sky-400' : ''}` } />
+                </Link>
+
+                <Link
+                    href={ `/${locale}/settings` }
+                    onClick={ () => handleDirectNav(9) }
+                    title="Settings"
+                    className={ `group relative flex items-center justify-center w-11 h-11 rounded-2xl transition-all duration-300 ease-out active:scale-90 ${dark ? "hover:bg-white/10 text-neutral-300 hover:text-white" : "hover:bg-black/5 text-neutral-700 hover:text-neutral-900"}` }
+                >
+                    { tab === 9 && (
+                        <motion.div
+                            layoutId={ isMobile ? "mobileActiveTab" : "activeTabIndicator" }
+                            className="absolute inset-0 rounded-2xl bg-sky-500/20 border border-sky-400/40 shadow-[0_0_15px_rgba(14,165,233,0.3)]"
+                        />
+                    ) }
+                    <Settings className={ `w-5 h-5 relative z-10 transition-transform group-hover:scale-110 ${tab === 9 ? 'text-sky-400' : ''}` } />
                 </Link>
 
                 <div className="w-8 h-[1px] bg-white/10 my-1 self-center" />
 
                 <Link
                     href={ `/${locale}` }
-                    onClick={ () => handleDirectNav(9) }
+                    onClick={ () => handleDirectNav(10) }
                     title="Exit / Home"
                     className={ `group relative flex items-center justify-center w-11 h-11 rounded-2xl transition-all duration-300 ease-out active:scale-90 ${dark
                         ? "hover:bg-rose-500/20 text-neutral-400 hover:text-rose-400"
