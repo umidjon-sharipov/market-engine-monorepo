@@ -8,7 +8,7 @@
   "type": "module",
   "license": "UNLICENSED",
   "scripts": {
-    "build": "prisma generate && nest build --swc",
+    "build": "prisma generate && nest build && tsc-alias",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",
