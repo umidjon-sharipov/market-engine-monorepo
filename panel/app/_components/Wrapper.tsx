@@ -230,7 +230,7 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
     ]
 
     const workers = [
-        { label: 'Manage workers', href: `/${locale}/${market.replaceAll(' ', '_')}/workers` }
+        { label: 'Manage workers', href: `/workers` }
     ];
 
     const workRelated = [
@@ -315,11 +315,9 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
         if (tab === 6) {
             return (
                 <div onClick={ onItemClick } className="flex flex-col gap-3">
-                    (
                     <div className={ `backdrop-blur-2xl rounded-3xl ${dark ? "bg-neutral-900/40 border-white/10 text-white shadow-xl shadow-black/20" : "bg-white/40 border-white/60 text-neutral-900 shadow-xl shadow-black/5"}` }>
                         <GlassMenu title="Workers" items={ workers } defaultOpen={ true } />
                     </div>
-                    )
                     { users.length > 0 && <div className={ `backdrop-blur-2xl rounded-3xl ${dark ? "bg-neutral-900/40 border-white/10 text-white shadow-xl shadow-black/20" : "bg-white/40 border-white/60 text-neutral-900 shadow-xl shadow-black/5"}` }>
                         <GlassMenu title="Users" items={ users } defaultOpen={ true } />
                     </div> }

@@ -2,7 +2,7 @@ let cachedHandler;
 
 export default async function handler(req, res) {
   if (!cachedHandler) {
-    const server = await import('../dist/main.js');
+    const server = await import('../dist/main.ts');
     cachedHandler = server.handler ?? server.default;
   }
   return cachedHandler(req, res);

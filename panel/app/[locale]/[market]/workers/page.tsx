@@ -8,6 +8,8 @@ import { useThemeStore } from "@/app/_store/useThemeStore";
 import { usePermissionsStore } from "@/app/_store/usePermissionsStore";
 import { API_URL } from "@/lib/api";
 import { useNotification } from "@/components/Notification";
+import GlassModal from "@/components/admin/GlassModal";
+import GlassInput from "@/components/admin/GlassInput";
 
 const ROLE_PERMISSIONS: Record<string, string[]> = {
     warehouse: [
@@ -76,6 +78,7 @@ function WorkersContent() {
     const [editing, setEditing] = useState<Worker | null>(null);
     const [editRole, setEditRole] = useState("warehouse");
     const [editPermissions, setEditPermissions] = useState<string[]>([]);
+    const [permissionsNow, setpermissionsNow] = useState<string[]>([]);
 
     const query = searchParams.get("search") || "";
     const roleFilter = searchParams.get("role") || "";
@@ -161,7 +164,7 @@ function WorkersContent() {
         try {
             await request(`${API_URL}/workers`, {
                 method: "POST",
-                body: JSON.stringify({ marketId: market, identifier: identifier.trim(), role, permissions }),
+                body: JSON.stringify({ marketId: market, identifier: identifier.trim(), role, permissionsNow }),
             });
             setIdentifier("");
             setFormOpen(false);
@@ -233,7 +236,7 @@ function WorkersContent() {
                     <h1 className="flex items-center gap-3 text-2xl font-semibold"><Users className="h-6 w-6 text-sky-500" /> Ishchilar</h1>
                     <p className="mt-1 text-sm opacity-65">Market xodimlari, rollari va ruxsatlarini boshqaring.</p>
                 </div>
-                { permissions.includes('all:all') || permissions.includes('workers:create') && <button
+                { (permissions.includes('all:all') || permissions.includes('workers:create')) && <button
                     type="button"
                     onClick={ () => setFormOpen((open) => !open) }
                     className="flex items-center gap-2 rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-sky-500"
@@ -243,32 +246,32 @@ function WorkersContent() {
                 </button> }
             </header>
 
-            { formOpen && permissions.includes('all:all') || permissions.includes('workers:create') && (
-                <form onSubmit={ submitNew } className={ `grid gap-4 rounded-2xl border p-5 md:grid-cols-2 ${cardClass}` }>
+            <GlassModal title="Yangi ishchi qo‘shish" open={ formOpen && (permissions.includes('all:all') || permissions.includes('workers:create')) } onClose={ () => setFormOpen(false) }>
+                <form onSubmit={ submitNew } className='space-y-4'>
                     <label className="space-y-1.5 text-sm">
                         <span>Email yoki username</span>
-                        <input required value={ identifier } onChange={ (event) => setIdentifier(event.target.value) } className={ `w-full rounded-xl border px-3 py-2.5 outline-none focus:border-sky-500 ${inputClass}` } placeholder="name@example.com yoki username" />
+                        <GlassInput value={ identifier } onChange={ (event) => setIdentifier(event.target.value) } placeholder="name@example.com yoki username" />
                     </label>
                     <label className="space-y-1.5 text-sm">
                         <span>Rol</span>
                         <select value={ role } onChange={ (event) => {
                             setRole(event.target.value);
-                            setPermissions(ROLE_PERMISSIONS[event.target.value]);
+                            setpermissionsNow(ROLE_PERMISSIONS[event.target.value]);
                         } } className={ `w-full rounded-xl border px-3 py-2.5 ${inputClass}` }>
                             { Object.keys(ROLE_PERMISSIONS).map((option) => <option key={ option } value={ option }>{ option }</option>) }
                         </select>
                     </label>
                     <PermissionPicker
                         permissions={ ROLE_PERMISSIONS[role] }
-                        selected={ permissions }
-                        onToggle={ (permission) => togglePermission(permission, permissions, setPermissions) }
+                        selected={ permissionsNow }
+                        onToggle={ (permission) => togglePermission(permission, permissionsNow, setpermissionsNow) }
                         dark={ dark }
                     />
                     <div className="flex items-end">
                         <button disabled={ saving } className="rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50">{ saving ? "Saqlanmoqda…" : "Qo‘shish" }</button>
                     </div>
                 </form>
-            ) }
+            </GlassModal>
 
             <div className={ `grid gap-3 rounded-2xl border p-4 md:grid-cols-[minmax(220px,1fr)_180px_220px_120px] ${cardClass}` }>
                 <label className={ `flex items-center gap-2 rounded-xl border px-3 ${inputClass}` }>
@@ -331,8 +334,8 @@ function WorkersContent() {
                                     <td className="px-5 py-4"><div className="flex max-w-xl flex-wrap gap-1.5">{ worker.permissions.map((permission) => <span key={ permission } className="rounded-md bg-current/5 px-2 py-1 text-xs opacity-75">{ permission }</span>) }</div></td>
                                     <td className="px-5 py-4">
                                         <div className="flex justify-end gap-2">
-                                            { permissions.includes('all:all') || permissions.includes('workers:update') && <button aria-label="Tahrirlash" onClick={ () => startEdit(worker) } className="rounded-lg border border-current/10 p-2 hover:bg-current/5"><Pencil className="h-4 w-4" /></button> }
-                                            { permissions.includes('all:all') || permissions.includes('workers:delete') && <button aria-label="O‘chirish" onClick={ () => void deleteWorker(worker) } className="rounded-lg border border-rose-500/20 p-2 text-rose-500 hover:bg-rose-500/10"><Trash2 className="h-4 w-4" /></button> }
+                                            { (permissions.includes('all:all') || permissions.includes('workers:update')) && <button aria-label="Tahrirlash" onClick={ () => startEdit(worker) } className="rounded-lg border border-current/10 p-2 hover:bg-current/5"><Pencil className="h-4 w-4" /></button> }
+                                            { (permissions.includes('all:all') || permissions.includes('workers:delete')) && <button aria-label="O‘chirish" onClick={ () => void deleteWorker(worker) } className="rounded-lg border border-rose-500/20 p-2 text-rose-500 hover:bg-rose-500/10"><Trash2 className="h-4 w-4" /></button> }
                                         </div>
                                     </td>
                                 </tr>
@@ -350,36 +353,31 @@ function WorkersContent() {
                 </footer>
             </div>
 
-            { editing && (permissions.includes('all:all') || permissions.includes('workers:update')) && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" role="presentation" onMouseDown={ (event) => event.target === event.currentTarget && setEditing(null) }>
-                    <div className={ `max-h-[90vh] w-full max-w-2xl space-y-5 overflow-y-auto rounded-2xl border p-5 ${cardClass}` }>
-                        <div className="flex items-center justify-between">
-                            <div><h2 className="text-lg font-semibold">Ishchini tahrirlash</h2><p className="mt-1 text-sm opacity-60">{ editing.user.email }</p></div>
-                            <button aria-label="Yopish" onClick={ () => setEditing(null) } className="rounded-lg p-2 hover:bg-current/5"><X className="h-5 w-5" /></button>
-                        </div>
-                        <label className="block space-y-1.5 text-sm">
-                            <span>Rol</span>
-                            <select value={ editRole } onChange={ (event) => {
-                                const nextRole = event.target.value;
-                                setEditRole(nextRole);
-                                setEditPermissions((current) => current.filter((permission) => ROLE_PERMISSIONS[nextRole].includes(permission)));
-                            } } className={ `w-full rounded-xl border px-3 py-2.5 ${inputClass}` }>
-                                { Object.keys(ROLE_PERMISSIONS).map((option) => <option key={ option } value={ option }>{ option }</option>) }
-                            </select>
-                        </label>
-                        <PermissionPicker
-                            permissions={ ROLE_PERMISSIONS[editRole] }
-                            selected={ editPermissions }
-                            onToggle={ (permission) => togglePermission(permission, editPermissions, setEditPermissions) }
-                            dark={ dark }
-                        />
-                        <div className="flex justify-end gap-2">
-                            <button onClick={ () => setEditing(null) } className="rounded-xl border border-current/10 px-4 py-2 text-sm">Bekor qilish</button>
-                            <button disabled={ saving } onClick={ () => void saveEdit() } className="rounded-xl bg-sky-600 px-4 py-2 text-sm text-white disabled:opacity-50">{ saving ? "Saqlanmoqda…" : "Saqlash" }</button>
-                        </div>
+            <GlassModal onClose={ () => setEditing(null) } title="Ishchini tahrirlash" open={ Boolean(editing) && (permissions.includes('all:all') || permissions.includes('workers:update')) }>
+                <div className="space-y-4">
+                    <label className="block space-y-1.5 text-sm">
+                        <span>Rol</span>
+                        <select value={ editRole } onChange={ (event) => {
+                            const nextRole = event.target.value;
+                            setEditRole(nextRole);
+                            setEditPermissions((current) => current.filter((permission) => ROLE_PERMISSIONS[nextRole].includes(permission)));
+                        } } className={ `w-full rounded-xl border px-3 py-2.5 ${inputClass}` }>
+                            { Object.keys(ROLE_PERMISSIONS).map((option) => <option key={ option } value={ option }>{ option }</option>) }
+                        </select>
+                    </label>
+                    <PermissionPicker
+                        permissions={ ROLE_PERMISSIONS[editRole] }
+                        selected={ editPermissions }
+                        onToggle={ (permission) => togglePermission(permission, editPermissions, setEditPermissions) }
+                        dark={ dark }
+                    />
+                    <div className="p-6" />
+                    <div className="flex justify-end gap-2">
+                        <button onClick={ () => setEditing(null) } className="rounded-xl border border-current/10 px-4 py-2 text-sm">Bekor qilish</button>
+                        <button disabled={ saving } onClick={ () => void saveEdit() } className="rounded-xl bg-sky-600 px-4 py-2 text-sm text-white disabled:opacity-50">{ saving ? "Saqlanmoqda…" : "Saqlash" }</button>
                     </div>
                 </div>
-            ) }
+            </GlassModal>
         </section>
     );
 }
