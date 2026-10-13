@@ -1,13 +1,8 @@
 import { IsNotEmpty, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
 
-export class CreateStorageBinDto {
+export class CreateWarehouseAisleDto {
   @IsUUID()
   zoneId!: string;
-
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(100)
-  code!: string;
 
   @IsOptional()
   @IsString()
@@ -15,16 +10,10 @@ export class CreateStorageBinDto {
   title?: string;
 }
 
-export class UpdateStorageBinDto {
+export class UpdateWarehouseAisleDto {
   @IsOptional()
   @IsUUID()
   zoneId?: string;
-
-  @IsOptional()
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(100)
-  code?: string;
 
   @IsOptional()
   @IsString()

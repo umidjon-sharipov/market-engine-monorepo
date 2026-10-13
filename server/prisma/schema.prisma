@@ -17,6 +17,22 @@ enum OrderStatus {
   CANCELLED
 }
 
+enum WarehouseZoneType {
+  Receiving
+  Storage
+  Staging
+  Packing
+  Dispatch
+  Returns
+  Quarantine
+}
+
+enum WarehouseBinType {
+  active
+  blocked
+  maintenance
+}
+
 enum MessageType {
   message
   system
@@ -401,6 +417,24 @@ model Vacancy {
   @@map("Vacancies")
 }
 
+model PickPoint {
+  id                  String   @id @default(uuid()) @db.Uuid
+  warehouseId         String   @db.Uuid
+  title               String   @db.VarChar(255)
+  address             String?  @db.Text
+  latitude            Float
+  longitude           Float
+  serviceRadiusMeters Float    @default(1000)
+  isActive            Boolean  @default(true)
+  createdAt           DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt           DateTime @updatedAt @db.Timestamptz(6)
+
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+
+  @@index([warehouseId])
+  @@map("PickPoints")
+}
+
 model Warehouse {
   id        String   @id @default(uuid()) @db.Uuid
   title     String   @db.VarChar(255)
@@ -427,47 +461,73 @@ model Warehouse {
   @@map("Warehouses")
 }
 
-model PickPoint {
-  id                  String   @id @default(uuid()) @db.Uuid
-  warehouseId         String   @db.Uuid
-  title               String   @db.VarChar(255)
-  address             String?  @db.Text
-  latitude            Float
-  longitude           Float
-  serviceRadiusMeters Float    @default(1000)
-  isActive            Boolean  @default(true)
-  createdAt           DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt           DateTime @updatedAt @db.Timestamptz(6)
-
-  warehouse Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
-
-  @@index([warehouseId])
-  @@map("PickPoints")
-}
-
 model WarehouseZone {
   id          String   @id @default(uuid()) @db.Uuid
   warehouseId String   @db.Uuid
   code        String   @db.VarChar(100)
+  type        WarehouseZoneType
   title       String   @db.VarChar(255)
   createdAt   DateTime @default(now()) @db.Timestamptz(6)
 
   warehouse Warehouse    @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
-  bins      StorageBin[]
+  aisles      WarehouseAisle[]
 
   @@unique([warehouseId, code])
   @@index([warehouseId])
   @@map("WarehouseZones")
 }
 
+model WarehouseAisle {
+    id        String   @id @default(uuid()) @db.Uuid
+    zoneId    String   @db.Uuid
+    title     String?  @db.VarChar(255)
+    createdAt DateTime @default(now()) @db.Timestamptz(6)
+    racks     WarehouseRack[]
+    
+    zone WarehouseZone @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+    
+    @@index([zoneId])
+    @@map("WarehouseAisles")
+}
+
+model WarehouseRack {
+    id        String   @id @default(uuid()) @db.Uuid
+    aisleId   String   @db.Uuid
+    rackNumber String?  @db.VarChar(100)
+    createdAt DateTime @default(now()) @db.Timestamptz(6)
+    shelfs    WarehouseShelf[]
+
+    aisle WarehouseAisle @relation(fields: [aisleId], references: [id], onDelete: Cascade)
+
+    @@index([aisleId])
+    @@map("WarehouseRacks")
+}
+
+model WarehouseShelf {
+    id        String   @id @default(uuid()) @db.Uuid
+    rackId    String   @db.Uuid
+    shelfNumber String?  @db.VarChar(100)
+    createdAt DateTime @default(now()) @db.Timestamptz(6)
+    bins      StorageBin[]
+
+    rack WarehouseRack @relation(fields: [rackId], references: [id], onDelete: Cascade)
+
+    @@index([rackId])
+    @@map("WarehouseShelves")
+}
+
 model StorageBin {
   id        String   @id @default(uuid()) @db.Uuid
-  zoneId    String   @db.Uuid
+  shelfId   String   @db.Uuid
   code      String   @unique @db.VarChar(100)
   title     String?  @db.VarChar(255)
+  capacity  Float?
+  location_type String?  @db.VarChar(50)
+  status    WarehouseBinType @default(active)
+  allowed_product_types String?  @db.VarChar(255)
   createdAt DateTime @default(now()) @db.Timestamptz(6)
 
-  zone                 WarehouseZone           @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+  shelf                WarehouseShelf         @relation(fields: [shelfId], references: [id], onDelete: Cascade)
   inventories          WarehouseInventory[]
   outgoingMovements    StockMovement[]         @relation("MovementFromBin")
   incomingMovements    StockMovement[]         @relation("MovementToBin")
@@ -475,7 +535,7 @@ model StorageBin {
   sourceWarehouseTasks WarehouseTask[]         @relation("WarehouseTaskSourceBin")
   targetWarehouseTasks WarehouseTask[]         @relation("WarehouseTaskTargetBin")
 
-  @@index([zoneId])
+  @@index([shelfId])
   @@map("StorageBins")
 }
 

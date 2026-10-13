@@ -1,411 +1,423 @@
 import {
-  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { WarehouseRepository } from './warehouse.repository';
-import { CreateWarehouseDto } from './dto/create-warehouse.dto';
-import { UpdateWarehouseDto } from './dto/update-warehouse.dto';
+import { CreateWarehouseDto } from './dto/warehouse/create-warehouse.dto';
+import { UpdateWarehouseDto } from './dto/warehouse/update-warehouse.dto';
 import {
   CreateWarehouseZoneDto,
   UpdateWarehouseZoneDto,
-} from './dto/create-warehouse-zone.dto';
+} from './dto/zone/create-warehouse-zone.dto';
+import {
+  CreateWarehouseAisleDto,
+  UpdateWarehouseAisleDto,
+} from './dto/aisle/create-warehouse-aisle.dto';
+import {
+  CreateWarehouseRackDto,
+  UpdateWarehouseRackDto,
+} from './dto/rack/create-warehouse-rack.dto';
+import {
+  CreateWarehouseShelfDto,
+  UpdateWarehouseShelfDto,
+} from './dto/shelf/create-warehouse-shelf.dto';
 import {
   CreateStorageBinDto,
   UpdateStorageBinDto,
-} from './dto/create-storage-bin.dto';
+} from './dto/bin/create-storage-bin.dto';
 
 @Injectable()
 export class WarehousesService {
-  constructor(
-    private readonly warehouses: WarehouseRepository,
-    private readonly prisma: PrismaService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
-  findAll(marketId: string) {
-    return this.warehouses.findAll({
+  // ==================== WAREHOUSE CRUD ====================
+
+  async findAll(marketId: string) {
+    return this.prisma.warehouse.findMany({
       where: { marketId },
-      orderBy: { createdAt: 'desc' },
-      include: { market: { select: { id: true, title: true, logo: true } } },
-    });
-  }
-
-  findOne(id: string) {
-    return this.warehouses.findOne({ id });
-  }
-
-  create(body: CreateWarehouseDto) {
-    return this.warehouses
-      .create(this.toCreateInput(body))
-      .catch((error: unknown) => this.throwWarehouseCodeConflict(error));
-  }
-
-  update(id: string, body: UpdateWarehouseDto) {
-    return this.warehouses
-      .update({ id }, this.toUpdateInput(body))
-      .catch((error: unknown) => this.throwWarehouseCodeConflict(error));
-  }
-
-  delete(id: string) {
-    return this.warehouses.delete({ id });
-  }
-
-  findZones(warehouseId: string) {
-    return this.prisma.warehouseZone.findMany({
-      where: { warehouseId },
-      orderBy: { code: 'asc' },
-      include: { bins: { orderBy: { code: 'asc' } } },
-    });
-  }
-
-  async createZone(warehouseId: string, body: CreateWarehouseZoneDto) {
-    await this.requireWarehouse(warehouseId);
-    try {
-      return await this.prisma.warehouseZone.create({
-        data: { ...body, warehouseId, code: body.code.trim() },
-      });
-    } catch (error) {
-      this.throwUniqueConflict(error, 'Bu omborda zone kodi band.');
-    }
-  }
-
-  async updateZone(id: string, body: UpdateWarehouseZoneDto) {
-    await this.requireZone(id);
-    try {
-      return await this.prisma.warehouseZone.update({
-        where: { id },
-        data: {
-          ...(body.code !== undefined && { code: body.code.trim() }),
-          ...(body.title !== undefined && { title: body.title }),
-        },
-      });
-    } catch (error) {
-      this.throwUniqueConflict(error, 'Bu omborda zone kodi band.');
-    }
-  }
-
-  async deleteZone(id: string) {
-    const zone = await this.prisma.warehouseZone.findUnique({
-      where: { id },
-      include: { _count: { select: { bins: true } } },
-    });
-    if (!zone) throw new NotFoundException('Warehouse zone topilmadi.');
-    if (zone._count.bins) {
-      throw new ConflictException('Avval zonadagi yacheykalarni o‘chiring.');
-    }
-    return this.prisma.warehouseZone.delete({ where: { id } });
-  }
-
-  findBins(zoneId: string) {
-    return this.prisma.storageBin.findMany({
-      where: { zoneId },
-      orderBy: { code: 'asc' },
-    });
-  }
-
-  async searchBins(
-    warehouseId: string,
-    search: string,
-    page = 1,
-    limit = 20,
-  ) {
-    const safePage = Math.max(1, Math.floor(page));
-    const safeLimit = Math.min(20, Math.max(1, Math.floor(limit)));
-    const where: Prisma.StorageBinWhereInput = {
-      zone: { warehouseId },
-      ...(search.trim()
-        ? {
-            OR: [
-              { code: { contains: search.trim(), mode: 'insensitive' } },
-              { title: { contains: search.trim(), mode: 'insensitive' } },
-              {
-                zone: {
-                  title: { contains: search.trim(), mode: 'insensitive' },
+      include: {
+        zones: {
+          include: {
+            aisles: {
+              include: {
+                racks: {
+                  include: {
+                    shelfs: {
+                      include: {
+                        bins: true,
+                      },
+                    },
+                  },
                 },
               },
-            ],
-          }
-        : {}),
-    };
-    const [data, total] = await this.prisma.$transaction([
-      this.prisma.storageBin.findMany({
-        where,
-        orderBy: [{ code: 'asc' }, { id: 'asc' }],
-        skip: (safePage - 1) * safeLimit,
-        take: safeLimit,
-        include: { zone: { select: { id: true, code: true, title: true } } },
-      }),
-      this.prisma.storageBin.count({ where }),
-    ]);
-    return {
-      data,
-      page: safePage,
-      limit: safeLimit,
-      total,
-      hasMore: safePage * safeLimit < total,
-    };
-  }
-
-  async createBin(body: CreateStorageBinDto) {
-    await this.requireZone(body.zoneId);
-    try {
-      return await this.prisma.storageBin.create({
-        data: {
-          zoneId: body.zoneId,
-          code: body.code.trim(),
-          title: body.title,
-        },
-      });
-    } catch (error) {
-      this.throwUniqueConflict(error, 'Yacheyka kodi band.');
-    }
-  }
-
-  async updateBin(id: string, body: UpdateStorageBinDto) {
-    await this.requireBin(id);
-    if (body.zoneId) await this.requireZone(body.zoneId);
-    try {
-      return await this.prisma.storageBin.update({
-        where: { id },
-        data: {
-          ...(body.zoneId && { zone: { connect: { id: body.zoneId } } }),
-          ...(body.code !== undefined && { code: body.code.trim() }),
-          ...(body.title !== undefined && { title: body.title }),
-        },
-      });
-    } catch (error) {
-      this.throwUniqueConflict(error, 'Yacheyka kodi band.');
-    }
-  }
-
-  async deleteBin(id: string) {
-    const bin = await this.requireBin(id);
-    if (
-      bin._count.inventories > 0 ||
-      bin._count.outgoingMovements > 0 ||
-      bin._count.incomingMovements > 0 ||
-      bin._count.reservations > 0
-    ) {
-      throw new ConflictException(
-        'Inventar, movement yoki reservation bilan bog‘langan yacheykani o‘chirib bo‘lmaydi.',
-      );
-    }
-    return this.prisma.storageBin.delete({ where: { id } });
-  }
-
-  async findInventory(warehouseId: string) {
-    await this.requireWarehouse(warehouseId);
-    const inventory = await this.prisma.warehouseInventory.findMany({
-      where: { warehouseId },
-      orderBy: [{ bin: { code: 'asc' } }, { product: { title: 'asc' } }],
-      include: {
-        product: {
-          select: { id: true, title: true, images: true, price: true, uom: true },
-        },
-        bin: {
-          select: {
-            id: true,
-            code: true,
-            title: true,
-            zone: { select: { id: true, code: true, title: true } },
+            },
           },
         },
       },
     });
-    return inventory.map((row) => ({
-      ...row,
-      availableQuantity: row.quantity - row.reservedQuantity,
-    }));
   }
 
-  async searchBinInventory(
-    warehouseId: string,
-    binId: string,
-    search: string,
-    page = 1,
-    limit = 20,
-  ) {
-    const bin = await this.prisma.storageBin.findFirst({
-      where: { id: binId, zone: { warehouseId } },
-      select: { id: true },
-    });
-    if (!bin) throw new NotFoundException('Yacheyka ushbu omborga tegishli emas.');
-
-    const safePage = Math.max(1, Math.floor(page));
-    const safeLimit = Math.min(20, Math.max(1, Math.floor(limit)));
-    const where: Prisma.WarehouseInventoryWhereInput = {
-      warehouseId,
-      binId,
-      quantity: { gt: 0 },
-      ...(search.trim()
-        ? { product: { title: { contains: search.trim(), mode: 'insensitive' } } }
-        : {}),
-    };
-    const [rows, total] = await this.prisma.$transaction([
-      this.prisma.warehouseInventory.findMany({
-        where,
-        orderBy: [{ product: { title: 'asc' } }, { expiresAt: 'asc' }],
-        skip: (safePage - 1) * safeLimit,
-        take: safeLimit,
-        select: {
-          id: true,
-          productId: true,
-          lotNumber: true,
-          quantity: true,
-          reservedQuantity: true,
-          expiresAt: true,
-          product: {
-            select: { id: true, title: true, uom: true, options: { include: { items: true } } },
-          },
-        },
-      }),
-      this.prisma.warehouseInventory.count({ where }),
-    ]);
-    return {
-      data: rows.map((row) => ({
-        ...row,
-        availableQuantity: row.quantity - row.reservedQuantity,
-      })),
-      page: safePage,
-      limit: safeLimit,
-      total,
-      hasMore: safePage * safeLimit < total,
-    };
-  }
-
-  async getWarehouseMarketId(warehouseId: string) {
+  async findOne(id: string) {
     const warehouse = await this.prisma.warehouse.findUnique({
-      where: { id: warehouseId },
-      select: { marketId: true },
-    });
-    if (!warehouse) throw new NotFoundException('Warehouse topilmadi.');
-    return warehouse.marketId;
-  }
-
-  async getZoneMarketId(zoneId: string) {
-    const zone = await this.prisma.warehouseZone.findUnique({
-      where: { id: zoneId },
-      select: { warehouse: { select: { marketId: true } } },
-    });
-    if (!zone) throw new NotFoundException('Warehouse zone topilmadi.');
-    return zone.warehouse.marketId;
-  }
-
-  async getZoneWarehouseId(zoneId: string) {
-    const zone = await this.prisma.warehouseZone.findUnique({
-      where: { id: zoneId },
-      select: { warehouseId: true },
-    });
-    if (!zone) throw new NotFoundException('Warehouse zone topilmadi.');
-    return zone.warehouseId;
-  }
-
-  async getBinMarketId(binId: string) {
-    const bin = await this.prisma.storageBin.findUnique({
-      where: { id: binId },
-      select: {
-        zone: { select: { warehouse: { select: { marketId: true } } } },
+      where: { id },
+      include: {
+        zones: true,
       },
     });
-    if (!bin) throw new NotFoundException('Storage bin topilmadi.');
-    return bin.zone.warehouse.marketId;
-  }
-
-  async getBinWarehouseId(binId: string) {
-    const bin = await this.prisma.storageBin.findUnique({
-      where: { id: binId },
-      select: {
-        zone: { select: { warehouseId: true } },
-        _count: {
-          select: {
-            inventories: true,
-            outgoingMovements: true,
-            incomingMovements: true,
-            reservations: true,
-          },
-        },
-      },
-    });
-    if (!bin) throw new NotFoundException('Storage bin topilmadi.');
-    return {
-      warehouseId: bin.zone.warehouseId,
-      isReferenced: Object.values(bin._count).some((count) => count > 0),
-    };
-  }
-
-  private async requireWarehouse(id: string) {
-    const warehouse = await this.prisma.warehouse.findUnique({ where: { id } });
-    if (!warehouse) throw new NotFoundException('Warehouse topilmadi.');
+    if (!warehouse) throw new NotFoundException('Ombor topilmadi.');
     return warehouse;
   }
 
-  private async requireZone(id: string) {
-    const zone = await this.prisma.warehouseZone.findUnique({ where: { id } });
-    if (!zone) throw new NotFoundException('Warehouse zone topilmadi.');
-    return zone;
+  async create(dto: CreateWarehouseDto) {
+    return this.prisma.warehouse.create({ data: dto });
   }
 
-  private async requireBin(id: string) {
-    const bin = await this.prisma.storageBin.findUnique({
+  async update(id: string, dto: UpdateWarehouseDto) {
+    await this.findOne(id);
+    return this.prisma.warehouse.update({
       where: { id },
+      data: dto,
+    });
+  }
+
+  async delete(id: string) {
+    await this.findOne(id);
+    return this.prisma.warehouse.delete({ where: { id } });
+  }
+
+  // ==================== ZONE CRUD ====================
+
+  async findZones(warehouseId: string) {
+    return this.prisma.warehouseZone.findMany({
+      where: { warehouseId },
       include: {
-        _count: {
-          select: {
-            inventories: true,
-            outgoingMovements: true,
-            incomingMovements: true,
-            reservations: true,
+        aisles: {
+          include: {
+            racks: {
+              include: {
+                shelfs: {
+                  include: { bins: true },
+                },
+              },
+            },
           },
         },
       },
     });
-    if (!bin) throw new NotFoundException('Storage bin topilmadi.');
-    return bin;
   }
 
-  private throwUniqueConflict(error: unknown, message: string): never {
-    if (
-      error instanceof Prisma.PrismaClientKnownRequestError &&
-      error.code === 'P2002'
-    ) {
-      throw new ConflictException(message);
+  async createZone(warehouseId: string, dto: CreateWarehouseZoneDto) {
+    return this.prisma.warehouseZone.create({
+      data: {
+        ...dto,
+        warehouseId,
+      },
+    });
+  }
+
+  async updateZone(zoneId: string, dto: UpdateWarehouseZoneDto) {
+    const zone = await this.prisma.warehouseZone.findUnique({ where: { id: zoneId } });
+    if (!zone) throw new NotFoundException('Zona topilmadi.');
+    return this.prisma.warehouseZone.update({
+      where: { id: zoneId },
+      data: dto,
+    });
+  }
+
+  async deleteZone(zoneId: string) {
+    const zone = await this.prisma.warehouseZone.findUnique({ where: { id: zoneId } });
+    if (!zone) throw new NotFoundException('Zona topilmadi.');
+    return this.prisma.warehouseZone.delete({ where: { id: zoneId } });
+  }
+
+  // ==================== AISLE CRUD ====================
+
+  async createAisle(dto: CreateWarehouseAisleDto) {
+    const zone = await this.prisma.warehouseZone.findUnique({ where: { id: dto.zoneId } });
+    if (!zone) throw new NotFoundException('Zona topilmadi.');
+    return this.prisma.warehouseAisle.create({ data: dto });
+  }
+
+  async updateAisle(aisleId: string, dto: UpdateWarehouseAisleDto) {
+    const aisle = await this.prisma.warehouseAisle.findUnique({ where: { id: aisleId } });
+    if (!aisle) throw new NotFoundException('Yo‘lak (Aisle) topilmadi.');
+    return this.prisma.warehouseAisle.update({
+      where: { id: aisleId },
+      data: dto,
+    });
+  }
+
+  async deleteAisle(aisleId: string) {
+    const aisle = await this.prisma.warehouseAisle.findUnique({ where: { id: aisleId } });
+    if (!aisle) throw new NotFoundException('Yo‘lak (Aisle) topilmadi.');
+    return this.prisma.warehouseAisle.delete({ where: { id: aisleId } });
+  }
+
+  // ==================== RACK CRUD ====================
+
+  async createRack(dto: CreateWarehouseRackDto) {
+    const aisle = await this.prisma.warehouseAisle.findUnique({ where: { id: dto.aisleId } });
+    if (!aisle) throw new NotFoundException('Yo‘lak (Aisle) topilmadi.');
+    return this.prisma.warehouseRack.create({ data: dto });
+  }
+
+  async updateRack(rackId: string, dto: UpdateWarehouseRackDto) {
+    const rack = await this.prisma.warehouseRack.findUnique({ where: { id: rackId } });
+    if (!rack) throw new NotFoundException('Stellaj (Rack) topilmadi.');
+    return this.prisma.warehouseRack.update({
+      where: { id: rackId },
+      data: dto,
+    });
+  }
+
+  async deleteRack(rackId: string) {
+    const rack = await this.prisma.warehouseRack.findUnique({ where: { id: rackId } });
+    if (!rack) throw new NotFoundException('Stellaj (Rack) topilmadi.');
+    return this.prisma.warehouseRack.delete({ where: { id: rackId } });
+  }
+
+  // ==================== SHELF CRUD ====================
+
+  async createShelf(dto: CreateWarehouseShelfDto) {
+    const rack = await this.prisma.warehouseRack.findUnique({ where: { id: dto.rackId } });
+    if (!rack) throw new NotFoundException('Stellaj (Rack) topilmadi.');
+    return this.prisma.warehouseShelf.create({ data: dto });
+  }
+
+  async updateShelf(shelfId: string, dto: UpdateWarehouseShelfDto) {
+    const shelf = await this.prisma.warehouseShelf.findUnique({ where: { id: shelfId } });
+    if (!shelf) throw new NotFoundException('Tokcha (Shelf) topilmadi.');
+    return this.prisma.warehouseShelf.update({
+      where: { id: shelfId },
+      data: dto,
+    });
+  }
+
+  async deleteShelf(shelfId: string) {
+    const shelf = await this.prisma.warehouseShelf.findUnique({ where: { id: shelfId } });
+    if (!shelf) throw new NotFoundException('Tokcha (Shelf) topilmadi.');
+    return this.prisma.warehouseShelf.delete({ where: { id: shelfId } });
+  }
+
+  // ==================== STORAGE BIN CRUD ====================
+
+  async createBin(dto: CreateStorageBinDto) {
+    const shelf = await this.prisma.warehouseShelf.findUnique({ where: { id: dto.shelfId } });
+    if (!shelf) throw new NotFoundException('Tokcha (Shelf) topilmadi.');
+    return this.prisma.storageBin.create({ data: dto });
+  }
+
+  async updateBin(binId: string, dto: UpdateStorageBinDto) {
+    const bin = await this.prisma.storageBin.findUnique({ where: { id: binId } });
+    if (!bin) throw new NotFoundException('Yacheyka (Bin) topilmadi.');
+
+    if (dto.shelfId) {
+      const shelf = await this.prisma.warehouseShelf.findUnique({ where: { id: dto.shelfId } });
+      if (!shelf) throw new NotFoundException('Yangi tokcha (Shelf) topilmadi.');
     }
-    throw error;
+
+    return this.prisma.storageBin.update({
+      where: { id: binId },
+      data: dto,
+    });
   }
 
-  private throwWarehouseCodeConflict(error: unknown): never {
-    if (
-      error instanceof Prisma.PrismaClientKnownRequestError &&
-      error.code === 'P2002'
-    ) {
-      throw new ConflictException('Bu marketda ombor kodi band.');
-    }
-    throw error;
+  async deleteBin(binId: string) {
+    const bin = await this.prisma.storageBin.findUnique({ where: { id: binId } });
+    if (!bin) throw new NotFoundException('Yacheyka (Bin) topilmadi.');
+    return this.prisma.storageBin.delete({ where: { id: binId } });
   }
 
-  private toCreateInput(body: CreateWarehouseDto): Prisma.WarehouseCreateInput {
+  // ==================== MARKET ID FINDERS (HELPERS) ====================
+
+  async getWarehouseMarketId(warehouseId: string): Promise<string> {
+    const warehouse = await this.prisma.warehouse.findUnique({ where: { id: warehouseId } });
+    if (!warehouse) throw new NotFoundException('Ombor topilmadi.');
+    return warehouse.marketId;
+  }
+
+  async getZoneMarketId(zoneId: string): Promise<string> {
+    const zone = await this.prisma.warehouseZone.findUnique({
+      where: { id: zoneId },
+      include: { warehouse: true },
+    });
+    if (!zone) throw new NotFoundException('Zona topilmadi.');
+    return zone.warehouse.marketId;
+  }
+
+  async getAisleMarketId(zoneId: string): Promise<string> {
+    const zone = await this.prisma.warehouseZone.findUnique({
+      where: { id: zoneId },
+      include: { warehouse: true },
+    });
+    if (!zone) throw new NotFoundException('Zona topilmadi.');
+    return zone.warehouse.marketId;
+  }
+
+  async getAisleMarketIdByAisleId(aisleId: string): Promise<string> {
+    const aisle = await this.prisma.warehouseAisle.findUnique({
+      where: { id: aisleId },
+      include: { zone: { include: { warehouse: true } } },
+    });
+    if (!aisle) throw new NotFoundException('Yo‘lak (Aisle) topilmadi.');
+    return aisle.zone.warehouse.marketId;
+  }
+
+  async getRackMarketId(aisleId: string): Promise<string> {
+    const aisle = await this.prisma.warehouseAisle.findUnique({
+      where: { id: aisleId },
+      include: { zone: { include: { warehouse: true } } },
+    });
+    if (!aisle) throw new NotFoundException('Yo‘lak (Aisle) topilmadi.');
+    return aisle.zone.warehouse.marketId;
+  }
+
+  async getRackMarketIdByRackId(rackId: string): Promise<string> {
+    const rack = await this.prisma.warehouseRack.findUnique({
+      where: { id: rackId },
+      include: { aisle: { include: { zone: { include: { warehouse: true } } } } },
+    });
+    if (!rack) throw new NotFoundException('Stellaj (Rack) topilmadi.');
+    return rack.aisle.zone.warehouse.marketId;
+  }
+
+  async getShelfMarketIdByRackId(rackId: string): Promise<string> {
+    const rack = await this.prisma.warehouseRack.findUnique({
+      where: { id: rackId },
+      include: { aisle: { include: { zone: { include: { warehouse: true } } } } },
+    });
+    if (!rack) throw new NotFoundException('Stellaj (Rack) topilmadi.');
+    return rack.aisle.zone.warehouse.marketId;
+  }
+
+  async getShelfMarketId(shelfId: string): Promise<string> {
+    const shelf = await this.prisma.warehouseShelf.findUnique({
+      where: { id: shelfId },
+      include: {
+        rack: {
+          include: {
+            aisle: {
+              include: {
+                zone: { include: { warehouse: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!shelf) throw new NotFoundException('Tokcha (Shelf) topilmadi.');
+    return shelf.rack.aisle.zone.warehouse.marketId;
+  }
+
+  async getShelfWarehouseId(shelfId: string): Promise<string> {
+    const shelf = await this.prisma.warehouseShelf.findUnique({
+      where: { id: shelfId },
+      include: {
+        rack: {
+          include: {
+            aisle: { include: { zone: true } },
+          },
+        },
+      },
+    });
+    if (!shelf) throw new NotFoundException('Tokcha (Shelf) topilmadi.');
+    return shelf.rack.aisle.zone.warehouseId;
+  }
+
+  async getBinMarketId(binId: string): Promise<string> {
+    const bin = await this.prisma.storageBin.findUnique({
+      where: { id: binId },
+      include: {
+        shelf: {
+          include: {
+            rack: {
+              include: {
+                aisle: {
+                  include: {
+                    zone: { include: { warehouse: true } },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!bin) throw new NotFoundException('Yacheyka (Bin) topilmadi.');
+    return bin.shelf.rack.aisle.zone.warehouse.marketId;
+  }
+
+  async getBinWarehouseId(binId: string): Promise<{ warehouseId: string; isReferenced: boolean }> {
+    const bin = await this.prisma.storageBin.findUnique({
+      where: { id: binId },
+      include: {
+        shelf: {
+          include: {
+            rack: {
+              include: {
+                aisle: { include: { zone: true } },
+              },
+            },
+          },
+        },
+        inventories: true,
+      },
+    });
+    if (!bin) throw new NotFoundException('Yacheyka (Bin) topilmadi.');
+
     return {
-      title: body.title,
-      code: body.code?.trim() || null,
-      address: body.address,
-      lat: String(body.lat),
-      lng: String(body.lng),
-      market: { connect: { id: body.marketId } },
+      warehouseId: bin.shelf.rack.aisle.zone.warehouseId,
+      isReferenced: bin.inventories.length > 0,
     };
   }
 
-  private toUpdateInput(body: UpdateWarehouseDto): Prisma.WarehouseUpdateInput {
-    return {
-      ...(body.title !== undefined && { title: body.title }),
-      ...(body.code !== undefined && { code: body.code.trim() || null }),
-      ...(body.address !== undefined && { address: body.address }),
-      ...(body.lat !== undefined && { lat: String(body.lat) }),
-      ...(body.lng !== undefined && { lng: String(body.lng) }),
-      ...(body.marketId !== undefined && {
-        market: { connect: { id: body.marketId } },
-      }),
-    };
+  async searchBins(warehouseId: string, search: string, page: number, limit: number) {
+    const skip = (page - 1) * limit;
+    return this.prisma.storageBin.findMany({
+      where: {
+        shelf: {
+          rack: {
+            aisle: {
+              zone: {
+                warehouseId,
+              },
+            },
+          },
+        },
+        OR: [
+          { code: { contains: search, mode: 'insensitive' } },
+          { title: { contains: search, mode: 'insensitive' } },
+        ],
+      },
+      skip,
+      take: limit,
+      include: { shelf: true },
+    });
+  }
+
+  async findInventory(warehouseId: string) {
+    return this.prisma.warehouseInventory.findMany({
+      where: { warehouseId },
+      include: { product: true, bin: true },
+    });
+  }
+
+  async searchBinInventory(warehouseId: string, binId: string, search: string, page: number, limit: number) {
+    const skip = (page - 1) * limit;
+    return this.prisma.warehouseInventory.findMany({
+      where: {
+        warehouseId,
+        binId,
+        product: {
+          OR: [
+            { title: { contains: search, mode: 'insensitive' } },
+            { barcode: { contains: search, mode: 'insensitive' } },
+          ],
+        },
+      },
+      skip,
+      take: limit,
+      include: { product: true, bin: true },
+    });
   }
 }
