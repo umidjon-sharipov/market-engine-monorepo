@@ -242,22 +242,35 @@ export class StockMovementsService {
   ) {
     const bin = await tx.storageBin.findUnique({
       where: { id: binId },
-      select: {
-        zone: {
-          select: {
-            warehouseId: true,
-            warehouse: { select: { marketId: true } },
+      include: {
+        shelf: {
+          include: {
+            rack: {
+              include: {
+                aisle: {
+                  include: {
+                    zone: {
+                      include: { warehouse: true },
+                    },
+                  },
+                },
+              },
+            },
           },
         },
       },
     });
     if (!bin) throw new BadRequestException('Storage bin topilmadi.');
-    if (bin.zone.warehouseId !== warehouseId) {
+
+    const binWarehouseId = bin.shelf.rack.aisle.zone.warehouseId;
+    const binMarketId = bin.shelf.rack.aisle.zone.warehouse.marketId;
+
+    if (binWarehouseId !== warehouseId) {
       throw new BadRequestException(
         'Storage bin ko‘rsatilgan omborga tegishli emas.',
       );
     }
-    if (bin.zone.warehouse.marketId !== marketId) {
+    if (binMarketId !== marketId) {
       throw new BadRequestException(
         'Mahsulot va ombor bir marketga tegishli bo‘lishi shart.',
       );

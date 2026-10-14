@@ -1,4 +1,5 @@
-import { IsNotEmpty, IsString, MaxLength } from 'class-validator';
+import { WarehouseZoneType } from '@prisma/client';
+import { IsEnum, IsNotEmpty, IsString, MaxLength } from 'class-validator';
 
 export class CreateWarehouseZoneDto {
   @IsString()
@@ -10,6 +11,10 @@ export class CreateWarehouseZoneDto {
   @IsNotEmpty()
   @MaxLength(255)
   title!: string;
+
+  @IsEnum(WarehouseZoneType)
+  @IsNotEmpty()
+  type!: WarehouseZoneType;
 }
 
 export class UpdateWarehouseZoneDto {
@@ -22,4 +27,8 @@ export class UpdateWarehouseZoneDto {
   @IsNotEmpty()
   @MaxLength(255)
   title?: string;
+
+  @IsEnum(WarehouseZoneType)
+  @IsNotEmpty()
+  type?: WarehouseZoneType;
 }

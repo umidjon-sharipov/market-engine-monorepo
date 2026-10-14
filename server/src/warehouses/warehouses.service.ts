@@ -110,7 +110,10 @@ export class WarehousesService {
     return this.prisma.warehouseZone.create({
       data: {
         ...dto,
-        warehouseId,
+        type: dto.type ?? 'STORAGE',
+        warehouse: {
+          connect: { id: warehouseId },
+        },
       },
     });
   }

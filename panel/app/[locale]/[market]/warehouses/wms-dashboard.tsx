@@ -42,14 +42,100 @@ type Warehouse = {
     marketId: string;
 };
 
-type StorageBin = { id: string; code: string; title: string | null };
+type WarehouseZoneType =
+    | "RECEIVING"
+    | "STORAGE"
+    | "STAGING"
+    | "PACKING"
+    | "DISPATCH"
+    | "RETURNS"
+    | "QUARANTINE";
+type WarehouseBinStatus = "active" | "blocked" | "maintenance";
 type WarehouseZone = {
     id: string;
     warehouseId: string;
     code: string;
     title: string;
+    type: WarehouseZoneType;
+    aisles: WarehouseAisle[];
+};
+type WarehouseAisle = {
+    id: string;
+    zoneId: string;
+    title: string | null;
+    racks: WarehouseRack[];
+};
+type WarehouseRack = {
+    id: string;
+    aisleId: string;
+    rackNumber: string | null;
+    shelfs: WarehouseShelf[];
+};
+type WarehouseShelf = {
+    id: string;
+    rackId: string;
+    shelfNumber: string | null;
     bins: StorageBin[];
 };
+type StorageBin = {
+    id: string;
+    shelfId?: string;
+    code: string;
+    title: string | null;
+    capacity?: number | null;
+    location_type?: string | null;
+    status?: WarehouseBinStatus;
+    allowed_product_types?: string | null;
+    // Search APIs may include the computed legacy zone shortcut as well as the new relations.
+    zone?: Pick<WarehouseZone, "id" | "code" | "title" | "type">;
+    shelf?: WarehouseShelf & {
+        rack?: WarehouseRack & {
+            aisle?: WarehouseAisle & {
+                zone?: Pick<WarehouseZone, "id" | "code" | "title" | "type">;
+            };
+        };
+    };
+};
+type LocationEntityKind = "zone" | "aisle" | "rack" | "shelf" | "bin";
+type LocationEntity = WarehouseZone | WarehouseAisle | WarehouseRack | WarehouseShelf | StorageBin;
+type LocationModalState = {
+    mode: "create" | "edit";
+    kind: LocationEntityKind;
+    entity?: LocationEntity;
+    parentId?: string;
+};
+type DeleteTarget = {
+    kind: "warehouse" | LocationEntityKind;
+    id: string;
+    label: string;
+};
+
+const zoneTypeLabels: Record<WarehouseZoneType, string> = {
+    RECEIVING: "Qabul qilish",
+    STORAGE: "Saqlash",
+    STAGING: "Oraliq zona",
+    PACKING: "Qadoqlash",
+    DISPATCH: "Jo'natish",
+    RETURNS: "Qaytarilganlar",
+    QUARANTINE: "Karantin",
+};
+const binStatusLabels: Record<WarehouseBinStatus, string> = {
+    active: "Faol",
+    blocked: "Bloklangan",
+    maintenance: "Texnik xizmat",
+};
+
+function locationKindLabel(kind: "warehouse" | LocationEntityKind): string {
+    const labels: Record<"warehouse" | LocationEntityKind, string> = {
+        warehouse: "Ombor",
+        zone: "Zona",
+        aisle: "Yo'lak",
+        rack: "Stellaj",
+        shelf: "Raf",
+        bin: "Yacheyka",
+    };
+    return labels[kind];
+}
 
 type InventoryRow = {
     id: string;
@@ -65,11 +151,15 @@ type InventoryRow = {
         price: number;
         uom: Product["uom"];
     };
-    bin: {
-        id: string;
-        code: string;
-        title: string | null;
-        zone: { id: string; code: string; title: string };
+    bin: StorageBin & {
+        shelf?: WarehouseShelf & {
+            rack?: WarehouseRack & {
+                aisle?: WarehouseAisle & {
+                    zone?: Pick<WarehouseZone, "id" | "code" | "title" | "type">;
+                };
+            };
+        };
+        zone?: Pick<WarehouseZone, "id" | "code" | "title" | "type">;
     };
 };
 
@@ -188,11 +278,16 @@ export default function WarehouseManagement() {
     const [longitude, setLongitude] = useState("");
     const [mapOpen, setMapOpen] = useState(false);
 
-    const [zoneCode, setZoneCode] = useState("");
-    const [zoneTitle, setZoneTitle] = useState("");
-    const [binZoneId, setBinZoneId] = useState("");
-    const [binCode, setBinCode] = useState("");
-    const [binTitle, setBinTitle] = useState("");
+    const [locationModal, setLocationModal] = useState<LocationModalState | null>(null);
+    const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
+    const [locationCode, setLocationCode] = useState("");
+    const [locationTitle, setLocationTitle] = useState("");
+    const [locationParentId, setLocationParentId] = useState("");
+    const [locationZoneType, setLocationZoneType] = useState<WarehouseZoneType>("STORAGE");
+    const [binCapacity, setBinCapacity] = useState("");
+    const [binLocationType, setBinLocationType] = useState("");
+    const [binStatus, setBinStatus] = useState<WarehouseBinStatus>("active");
+    const [binAllowedProductTypes, setBinAllowedProductTypes] = useState("");
 
     const [movementType, setMovementType] = useState<MovementType>("INBOUND");
     const [movementProductId, setMovementProductId] = useState("");
@@ -289,11 +384,6 @@ export default function WarehouseManagement() {
             ]);
             setZones(zoneRows);
             setInventory(inventoryRows);
-            setBinZoneId((selected) =>
-                zoneRows.some((zone) => zone.id === selected)
-                    ? selected
-                    : (zoneRows[0]?.id ?? ""),
-            );
         } catch (cause) {
             setError(cause instanceof Error ? cause.message : "Ombor ma'lumotlari yuklanmadi.");
         }
@@ -427,11 +517,6 @@ export default function WarehouseManagement() {
                 if (!active) return;
                 setZones(zoneRows);
                 setInventory(inventoryRows);
-                setBinZoneId((selected) =>
-                    zoneRows.some((zone) => zone.id === selected)
-                        ? selected
-                        : (zoneRows[0]?.id ?? ""),
-                );
             })
             .catch((cause: unknown) => {
                 if (active) setError(cause instanceof Error ? cause.message : "Ombor ma'lumotlari yuklanmadi.");
@@ -512,8 +597,8 @@ export default function WarehouseManagement() {
                 title: warehouseTitle.trim(),
                 code: warehouseCode.trim() || undefined,
                 address: warehouseAddress.trim() || undefined,
-                lat: Number(latitude),
-                lng: Number(longitude),
+                lat: latitude.trim(),
+                lng: longitude.trim(),
                 marketId,
             };
             if (editingWarehouse) {
@@ -538,31 +623,144 @@ export default function WarehouseManagement() {
         }
     };
 
-    const deleteWarehouse = async (warehouse: Warehouse) => {
-        if (!window.confirm(`"${warehouse.title}" omborini o'chirmoqchimisiz?`)) return;
-        try {
-            await apiRequest(`/warehouses/${warehouse.id}`, token, {
-                method: "DELETE",
-            });
-            setNotice("Ombor o'chirildi.");
-            await loadMainData();
-        } catch (cause) {
-            notifyError(cause);
-        }
+    const resetLocationForm = () => {
+        setLocationCode("");
+        setLocationTitle("");
+        setLocationParentId("");
+        setLocationZoneType("STORAGE");
+        setBinCapacity("");
+        setBinLocationType("");
+        setBinStatus("active");
+        setBinAllowedProductTypes("");
     };
 
-    const submitZone = async (event: FormEvent<HTMLFormElement>) => {
+    const openCreateLocation = (kind: LocationEntityKind, parentId?: string) => {
+        resetLocationForm();
+        setLocationParentId(parentId ?? "");
+        setLocationModal({ mode: "create", kind, parentId });
+        setError("");
+    };
+
+    const openEditLocation = (kind: LocationEntityKind, entity: LocationEntity) => {
+        resetLocationForm();
+        setLocationModal({ mode: "edit", kind, entity });
+        if (kind === "zone") {
+            const zone = entity as WarehouseZone;
+            setLocationCode(zone.code);
+            setLocationTitle(zone.title);
+            setLocationZoneType(zone.type ?? "STORAGE");
+        } else if (kind === "aisle") {
+            setLocationTitle((entity as WarehouseAisle).title ?? "");
+        } else if (kind === "rack") {
+            setLocationCode((entity as WarehouseRack).rackNumber ?? "");
+        } else if (kind === "shelf") {
+            setLocationCode((entity as WarehouseShelf).shelfNumber ?? "");
+        } else {
+            const bin = entity as StorageBin;
+            setLocationCode(bin.code);
+            setLocationTitle(bin.title ?? "");
+            setLocationParentId(bin.shelfId ?? bin.shelf?.id ?? "");
+            setBinCapacity(bin.capacity == null ? "" : String(bin.capacity));
+            setBinLocationType(bin.location_type ?? "");
+            setBinStatus(bin.status ?? "active");
+            setBinAllowedProductTypes(bin.allowed_product_types ?? "");
+        }
+        setError("");
+    };
+
+    const submitLocation = async (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
-        if (!selectedWarehouseId) return;
+        if (!locationModal || !selectedWarehouseId) return;
+        const { kind, mode, entity, parentId } = locationModal;
+        const id = entity?.id;
         setBusy(true);
+        setError("");
         try {
-            await apiRequest(`/warehouses/${selectedWarehouseId}/zones`, token, {
-                method: "POST",
-                body: JSON.stringify({ code: zoneCode.trim(), title: zoneTitle.trim() }),
-            });
-            setZoneCode("");
-            setZoneTitle("");
-            setNotice("Zona yaratildi.");
+            if (kind === "zone") {
+                const payload = {
+                    code: locationCode.trim(),
+                    title: locationTitle.trim(),
+                    type: locationZoneType,
+                };
+                if (mode === "edit" && id) {
+                    await apiRequest(`/warehouses/zones/${id}`, token, {
+                        method: "PATCH",
+                        body: JSON.stringify(payload),
+                    });
+                } else {
+                    await apiRequest(`/warehouses/${selectedWarehouseId}/zones`, token, {
+                        method: "POST",
+                        body: JSON.stringify(payload),
+                    });
+                }
+            } else if (kind === "aisle") {
+                const payload = { title: locationTitle.trim() || undefined };
+                if (mode === "edit" && id) {
+                    await apiRequest(`/warehouses/aisles/${id}`, token, {
+                        method: "PATCH",
+                        body: JSON.stringify(payload),
+                    });
+                } else {
+                    await apiRequest("/warehouses/aisles", token, {
+                        method: "POST",
+                        body: JSON.stringify({ zoneId: parentId, ...payload }),
+                    });
+                }
+            } else if (kind === "rack") {
+                const payload = { rackNumber: locationCode.trim() || undefined };
+                if (mode === "edit" && id) {
+                    await apiRequest(`/warehouses/racks/${id}`, token, {
+                        method: "PATCH",
+                        body: JSON.stringify(payload),
+                    });
+                } else {
+                    await apiRequest("/warehouses/racks", token, {
+                        method: "POST",
+                        body: JSON.stringify({ aisleId: parentId, ...payload }),
+                    });
+                }
+            } else if (kind === "shelf") {
+                const payload = { shelfNumber: locationCode.trim() || undefined };
+                if (mode === "edit" && id) {
+                    await apiRequest(`/warehouses/shelves/${id}`, token, {
+                        method: "PATCH",
+                        body: JSON.stringify(payload),
+                    });
+                } else {
+                    await apiRequest("/warehouses/shelves", token, {
+                        method: "POST",
+                        body: JSON.stringify({ rackId: parentId, ...payload }),
+                    });
+                }
+            } else {
+                const parsedCapacity = binCapacity.trim() ? Number(binCapacity) : undefined;
+                if (parsedCapacity !== undefined && (!Number.isFinite(parsedCapacity) || parsedCapacity < 0)) {
+                    throw new Error("Yacheyka sig'imi manfiy bo'lmagan son bo'lishi kerak.");
+                }
+                const payload = {
+                    ...(mode === "edit" ? { shelfId: locationParentId || undefined } : { shelfId: parentId }),
+                    code: locationCode.trim(),
+                    title: locationTitle.trim() || undefined,
+                    capacity: parsedCapacity,
+                    location_type: binLocationType.trim() || undefined,
+                    status: binStatus,
+                    allowed_product_types: binAllowedProductTypes.trim() || undefined,
+                };
+                if (mode === "edit" && id) {
+                    await apiRequest(`/warehouses/bins/${id}`, token, {
+                        method: "PATCH",
+                        body: JSON.stringify(payload),
+                    });
+                } else {
+                    await apiRequest("/warehouses/bins", token, {
+                        method: "POST",
+                        body: JSON.stringify(payload),
+                    });
+                }
+            }
+
+            setLocationModal(null);
+            setNotice(`${locationKindLabel(kind)} ${mode === "edit" ? "yangilandi" : "yaratildi"}.`);
             await loadWarehouseData();
         } catch (cause) {
             notifyError(cause);
@@ -571,86 +769,40 @@ export default function WarehouseManagement() {
         }
     };
 
-    const editZone = async (zone: WarehouseZone) => {
-        const title = window.prompt("Zona nomi", zone.title);
-        if (title === null) return;
-        const code = window.prompt("Zona kodi", zone.code);
-        if (code === null) return;
-        try {
-            await apiRequest(`/warehouses/zones/${zone.id}`, token, {
-                method: "PATCH",
-                body: JSON.stringify({ title: title.trim(), code: code.trim() }),
-            });
-            setNotice("Zona yangilandi.");
-            await loadWarehouseData();
-        } catch (cause) {
-            notifyError(cause);
-        }
+    const requestDelete = (target: DeleteTarget) => {
+        setDeleteTarget(target);
+        setError("");
     };
 
-    const deleteZone = async (zone: WarehouseZone) => {
-        if (!window.confirm(`"${zone.title}" zonasini o'chirmoqchimisiz?`)) return;
-        try {
-            await apiRequest(`/warehouses/zones/${zone.id}`, token, {
-                method: "DELETE",
-            });
-            setNotice("Zona o'chirildi.");
-            await loadWarehouseData();
-        } catch (cause) {
-            notifyError(cause);
-        }
-    };
-
-    const submitBin = async (event: FormEvent<HTMLFormElement>) => {
-        event.preventDefault();
+    const confirmDelete = async () => {
+        if (!deleteTarget) return;
+        const target = deleteTarget;
+        const paths: Record<LocationEntityKind, string> = {
+            zone: `/warehouses/zones/${target.id}`,
+            aisle: `/warehouses/aisles/${target.id}`,
+            rack: `/warehouses/racks/${target.id}`,
+            shelf: `/warehouses/shelves/${target.id}`,
+            bin: `/warehouses/bins/${target.id}`,
+        };
         setBusy(true);
+        setError("");
         try {
-            await apiRequest("/warehouses/bins", token, {
-                method: "POST",
-                body: JSON.stringify({
-                    zoneId: binZoneId,
-                    code: binCode.trim(),
-                    title: binTitle.trim() || undefined,
-                }),
-            });
-            setBinCode("");
-            setBinTitle("");
-            setNotice("Yacheyka yaratildi.");
-            await loadWarehouseData();
+            await apiRequest(
+                target.kind === "warehouse" ? `/warehouses/${target.id}` : paths[target.kind],
+                token,
+                { method: "DELETE" },
+            );
+            setDeleteTarget(null);
+            setNotice(`${target.kind === "warehouse" ? "Ombor" : locationKindLabel(target.kind)} o'chirildi.`);
+            if (target.kind === "warehouse") {
+                await loadMainData();
+            } else {
+                await loadWarehouseData();
+            }
         } catch (cause) {
             notifyError(cause);
         } finally {
             setBusy(false);
-        }
-    };
-
-    const editBin = async (bin: StorageBin) => {
-        const code = window.prompt("Yacheyka kodi", bin.code);
-        if (code === null) return;
-        const title = window.prompt("Yacheyka nomi", bin.title ?? "");
-        if (title === null) return;
-        try {
-            await apiRequest(`/warehouses/bins/${bin.id}`, token, {
-                method: "PATCH",
-                body: JSON.stringify({ code: code.trim(), title: title.trim() || undefined }),
-            });
-            setNotice("Yacheyka yangilandi.");
-            await loadWarehouseData();
-        } catch (cause) {
-            notifyError(cause);
-        }
-    };
-
-    const deleteBin = async (bin: StorageBin) => {
-        if (!window.confirm(`"${bin.code}" yacheykasini o'chirmoqchimisiz?`)) return;
-        try {
-            await apiRequest(`/warehouses/bins/${bin.id}`, token, {
-                method: "DELETE",
-            });
-            setNotice("Yacheyka o'chirildi.");
-            await loadWarehouseData();
-        } catch (cause) {
-            notifyError(cause);
         }
     };
 
@@ -738,7 +890,7 @@ export default function WarehouseManagement() {
     };
 
     const tabs: { id: Tab; label: string; icon: typeof Boxes }[] = [
-        { id: "locations", label: "Zonalar va yacheykalar", icon: Boxes },
+        { id: "locations", label: "Joylashuvlar", icon: Boxes },
         { id: "inventory", label: "Inventar", icon: WarehouseIcon },
         { id: "movements", label: "Harakatlar", icon: ArrowRightLeft },
         { id: "analytics", label: "Analitika", icon: ChartNoAxesCombined },
@@ -810,7 +962,7 @@ export default function WarehouseManagement() {
                             </button>
                             <div className="mt-3 flex gap-2 border-t border-white/5 pt-3">
                                 <button className={ secondaryButton } type="button" onClick={ () => openEditWarehouse(warehouse) }>Tahrirlash</button>
-                                <button className="rounded-xl p-2 text-rose-300 hover:bg-rose-500/10" type="button" aria-label="Omborni o'chirish" onClick={ () => void deleteWarehouse(warehouse) }><Trash2 size={ 16 } /></button>
+                                <button className="rounded-xl p-2 text-rose-300 hover:bg-rose-500/10" type="button" aria-label="Omborni o'chirish" onClick={ () => requestDelete({ kind: "warehouse", id: warehouse.id, label: warehouse.title }) }><Trash2 size={ 16 } /></button>
                             </div>
                         </article>
                     );
@@ -848,59 +1000,125 @@ export default function WarehouseManagement() {
                     </div>
 
                     { tab === "locations" && (
-                        <div className="grid gap-6 p-5 xl:grid-cols-[minmax(0,1fr)_360px]">
-                            <div className="space-y-4">
-                                { zones.length === 0 && <p className="rounded-2xl border border-dashed border-white/10 p-8 text-center text-sm text-zinc-400">Omborda zona yo&apos;q. Yangi zona qo&apos;shing.</p> }
-                                { zones.map((zone) => (
-                                    <section key={ zone.id } className="rounded-2xl border border-white/10 bg-black/10 p-4">
-                                        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-                                            <div><h3 className="font-semibold">{ zone.title }</h3><p className="text-xs text-zinc-500">Kod: { zone.code } · { zone.bins.length } yacheyka</p></div>
-                                            <div className="flex gap-2">
-                                                <button type="button" className={ secondaryButton } onClick={ () => void editZone(zone) }>Tahrirlash</button>
-                                                <button type="button" aria-label="Zonani o'chirish" className="rounded-xl p-2 text-rose-300 hover:bg-rose-500/10" onClick={ () => void deleteZone(zone) }><Trash2 size={ 16 } /></button>
-                                            </div>
-                                        </div>
-                                        { zone.bins.length ? (
-                                            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
-                                                { zone.bins.map((bin) => {
-                                                    const occupied = (inventoryByBin.get(bin.id) ?? 0) > 0;
-                                                    return (
-                                                        <div key={ bin.id } className="flex items-center justify-between gap-2 rounded-xl border border-white/5 bg-zinc-950/50 p-3">
-                                                            <div className="min-w-0">
-                                                                <p className="truncate text-sm font-medium">{ bin.code }</p>
-                                                                <p className={ `mt-1 text-xs ${occupied ? "text-amber-300" : "text-emerald-300"}` }>{ occupied ? "Band" : "Bo'sh" }</p>
-                                                            </div>
-                                                            <div className="flex shrink-0 gap-1">
-                                                                <button type="button" aria-label={ `${bin.code} yacheykasini tahrirlash` } className="rounded-lg p-2 text-zinc-400 hover:bg-white/5 hover:text-white" onClick={ () => void editBin(bin) }><span className="text-xs">Edit</span></button>
-                                                                <button type="button" aria-label={ `${bin.code} yacheykasini o'chirish` } className="rounded-lg p-2 text-rose-300 hover:bg-rose-500/10" onClick={ () => void deleteBin(bin) }><Trash2 size={ 14 } /></button>
-                                                            </div>
-                                                        </div>
-                                                    );
-                                                }) }
-                                            </div>
-                                        ) : <p className="text-xs text-zinc-500">Yacheykalar hali yaratilmagan.</p> }
-                                    </section>
-                                )) }
+                        <div className="space-y-4 p-5">
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                                <div>
+                                    <h2 className="text-lg font-semibold">Ombor joylashuvlari</h2>
+                                    <p className="text-sm text-zinc-400">Zona → yo'lak → stellaj → raf → yacheyka</p>
+                                </div>
+                                <button type="button" className={ primaryButton } onClick={ () => openCreateLocation("zone", selectedWarehouseId) }>
+                                    <Plus size={ 15 } /> Zona qo'shish
+                                </button>
                             </div>
 
-                            <aside className="space-y-4">
-                                <form onSubmit={ submitZone } className="space-y-3 rounded-2xl border border-white/10 bg-black/10 p-4">
-                                    <h3 className="font-semibold">Zona qo&apos;shish</h3>
-                                    <input className={ inputClass } required maxLength={ 100 } placeholder="Zona kodi (A)" value={ zoneCode } onChange={ (event) => setZoneCode(event.target.value) } />
-                                    <input className={ inputClass } required maxLength={ 255 } placeholder="Zona nomi (Zone A)" value={ zoneTitle } onChange={ (event) => setZoneTitle(event.target.value) } />
-                                    <button className={ primaryButton } disabled={ busy } type="submit"><Plus size={ 15 } />Zona yaratish</button>
-                                </form>
-                                <form onSubmit={ submitBin } className="space-y-3 rounded-2xl border border-white/10 bg-black/10 p-4">
-                                    <h3 className="font-semibold">Yacheyka qo&apos;shish</h3>
-                                    <select className={ inputClass } required value={ binZoneId } onChange={ (event) => setBinZoneId(event.target.value) }>
-                                        <option value="">Zonani tanlang</option>
-                                        { zones.map((zone) => <option key={ zone.id } value={ zone.id }>{ zone.code } · { zone.title }</option>) }
-                                    </select>
-                                    <input className={ inputClass } required maxLength={ 100 } placeholder="A-01-02-04" value={ binCode } onChange={ (event) => setBinCode(event.target.value) } />
-                                    <input className={ inputClass } maxLength={ 255 } placeholder="Yacheyka nomi (ixtiyoriy)" value={ binTitle } onChange={ (event) => setBinTitle(event.target.value) } />
-                                    <button className={ primaryButton } disabled={ busy || !zones.length } type="submit"><Plus size={ 15 } />Yacheyka yaratish</button>
-                                </form>
-                            </aside>
+                            { !zones.length && (
+                                <div className="rounded-2xl border border-dashed border-white/10 p-9 text-center text-sm text-zinc-400">
+                                    Bu omborda zona yo'q. Boshlash uchun zona yarating.
+                                </div>
+                            ) }
+
+                            { zones.map((zone) => (
+                                <section key={ zone.id } className="space-y-4 rounded-2xl border border-white/10 bg-black/10 p-4">
+                                    <div className="flex flex-wrap items-start justify-between gap-3">
+                                        <div className="min-w-0">
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <h3 className="font-semibold">{ zone.title }</h3>
+                                                <span className="rounded-full border border-sky-400/20 bg-sky-500/10 px-2 py-0.5 text-xs text-sky-200">{ zone.code }</span>
+                                                <span className="rounded-full bg-white/5 px-2 py-0.5 text-xs text-zinc-400">{ zoneTypeLabels[zone.type] ?? zone.type }</span>
+                                            </div>
+                                            <p className="mt-1 text-xs text-zinc-500">{ (zone.aisles ?? []).length } yo'lak</p>
+                                        </div>
+                                        <div className="flex flex-wrap gap-2">
+                                            <button type="button" className={ secondaryButton } onClick={ () => openCreateLocation("aisle", zone.id) }><Plus size={ 14 } /> Yo'lak</button>
+                                            <button type="button" className={ secondaryButton } onClick={ () => openEditLocation("zone", zone) }>Tahrirlash</button>
+                                            <button type="button" aria-label="Zonani o'chirish" className="rounded-xl p-2 text-rose-300 hover:bg-rose-500/10" onClick={ () => requestDelete({ kind: "zone", id: zone.id, label: zone.title }) }><Trash2 size={ 16 } /></button>
+                                        </div>
+                                    </div>
+
+                                    { !(zone.aisles ?? []).length ? (
+                                        <p className="rounded-xl border border-dashed border-white/10 p-4 text-sm text-zinc-500">Yo'laklar hali yo'q.</p>
+                                    ) : (
+                                        <div className="space-y-3 border-l border-white/10 pl-3 sm:pl-5">
+                                            { (zone.aisles ?? []).map((aisle) => (
+                                                <section key={ aisle.id } className="space-y-3 rounded-xl border border-white/10 bg-zinc-950/35 p-3 sm:p-4">
+                                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                                        <div>
+                                                            <h4 className="font-medium">{ aisle.title || "Nomsiz yo'lak" }</h4>
+                                                            <p className="text-xs text-zinc-500">{ (aisle.racks ?? []).length } stellaj</p>
+                                                        </div>
+                                                        <div className="flex flex-wrap gap-2">
+                                                            <button type="button" className={ secondaryButton } onClick={ () => openCreateLocation("rack", aisle.id) }><Plus size={ 13 } /> Stellaj</button>
+                                                            <button type="button" className={ secondaryButton } onClick={ () => openEditLocation("aisle", aisle) }>Tahrirlash</button>
+                                                            <button type="button" aria-label="Yo'lakni o'chirish" className="rounded-xl p-2 text-rose-300 hover:bg-rose-500/10" onClick={ () => requestDelete({ kind: "aisle", id: aisle.id, label: aisle.title || "Nomsiz yo'lak" }) }><Trash2 size={ 15 } /></button>
+                                                        </div>
+                                                    </div>
+
+                                                    { !(aisle.racks ?? []).length ? <p className="text-xs text-zinc-500">Stellajlar hali yo'q.</p> : (
+                                                        <div className="grid gap-3 xl:grid-cols-2">
+                                                            { (aisle.racks ?? []).map((rack) => (
+                                                                <section key={ rack.id } className="space-y-3 rounded-xl border border-white/10 bg-white/[0.025] p-3">
+                                                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                                                        <div>
+                                                                            <h5 className="text-sm font-semibold">Stellaj { rack.rackNumber || "(raqamsiz)" }</h5>
+                                                                            <p className="text-xs text-zinc-500">{ (rack.shelfs ?? []).length } raf</p>
+                                                                        </div>
+                                                                        <div className="flex flex-wrap gap-1">
+                                                                            <button type="button" className={ secondaryButton } onClick={ () => openCreateLocation("shelf", rack.id) }><Plus size={ 13 } /> Raf</button>
+                                                                            <button type="button" className={ secondaryButton } onClick={ () => openEditLocation("rack", rack) }>Tahrirlash</button>
+                                                                            <button type="button" aria-label="Stellajni o'chirish" className="rounded-xl p-2 text-rose-300 hover:bg-rose-500/10" onClick={ () => requestDelete({ kind: "rack", id: rack.id, label: `Stellaj ${rack.rackNumber || "(raqamsiz)"}` }) }><Trash2 size={ 14 } /></button>
+                                                                        </div>
+                                                                    </div>
+
+                                                                    { !(rack.shelfs ?? []).length ? <p className="text-xs text-zinc-500">Raflar hali yo'q.</p> : (
+                                                                        <div className="space-y-2">
+                                                                            { (rack.shelfs ?? []).map((shelf) => (
+                                                                                <section key={ shelf.id } className="rounded-lg border border-white/10 bg-black/20 p-3">
+                                                                                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                                                                                        <div>
+                                                                                            <p className="text-sm font-medium">Raf { shelf.shelfNumber || "(raqamsiz)" }</p>
+                                                                                            <p className="text-xs text-zinc-500">{ (shelf.bins ?? []).length } yacheyka</p>
+                                                                                        </div>
+                                                                                        <div className="flex flex-wrap gap-1">
+                                                                                            <button type="button" className={ secondaryButton } onClick={ () => openCreateLocation("bin", shelf.id) }><Plus size={ 13 } /> Yacheyka</button>
+                                                                                            <button type="button" className={ secondaryButton } onClick={ () => openEditLocation("shelf", shelf) }>Tahrirlash</button>
+                                                                                            <button type="button" aria-label="Rafni o'chirish" className="rounded-xl p-2 text-rose-300 hover:bg-rose-500/10" onClick={ () => requestDelete({ kind: "shelf", id: shelf.id, label: `Raf ${shelf.shelfNumber || "(raqamsiz)"}` }) }><Trash2 size={ 14 } /></button>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                    { !(shelf.bins ?? []).length ? <p className="text-xs text-zinc-500">Yacheykalar hali yo'q.</p> : (
+                                                                                        <div className="grid gap-2 sm:grid-cols-2">
+                                                                                            { (shelf.bins ?? []).map((bin) => {
+                                                                                                const occupied = (inventoryByBin.get(bin.id) ?? 0) > 0;
+                                                                                                return (
+                                                                                                    <div key={ bin.id } className="flex min-w-0 items-start justify-between gap-2 rounded-lg border border-white/5 bg-zinc-900/70 p-3">
+                                                                                                        <div className="min-w-0">
+                                                                                                            <p className="truncate text-sm font-medium">{ bin.code }</p>
+                                                                                                            <p className="mt-0.5 truncate text-xs text-zinc-500">{ bin.title || "Nomsiz yacheyka" }</p>
+                                                                                                            <p className={ `mt-1 text-xs ${bin.status === "blocked" ? "text-rose-300" : bin.status === "maintenance" ? "text-amber-300" : occupied ? "text-sky-300" : "text-emerald-300"}` }>{ binStatusLabels[bin.status ?? "active"] } · { occupied ? "Band" : "Bo'sh" }</p>
+                                                                                                            { bin.capacity != null && <p className="mt-1 text-xs text-zinc-500">Sig'im: { bin.capacity }</p> }
+                                                                                                        </div>
+                                                                                                        <div className="flex shrink-0 gap-1">
+                                                                                                            <button type="button" className="rounded-lg px-2 py-1.5 text-xs text-zinc-300 hover:bg-white/5" onClick={ () => openEditLocation("bin", bin) }>Tahrirlash</button>
+                                                                                                            <button type="button" aria-label={ `${bin.code} yacheykasini o'chirish` } className="rounded-lg p-2 text-rose-300 hover:bg-rose-500/10" onClick={ () => requestDelete({ kind: "bin", id: bin.id, label: bin.code }) }><Trash2 size={ 14 } /></button>
+                                                                                                        </div>
+                                                                                                    </div>
+                                                                                                );
+                                                                                            }) }
+                                                                                        </div>
+                                                                                    ) }
+                                                                                </section>
+                                                                            )) }
+                                                                        </div>
+                                                                    ) }
+                                                                </section>
+                                                            )) }
+                                                        </div>
+                                                    ) }
+                                                </section>
+                                            )) }
+                                        </div>
+                                    ) }
+                                </section>
+                            )) }
                         </div>
                     ) }
 
@@ -912,9 +1130,9 @@ export default function WarehouseManagement() {
                             </div>
                             <div className="overflow-x-auto rounded-2xl border border-white/10">
                                 <table className="w-full min-w-[900px] text-left text-sm">
-                                    <thead className="bg-white/5 text-xs uppercase text-zinc-400"><tr><th className="px-4 py-3">Mahsulot / lot</th><th className="px-4 py-3">Zona / yacheyka</th><th className="px-4 py-3">Yaroqlilik</th><th className="px-4 py-3 text-right">Amaldagi miqdor</th><th className="px-4 py-3 text-right">Band qilingan</th><th className="px-4 py-3 text-right">Sotuvga ochiq</th></tr></thead>
+                                    <thead className="bg-white/5 text-xs uppercase text-zinc-400"><tr><th className="px-4 py-3">Mahsulot / lot</th><th className="px-4 py-3">Joylashuv yo'li</th><th className="px-4 py-3">Yaroqlilik</th><th className="px-4 py-3 text-right">Amaldagi miqdor</th><th className="px-4 py-3 text-right">Band qilingan</th><th className="px-4 py-3 text-right">Sotuvga ochiq</th></tr></thead>
                                     <tbody className="divide-y divide-white/5">
-                                        { inventory.map((row) => <tr key={ row.id } className="hover:bg-white/[0.025]"><td className="px-4 py-3 font-medium">{ row.product.title }<span className="block text-xs text-zinc-500">{ row.lotNumber || "Lot ko'rsatilmagan" }</span></td><td className="px-4 py-3 text-zinc-400">{ row.bin.zone.code } · { row.bin.code }</td><td className="px-4 py-3 text-zinc-400">{ row.expiresAt ? new Date(row.expiresAt).toLocaleDateString() : "—" }</td><td className="px-4 py-3 text-right tabular-nums">{ row.quantity } { row.product.uom }</td><td className="px-4 py-3 text-right tabular-nums text-amber-300">{ row.reservedQuantity } { row.product.uom }</td><td className="px-4 py-3 text-right tabular-nums text-emerald-300">{ row.availableQuantity } { row.product.uom }</td></tr>) }
+                                        { inventory.map((row) => <tr key={ row.id } className="hover:bg-white/[0.025]"><td className="px-4 py-3 font-medium">{ row.product.title }<span className="block text-xs text-zinc-500">{ row.lotNumber || "Lot ko'rsatilmagan" }</span></td><td className="px-4 py-3 text-zinc-400">{ [row.bin.shelf?.rack?.aisle?.zone?.code ?? row.bin.zone?.code, row.bin.shelf?.rack?.aisle?.title, row.bin.shelf?.rack?.rackNumber, row.bin.shelf?.shelfNumber, row.bin.code].filter(Boolean).join(" · ") }</td><td className="px-4 py-3 text-zinc-400">{ row.expiresAt ? new Date(row.expiresAt).toLocaleDateString() : "—" }</td><td className="px-4 py-3 text-right tabular-nums">{ row.quantity } { row.product.uom }</td><td className="px-4 py-3 text-right tabular-nums text-amber-300">{ row.reservedQuantity } { row.product.uom }</td><td className="px-4 py-3 text-right tabular-nums text-emerald-300">{ row.availableQuantity } { row.product.uom }</td></tr>) }
                                         { !inventory.length && <tr><td colSpan={ 6 } className="px-4 py-10 text-center text-zinc-500">Bu omborda hozircha zaxira yo&apos;q.</td></tr> }
                                     </tbody>
                                 </table>
@@ -1030,6 +1248,77 @@ export default function WarehouseManagement() {
                     <div className="flex justify-end gap-2 border-t border-white/10 pt-4"><button type="button" className={ secondaryButton } onClick={ () => setWarehouseFormOpen(false) }>Yopish</button><button type="submit" className={ primaryButton } disabled={ busy }>{ busy ? "Saqlanmoqda..." : "Saqlash" }</button></div>
                 </form>
             </GlassModal>
+
+            <GlassModal
+                open={ Boolean(locationModal) }
+                onClose={ () => { if (!busy) setLocationModal(null); } }
+                title={ locationModal ? `${locationModal.mode === "edit" ? "Tahrirlash" : "Yaratish"}: ${locationKindLabel(locationModal.kind)}` : "Joylashuv" }
+            >
+                { locationModal && (
+                    <form onSubmit={ submitLocation } className="space-y-4">
+                        { locationModal.kind === "zone" && (
+                            <>
+                                <GlassInput required maxLength={ 100 } placeholder="Zona kodi (A)" value={ locationCode } onChange={ (event) => setLocationCode(event.target.value) } />
+                                <GlassInput required maxLength={ 255 } placeholder="Zona nomi" value={ locationTitle } onChange={ (event) => setLocationTitle(event.target.value) } />
+                                <label className="block space-y-1 text-sm text-zinc-400">Zona turi
+                                    <select className={ inputClass } required value={ locationZoneType } onChange={ (event) => setLocationZoneType(event.target.value as WarehouseZoneType) }>
+                                        { Object.entries(zoneTypeLabels).map(([value, label]) => <option key={ value } value={ value }>{ label }</option>) }
+                                    </select>
+                                </label>
+                            </>
+                        ) }
+                        { locationModal.kind === "aisle" && <GlassInput maxLength={ 255 } placeholder="Yo'lak nomi (ixtiyoriy)" value={ locationTitle } onChange={ (event) => setLocationTitle(event.target.value) } /> }
+                        { locationModal.kind === "rack" && <GlassInput maxLength={ 100 } placeholder="Stellaj raqami (masalan, R-01)" value={ locationCode } onChange={ (event) => setLocationCode(event.target.value) } /> }
+                        { locationModal.kind === "shelf" && <GlassInput maxLength={ 100 } placeholder="Raf raqami (masalan, S-01)" value={ locationCode } onChange={ (event) => setLocationCode(event.target.value) } /> }
+                        { locationModal.kind === "bin" && (
+                            <>
+                                <GlassInput required maxLength={ 100 } placeholder="Yacheyka kodi (masalan, A-01-02)" value={ locationCode } onChange={ (event) => setLocationCode(event.target.value) } />
+                                <GlassInput maxLength={ 255 } placeholder="Yacheyka nomi (ixtiyoriy)" value={ locationTitle } onChange={ (event) => setLocationTitle(event.target.value) } />
+                                <label className="block space-y-1 text-sm text-zinc-400">Ota raf
+                                    <select className={ inputClass } required value={ locationParentId || locationModal.parentId || "" } disabled={ locationModal.mode === "create" } onChange={ (event) => setLocationParentId(event.target.value) }>
+                                        <option value="">Rafni tanlang</option>
+                                        { zones.flatMap((zone) => (zone.aisles ?? []).flatMap((aisle) => (aisle.racks ?? []).flatMap((rack) => (rack.shelfs ?? []).map((shelf) => ({
+                                            id: shelf.id,
+                                            label: `${zone.code} · ${aisle.title || "Yo'lak"} · ${rack.rackNumber || "Stellaj"} · ${shelf.shelfNumber || "Raf"}`,
+                                        }))))).map((shelf) => <option key={ shelf.id } value={ shelf.id }>{ shelf.label }</option>) }
+                                    </select>
+                                </label>
+                                <div className="grid gap-3 sm:grid-cols-2">
+                                    <label className="block space-y-1 text-sm text-zinc-400">Sig'im (ixtiyoriy)
+                                        <GlassInput type="number" min="0" step="any" placeholder="Masalan, 250" value={ binCapacity } onChange={ (event) => setBinCapacity(event.target.value) } />
+                                    </label>
+                                    <label className="block space-y-1 text-sm text-zinc-400">Holati
+                                        <select className={ inputClass } value={ binStatus } onChange={ (event) => setBinStatus(event.target.value as WarehouseBinStatus) }>
+                                            { Object.entries(binStatusLabels).map(([value, label]) => <option key={ value } value={ value }>{ label }</option>) }
+                                        </select>
+                                    </label>
+                                </div>
+                                <GlassInput maxLength={ 50 } placeholder="Joylashuv turi (ixtiyoriy)" value={ binLocationType } onChange={ (event) => setBinLocationType(event.target.value) } />
+                                <GlassInput maxLength={ 255 } placeholder="Ruxsat etilgan mahsulot turlari (ixtiyoriy)" value={ binAllowedProductTypes } onChange={ (event) => setBinAllowedProductTypes(event.target.value) } />
+                            </>
+                        ) }
+                        <div className="flex justify-end gap-2 border-t border-white/10 pt-4">
+                            <button type="button" className={ secondaryButton } disabled={ busy } onClick={ () => setLocationModal(null) }>Bekor qilish</button>
+                            <button type="submit" className={ primaryButton } disabled={ busy }>{ busy ? "Saqlanmoqda..." : locationModal.mode === "edit" ? "O'zgarishlarni saqlash" : "Yaratish" }</button>
+                        </div>
+                    </form>
+                ) }
+            </GlassModal>
+
+            <GlassModal open={ Boolean(deleteTarget) } onClose={ () => { if (!busy) setDeleteTarget(null); } } title="O'chirishni tasdiqlash">
+                { deleteTarget && (
+                    <div className="space-y-4">
+                        <p className="text-sm leading-6 text-zinc-300">
+                            <span className="font-semibold text-white">{ deleteTarget.label }</span> { locationKindLabel(deleteTarget.kind).toLocaleLowerCase() } elementini o'chirmoqchimisiz? Bu elementga bog'langan quyi joylashuvlar ham o'chishi mumkin.
+                        </p>
+                        { error && <p role="alert" className="rounded-xl border border-rose-400/20 bg-rose-500/10 p-3 text-sm text-rose-200">{ error }</p> }
+                        <div className="flex justify-end gap-2 border-t border-white/10 pt-4">
+                            <button type="button" className={ secondaryButton } disabled={ busy } onClick={ () => setDeleteTarget(null) }>Bekor qilish</button>
+                            <button type="button" className="inline-flex items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-500 disabled:opacity-50" disabled={ busy } onClick={ () => void confirmDelete() }>{ busy ? "O'chirilmoqda..." : <><Trash2 size={ 15 } /> O'chirish</> }</button>
+                        </div>
+                    </div>
+                ) }
+            </GlassModal>
         </main>
     );
 }
@@ -1053,7 +1342,7 @@ function LocationSelector({
 }) {
     const token = useTokenStore((state) => state.getActiveToken()) ?? "";
     const effectiveWarehouseId = fixedWarehouseId || warehouseId;
-    const [bins, setBins] = useState<Array<StorageBin & { zone: Pick<WarehouseZone, "code" | "title"> }>>([]);
+    const [bins, setBins] = useState<Array<StorageBin & { zone?: Pick<WarehouseZone, "id" | "code" | "title" | "type"> }>>([]);
     const [binSearch, setBinSearch] = useState("");
     const [error, setError] = useState("");
     useEffect(() => {
@@ -1068,7 +1357,7 @@ function LocationSelector({
                 page: "1",
                 limit: "20",
             });
-            apiRequest<{ data: Array<StorageBin & { zone: Pick<WarehouseZone, "code" | "title"> }> }>(
+            apiRequest<{ data: Array<StorageBin & { zone?: Pick<WarehouseZone, "id" | "code" | "title" | "type"> }> }>(
                 `/warehouses/bins/search?${query}`,
                 token,
             )
@@ -1098,7 +1387,7 @@ function LocationSelector({
             <input className={ inputClass } type="search" disabled={ !effectiveWarehouseId } value={ binSearch } onChange={ (event) => setBinSearch(event.target.value) } placeholder="Yacheyka kodini qidirish" />
             <select className={ inputClass } required disabled={ !effectiveWarehouseId } value={ binId } onChange={ (event) => onBinChange(event.target.value) }>
                 <option value="">Yacheykani tanlang</option>
-                { bins.map((bin) => <option key={ bin.id } value={ bin.id }>{ bin.zone.code } · { bin.code }</option>) }
+                { bins.map((bin) => <option key={ bin.id } value={ bin.id }>{ bin.shelf?.rack?.aisle?.zone?.code ?? bin.zone?.code ?? "Zona" } · { bin.code }</option>) }
             </select>
             { error && <p role="alert" className="text-xs text-rose-300">{ error }</p> }
         </fieldset>

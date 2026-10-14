@@ -54,7 +54,22 @@ const taskInclude = {
       id: true,
       code: true,
       title: true,
-      zone: { select: { title: true } },
+      shelf: {
+        select: {
+          shelfNumber: true,
+          rack: {
+            select: {
+              rackNumber: true,
+              aisle: {
+                select: {
+                  title: true,
+                  zone: { select: { title: true } },
+                },
+              },
+            },
+          },
+        },
+      },
     },
   },
   destinationWarehouse: { select: { id: true, title: true, code: true } },
@@ -63,7 +78,22 @@ const taskInclude = {
       id: true,
       code: true,
       title: true,
-      zone: { select: { title: true } },
+      shelf: {
+        select: {
+          shelfNumber: true,
+          rack: {
+            select: {
+              rackNumber: true,
+              aisle: {
+                select: {
+                  title: true,
+                  zone: { select: { title: true } },
+                },
+              },
+            },
+          },
+        },
+      },
     },
   },
   product: { select: { id: true, title: true, uom: true } },
@@ -149,9 +179,24 @@ export class WarehouseTasksService {
           zones: {
             select: {
               title: true,
-              bins: {
-                select: { id: true, code: true, title: true },
-                orderBy: { code: 'asc' },
+              aisles: {
+                select: {
+                  title: true,
+                  racks: {
+                    select: {
+                      rackNumber: true,
+                      shelfs: {
+                        select: {
+                          shelfNumber: true,
+                          bins: {
+                            select: { id: true, code: true, title: true },
+                            orderBy: { code: 'asc' },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
               },
             },
             orderBy: { code: 'asc' },
@@ -538,7 +583,18 @@ export class WarehouseTasksService {
     warehouseId: string,
   ) {
     const bin = await tx.storageBin.findFirst({
-      where: { id: binId, zone: { warehouseId } },
+      where: {
+        id: binId,
+        shelf: {
+          rack: {
+            aisle: {
+              zone: {
+                warehouseId,
+              },
+            },
+          },
+        },
+      },
       select: { id: true },
     });
     if (!bin) {
