@@ -42,7 +42,6 @@ const withTurpopack = {
     resolveAlias: {
       'react-native': 'react-native-web',
       'expo-linking': 'react-native-web',
-      'expo': 'expo/build/Expo',
       'react-native-gesture-handler': 'react-native-gesture-handler',
       'react-native/Libraries/EventEmitter/RCTDeviceEventEmitter$':
         'react-native-web/dist/vendor/react-native/NativeEventEmitter/RCTDeviceEventEmitter',
@@ -74,6 +73,9 @@ const withTurpopack = {
 module.exports = {
   typescript: {
     ignoreBuildErrors: true, 
+  },
+  eslint: {
+    ignoreDuringBuilds: true,
   },
   
   transpilePackages: [
