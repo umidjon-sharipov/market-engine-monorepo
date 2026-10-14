@@ -1,8 +1,7 @@
 const path = require('path')
 
 /**
-- 
-@type {import('next').NextConfig}
+ * @type {import('next').NextConfig}
  */
 const withWebpack = {
   webpack(config) {
@@ -36,8 +35,7 @@ const withWebpack = {
 }
 
 /**
-- 
-@type {import('next').NextConfig}
+ * @type {import('next').NextConfig}
  */
 const withTurpopack = {
   turbopack: {
@@ -71,8 +69,7 @@ const withTurpopack = {
 }
 
 /**
-- 
-@type {import('next').NextConfig}
+ * @type {import('next').NextConfig}
  */
 module.exports = {
   typescript: {
