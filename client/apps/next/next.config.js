@@ -1,5 +1,8 @@
 const path = require('path')
 
+/**
+ * @type {import('next').NextConfig}
+ */
 const withWebpack = {
   webpack(config) {
     if (!config.resolve) {
@@ -31,14 +34,15 @@ const withWebpack = {
   },
 }
 
+/**
+ * @type {import('next').NextConfig}
+ */
 const withTurpopack = {
   turbopack: {
     resolveAlias: {
       'react-native': 'react-native-web',
-      'react-native-web': path.resolve(__dirname, 'node_modules/react-native-web'),
       'expo-linking': 'react-native-web',
-      'expo': path.resolve(__dirname, 'node_modules/expo/build/Expo.js'),
-      'expo-image': path.resolve(__dirname, 'node_modules/expo-image'),
+      'expo': 'expo/build/Expo',
       'react-native-gesture-handler': 'react-native-gesture-handler',
       'react-native/Libraries/EventEmitter/RCTDeviceEventEmitter$':
         'react-native-web/dist/vendor/react-native/NativeEventEmitter/RCTDeviceEventEmitter',
@@ -64,6 +68,9 @@ const withTurpopack = {
   },
 }
 
+/**
+ * @type {import('next').NextConfig}
+ */
 module.exports = {
   typescript: {
     ignoreBuildErrors: true, 
