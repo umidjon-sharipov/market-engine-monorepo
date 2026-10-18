@@ -26,11 +26,12 @@ interface ProductCardProps {
     products: Product[];
     index: number;
     account: boolean
+    bg?: string
 }
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
-const ProductCard = ({ product, products, index, account }: ProductCardProps) => {
+const ProductCard = ({ product, products, index, account, bg }: ProductCardProps) => {
     const [isMounted, setIsMounted] = useState(false);
     const { cart, toggleCart } = useCartStore();
     const router = useRouter();
@@ -162,68 +163,71 @@ const ProductCard = ({ product, products, index, account }: ProductCardProps) =>
 
     return (
         <AnimatedPressable
-            {...({ nativeID: `product-card-${product.id}` } as any)}
-            onPress={handleCardPress}
-            style={[
+            { ...({ nativeID: `product-card-${product.id}` } as any) }
+            onPress={ handleCardPress }
+            style={ [
                 styles.card,
                 {
+                    backgroundColor: bg || '#ffffff',
                     width: cardWidth,
                     opacity: fadeAnim,
                     transform: [{ translateY: slideAnim }]
                 }
-            ]}
+            ] }
         >
-            <View style={styles.topSection}>
+            <View style={ styles.topSection }>
                 <Pressable
-                    onPress={handleFavoritePress}
-                    style={styles.favoriteButton}
+                    onPress={ handleFavoritePress }
+                    style={ styles.favoriteButton }
                 >
-                    <Animated.View style={{ transform: [{ scale: heartScale }] }}>
+                    <Animated.View style={ { transform: [{ scale: heartScale }] } }>
                         <UniversalImage
-                            src={isFavorite ? 'https://i.ibb.co/XkFkG62y/image.png' : 'https://i.ibb.co/GfZzh6Y7/heart.png'}
-                            alt={product.title}
-                            width={24}
-                            height={24}
+                            src={ isFavorite ? 'https://i.ibb.co/XkFkG62y/image.png' : 'https://i.ibb.co/GfZzh6Y7/heart.png' }
+                            alt={ product.title }
+                            width={ 24 }
+                            height={ 24 }
                             resizeMode="contain"
                         />
                     </Animated.View>
                 </Pressable>
 
-                <View style={styles.imageWrapper}>
+                <View style={ [styles.imageWrapper, {
+                    backgroundColor: bg || '#fcfcfc'
+                }] }>
                     <UniversalImage
-                        src={Array.isArray(product.images) && product.images.length > 0 && product.images[0]
+                        src={ Array.isArray(product.images) && product.images.length > 0 && product.images[0]
                             ? product.images[0]
-                            : 'https://dummyimage.com/600x600/18181b/a1a1aa'}
-                        alt={product.title}
-                        width={130}
-                        height={130}
+                            : 'https://dummyimage.com/600x600/18181b/a1a1aa' }
+                        alt={ product.title }
+                        width={ 130 }
+                        height={ 130 }
                         resizeMode="contain"
                     />
                 </View>
 
-                <Text numberOfLines={2} style={styles.productTitle}>
-                    {product.title}
+                <Text numberOfLines={ 2 } style={ styles.productTitle }>
+                    { product.title }
                 </Text>
             </View>
 
-            <View style={styles.bottomSection}>
-                <Text numberOfLines={1} style={styles.priceText}>
-                    {(product.price * 12500).toLocaleString()} so'm
+            <View style={ styles.bottomSection }>
+                <Text numberOfLines={ 1 } style={ styles.priceText }>
+                    { (product.price * 12500).toLocaleString() } so'm
                 </Text>
 
                 <Pressable
-                    onPress={(e: any) => {
+                    onPress={ (e: any) => {
                         e.stopPropagation();
                         toggleCart(product.id);
-                    }}
-                    style={({ pressed }: { pressed: boolean }) => [
+                    } }
+                    style={ ({ pressed }: { pressed: boolean }) => [
                         styles.cartButtonWrapper,
                         pressed && { opacity: 0.85 },
-                    ]}
+                    ] }
                 >
-                    <View style={[styles.button, isInCart && styles.buttonInCart]}>
-                        <Text numberOfLines={1} style={[styles.buttonText, isInCart && styles.buttonTextInCart]}>
-                            {isInCart ? 'Savatda ✓' : 'Savatga'}
+                    <View style={ [styles.button, isInCart && styles.buttonInCart] }>
+                        <Text numberOfLines={ 1 } style={ [styles.buttonText, isInCart && styles.buttonTextInCart] }>
+                            { isInCart ? 'Savatda ✓' : 'Savatga' }
                         </Text>
                     </View>
                 </Pressable>
@@ -234,7 +238,6 @@ const ProductCard = ({ product, products, index, account }: ProductCardProps) =>
 
 const styles = StyleSheet.create({
     card: {
-        backgroundColor: '#ffffff',
         borderRadius: 20,
         padding: 12,
         marginBottom: 16,
@@ -282,7 +285,6 @@ const styles = StyleSheet.create({
     imageWrapper: {
         width: '100%',
         height: 180,
-        backgroundColor: '#fcfcfc',
         borderRadius: 14,
         alignItems: 'center',
         justifyContent: 'center',
@@ -290,8 +292,8 @@ const styles = StyleSheet.create({
         marginBottom: 10,
     },
     productTitle: {
-        fontSize: 13,
-        fontWeight: '500',
+        fontSize: 18,
+        fontWeight: '800',
         color: '#2d3748',
         lineHeight: 18,
         minHeight: 36,

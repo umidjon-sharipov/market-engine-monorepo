@@ -31,7 +31,7 @@ interface FollowedMarket {
 }
 
 
-interface Slider {
+interface SliderTypes {
     id: string
     image: string
     link: string
@@ -41,11 +41,11 @@ interface Slider {
 const isWeb = typeof window !== 'undefined' && window.innerWidth > 768;
 
 const HomeScreen = () => {
-    const url = process.env.BACKEND_URL || '...'
+    const url = process.env.BACKEND_URL || 'http://localhost:4000';
     const token = useTokenStore(state => state.token)
     const router = useRouter()
     const [products, setProducts] = useState<Product[]>([]);
-    const [sliders, setSliders] = useState<Slider[]>([])
+    const [sliders, setSliders] = useState<SliderTypes[]>([])
     const [loading, setLoading] = useState('loading');
     const { width: screenWidth } = useWindowDimensions();
     const [count, setCount] = useState(0)
@@ -54,13 +54,20 @@ const HomeScreen = () => {
     const fetchProducts = async () => {
         try {
             setLoading('loading')
-            const response = await fetch(`${url}/products`);
+            const response = await fetch(`${url}/products/data`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                },
+            });
 
             const data = await response.json();
+            if (response.ok) {
+                setProducts(data);
+            } else {
+                console.log(data)
+            }
 
-            const filteredProducts = data.filter((product: Product) => product.marketId === 'umidjon')
-
-            setProducts(filteredProducts);
             setLoading('loaded')
         } catch (error) {
             console.error("Ma'lumot yuklashda xatolik:", error);
@@ -68,127 +75,41 @@ const HomeScreen = () => {
         }
     };
 
-
     const fetchSliders = async () => {
         try {
-            const response = await fetch(`${url}/sliders`);
+            const response = await fetch(`${url}/sliders/data`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                },
+            });
 
             const data = await response.json();
-
-            const filteredSliders = data.filter((slider: Slider) => slider.marketId === 'umidjon')
-
-            setSliders(filteredSliders);
-            console.log(data, filteredSliders)
-        } catch (error) {
-            console.error("Ma'lumot yuklashda xatolik:", error);
-        }
-    };
-
-    const getSliders = async (followers: string[]) => {
-        try {
-            const response = await fetch(`${url}/sliders`);
-            const data = await response.json();
-
             if (response.ok) {
-                const bigSliders = data.filter((slider: Slider) => followers.includes(slider.marketId));
-
-                console.log(data, bigSliders);
-
-                if (bigSliders.length === 0) {
-                    console.log(`bigSliders.length = 0`);
-                    fetchSliders();
-                } else {
-                    setSliders(bigSliders);
-                }
+                setSliders(data);
+            } else {
+                console.log(data)
             }
         } catch (error) {
-            console.error("Ma'lumot yuklashda xatolik:", error);
-        }
-    };
-
-    const getProducts = async (followers: string[]) => {
-        try {
-            const res = await fetch(`${url}/products`);
-    
-            if (res.ok) {
-                const req = await res.json();
-    
-                const bigData = req.filter((product: Product) => followers.includes(product.marketId));
-    
-                console.log(req, bigData);
-    
-                if (bigData.length === 0) {
-                    fetchProducts();
-                } else {
-                    setLoading('loaded');
-                    setProducts(bigData);
-                }
-            } else {
-                fetchProducts();
-            }
-        } catch (err) {
-            console.log(err);
-            fetchProducts();
-        }
-    }
-
-    const getFollowedMarkets = async (storageToken: string) => {
-        try {
-            const res = await fetchWithAuth(`${url}/followings/mine`, {
-                method: 'GET',
-            }, storageToken);
-
-            if (res.ok) {
-                const req: FollowedMarket[] = await res.json()
-                const userMarkets = req.map(item => item.marketId)
-
-                if (userMarkets.length === 0) {
-                    fetchProducts()
-                } else {
-                    getProducts(userMarkets)
-                    getSliders(userMarkets)
-                }
-            } else {
-                fetchProducts()
-            }
-        } catch (err) {
-            console.log(err)
-            fetchProducts()
-        }
-    }
-
-    const renderToken = async (storageToken: string = token) => {
-        try {
-            const res = await fetchWithAuth(`${url}/auth/profile`, {
-                method: 'GET',
-            }, storageToken);
-
-            if (res.ok) {
-                setAccount(true)
-                getFollowedMarkets(storageToken)
-            } else {
-                fetchProducts()
-            }
-        } catch (err) {
-            console.log(err)
-            fetchProducts()
+            console.error("Sliders ma'lumotini yuklashda xatolik:", error);
         }
     }
 
     useEffect(() => {
-        renderToken()
+        fetchProducts()
+        fetchSliders()
     }, [token]);
 
     if (loading === 'loading') {
         return (
             <ScreenWrapper>
-                <View contentContainerStyle={styles.container}>
+                <View contentContainerStyle={ styles.container }>
 
-                    <View style={{ padding: 24 }}>
+                    <View style={ { padding: 24 } }>
                         <SliderLoader />
                     </View>
 
-                    <View style={styles.grid}>
+                    <View style={ styles.grid }>
                         <LoaderProductCard />
                         <LoaderProductCard />
                         <LoaderProductCard />
@@ -202,7 +123,7 @@ const HomeScreen = () => {
 
     else if (loading === 'notLoad') {
         return (
-            <NotLoad renderToken={renderToken} />
+            <NotLoad renderToken={ fetchProducts } />
         )
     }
 
@@ -210,15 +131,15 @@ const HomeScreen = () => {
 
     return (
         <ScreenWrapper>
-            <View contentContainerStyle={styles.container}>
-                <View style={{ padding: screenWidth > 900 ? 12 : 0 }}>
-                    <Slider sliders={sliders} link={true} count={count} setCount={setCount} />
+            <View contentContainerStyle={ styles.container }>
+                <View style={ { padding: screenWidth > 900 ? 12 : 0 } }>
+                    <Slider sliders={ sliders } link={ true } count={ count } setCount={ setCount } />
                 </View>
 
-                <View style={styles.grid}>
-                    {products.map((product: Product, index: number) => (
-                        <ProductCard key={product.id} product={product} products={products} index={index} account={account} />
-                    ))}
+                <View style={ styles.grid }>
+                    { products.map((product: Product, index: number) => (
+                        <ProductCard key={ product.id } product={ product } products={ products } index={ index } account={ account } />
+                    )) }
                 </View>
             </View>
         </ScreenWrapper>

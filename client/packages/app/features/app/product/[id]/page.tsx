@@ -44,6 +44,7 @@ interface Product {
     description: { uz: string, ru: string, en: string };
     categoryId: string;
     discountId: string;
+    gradient: string[];
     images: string[];
     quantity: number;
     options: optionGroup[];
@@ -297,7 +298,7 @@ const ProductID = () => {
     }
 
     return (
-        <ScreenWrapper>
+        <ScreenWrapper color={product.gradient}>
             <View style={isMobileView ? styles.mobileContainer : undefined}>
                 <View style={{ width: '100%', flexDirection: (isTabletView || isMobileView) ? 'column' : 'row', gap: 16 }}>
 
@@ -319,7 +320,7 @@ const ProductID = () => {
                                 </View>
                             )}
                             <View style={{ flex: 85, height: isTabletView ? 400 : isMobileView ? 350 : elementHeight, gap: 5 }}>
-                                <Slider sliders={
+                                <Slider bg='#FFFFFF00' sliders={
                                     product.images.map((img: string, idx: number) => ({
                                         id: String(idx),
                                         image: img,
@@ -333,7 +334,7 @@ const ProductID = () => {
                             <ScrollView style={{ flex: 2, height: elementHeight, padding: 10, gap: 8, flexDirection: 'column', position: 'relative' }}>
 
                                 <LinearGradient
-                                    colors={['rgb(255, 255, 255)', 'rgba(255, 255, 255, 0)']}
+                                    colors={['rgba(255, 255, 255, 0.4)', 'rgba(255, 255, 255, 0)']}
                                     start={{ x: 0, y: 0 }}
                                     end={{ x: 0, y: 1 }}
                                     style={[
@@ -347,7 +348,7 @@ const ProductID = () => {
                                             web: {
                                                 position: 'sticky',
                                                 top: 0,
-                                                backgroundImage: 'linear-gradient(to bottom, rgb(255, 255, 255), rgba(255, 255, 255, 0))',
+                                                backgroundImage: 'linear-gradient(to bottom, rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0))',
                                             },
                                             default: {
                                                 position: 'absolute',
@@ -462,7 +463,7 @@ const ProductID = () => {
                                 </View>
 
                                 <LinearGradient
-                                    colors={['rgba(255, 255, 255, 0)', 'rgb(255, 255, 255)']}
+                                    colors={['rgba(255, 255, 255, 0)', 'rgba(255, 255, 255, 0.4)']}
                                     start={{ x: 0, y: 0 }}
                                     end={{ x: 0, y: 1 }}
                                     style={[
@@ -477,7 +478,7 @@ const ProductID = () => {
                                             web: {
                                                 position: 'sticky',
                                                 bottom: 0,
-                                                backgroundImage: 'linear-gradient(to bottom, rgba(255, 255, 255, 0), rgb(255, 255, 255))',
+                                                backgroundImage: 'linear-gradient(to bottom, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.4))',
                                             },
                                             default: {}
                                         })
@@ -496,8 +497,8 @@ const ProductID = () => {
                         ref={Platform.OS === 'web' ? elementRef : undefined}
                         onLayout={handleLayout}
                     >
-                        <View style={{ width: '100%', paddingTop: 50, gap: 5, borderRadius: 28, backgroundColor: 'rgba(115, 185, 255, 0.85)' }}>
-                            <View style={{ width: '100%', backgroundColor: 'rgba(255, 255, 255, 0.95)', borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 20, gap: 22 }}>
+                        <View style={{ width: '100%', paddingTop: 50, gap: 5, borderRadius: 28, backgroundColor: 'rgba(115, 185, 255, 0.2)' }}>
+                            <View style={{ width: '100%', backgroundColor: 'rgba(255, 255, 255, 0.4)', borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 20, gap: 22 }}>
                                 {(isTabletView || isMobileView) ? <Text style={{ fontWeight: '700', fontSize: 20 }}>{product.title}</Text> : null}
                                 <Text style={{ fontWeight: '700', fontSize: 30, color: '#111' }}>{totalPrice} so'm</Text>
                                 <Text style={{ fontWeight: '400', fontSize: 14, textDecorationLine: 'line-through', color: 'gray' }}>{((product.price / 100) * 120).toFixed(0)}</Text>
@@ -697,9 +698,9 @@ const ProductID = () => {
 
                     ) : null}
                 </View>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', padding: 12, backgroundColor: '#fff' }}>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', padding: 12 }}>
                     {nextProducts.map((p: Product, index: number) => (
-                        <ProductCart key={p.id} product={p} products={nextProducts} index={index} />
+                        <ProductCart bg='rgba(255, 255, 255, 0.3)' key={p.id} product={p} products={nextProducts} index={index} />
                     ))}
                 </View>
             </View>

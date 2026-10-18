@@ -106,18 +106,18 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
     }
 
     useEffect(() => {
-        const isHome = ['/uz', '/en', '/ru'].includes(pathname)
+        const isHome = (['/uz', '/en', '/ru'].includes(pathname) || ['/uz/auth', '/en/auth', '/ru/auth'].includes(pathname))
         setNavOpen(!isHome)
-        // console.log(isHome)
-        // if (isHome) {
-        //     setPermissions(['admin panel'])
-        // } else {
-        //     handleRole()
-        // }
     }, [pathname])
 
     useEffect(() => {
-        handleRole()
+        if (['/uz', '/en', '/ru'].includes(pathname)) {
+            notify.show('home page', "success", dark ? 'dark' : 'light')
+        } else if (['/uz/auth', '/en/auth', '/ru/auth'].includes(pathname)) {
+            notify.show('auth page', "success", dark ? 'dark' : 'light')
+        } else {
+            handleRole()
+        }
     }, [market, token])
 
     useEffect(() => {

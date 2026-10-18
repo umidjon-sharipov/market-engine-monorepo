@@ -12,7 +12,7 @@ interface Slider {
     marketId: string
 }
 
-const Slider = ({ sliders, link, count, setCount }: { sliders: Slider[], link: boolean, count: number, setCount: (prev: number) => void }) => {
+const Slider = ({ sliders, link, count, setCount, bg }: { sliders: Slider[], link: boolean, count: number, setCount: (prev: number) => void, bg?: string }) => {
     const { width: screenWidth } = useWindowDimensions();
     const [width, setWidth] = useState(0)
 
@@ -114,7 +114,7 @@ const Slider = ({ sliders, link, count, setCount }: { sliders: Slider[], link: b
                 >
                     {
                         sliders.map(slider => (
-                            <View key={slider.id} style={{ width: width || '100%', marginHorizontal: screenWidth > 900 ? 0 : 5, height: '100%', borderRadius: screenWidth > 900 ? 0 : 15, alignItems: 'center', padding: 0, justifyContent: 'center', backgroundColor: '#EEF2F6' }}>
+                            <View key={slider.id} style={{ width: width || '100%', marginHorizontal: screenWidth > 900 ? 0 : 5, height: '100%', borderRadius: screenWidth > 900 ? 0 : 15, alignItems: 'center', padding: 0, justifyContent: 'center', backgroundColor: bg ||'#EEF2F6' }}>
                                 {link === true ? <TextLink href={`/${slider.link}`}>
                                     <UniversalImage
                                         src={slider.image}

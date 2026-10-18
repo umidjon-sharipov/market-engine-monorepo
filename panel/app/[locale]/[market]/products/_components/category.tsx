@@ -6,7 +6,7 @@ import { useThemeStore } from "@/app/_store/useThemeStore";
 import GlassTable from "@/components/admin/GlassTable";
 import { useTokenStore } from "@/app/_store/useTokenStore";
 import { useParams } from "next/navigation";
-import { Layers, ChevronDown } from "lucide-react";
+import { Layers, ChevronDown, Edit3 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils/cn";
 import { API_URL } from '@/lib/api';
@@ -14,13 +14,15 @@ import { API_URL } from '@/lib/api';
 interface SubItem {
     id: string;
     title: string;
-    image: string;
-    children: SubItem[];
+    image?: string | null;
+    hidden?: boolean;
+    children?: SubItem[];
 }
 
 interface CategoryOption {
     id: string;
     title: string;
+    hidden?: boolean;
     items: SubItem[];
 }
 
@@ -29,9 +31,61 @@ interface Categorie {
     title: string;
     marketId?: string;
     marketid?: string;
+    market?: string;
     options: CategoryOption[];
     createdAt: string;
     [key: string]: unknown;
+}
+
+interface Category {
+    id: string;
+    title: string;
+    image: string | null;
+    hidden: boolean;
+    marketId?: string;
+    marketid?: string;
+    options: CategoryOption[];
+    createdAt: string;
+    [key: string]: unknown;
+}
+
+function CategoryItemPreview({ 
+    item, 
+    setExpandedRow, 
+    expandedRow 
+}: { 
+    item: SubItem; 
+    setExpandedRow: React.Dispatch<React.SetStateAction<string | null>>; 
+    expandedRow: string | null;
+}) {
+    const isExpanded = expandedRow === item.id;
+
+    return (
+        <div className="ml-3 border-l border-white/10 pl-3">
+            <button 
+                onClick={() => { setExpandedRow(isExpanded ? null : item.id); console.log(item.id); }} 
+                className="flex items-center gap-2 py-1"
+            >
+                { item.image && typeof item.image === "string" ? (
+                    <div className="relative h-7 w-7 flex-shrink-0 overflow-hidden rounded-md">
+                        <Image src={ item.image } alt={ item.title } fill className="object-cover" />
+                    </div>
+                ) : null }
+                <span className="truncate text-xs text-neutral-200">{ item.title }</span>
+                { item.hidden && <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-400">Hidden</span> }
+            </button>
+            
+            {/* Ichma-ich joylashgan barcha bolalarni (children) rekursiv ko'rsatish */}
+            { item.children && item.children.map((child) => (
+                <CategoryItemPreview 
+                    key={ child.id ?? child.title } 
+                    item={ child } 
+                    expandedRow={ expandedRow } 
+                    setExpandedRow={ setExpandedRow } 
+                />
+            )) }
+        </div>
+    );
 }
 
 const isUuid = (value: string) =>
@@ -41,8 +95,8 @@ function CategoriesContent({ setCategoryId, categoryId }: { setCategoryId: React
     const [loading, setLoading] = useState<boolean>(true);
     const [expandedRow, setExpandedRow] = useState<string | null>(null);
 
-    const {getActiveToken} = useTokenStore((state) => state);
-    const token = getActiveToken()
+    const { getActiveToken } = useTokenStore((state) => state);
+    const token = getActiveToken();
     const dark = useThemeStore((state) => state.theme) === "dark";
     const params = useParams();
     const market = (params?.market as string) || "";
@@ -80,33 +134,49 @@ function CategoriesContent({ setCategoryId, categoryId }: { setCategoryId: React
         };
     }, [fetchData, market]);
 
+    // Rekursiv ko'rinishda cheksiz chuqurlikdagi ID'larni yig'ib boruvchi render funksiyasi
     const renderItem = (
         category: Categorie,
         option: CategoryOption,
         item: SubItem,
-        parentIds: string[] = [],
+        parentIds: string[] = []
     ): React.ReactNode => {
+        // Har bir qatlamdagi item.id larni massivga qo'shib boramiz
         const itemIds = [...parentIds, item.id];
+        
+        // category.id | option.id | item.id | subitem.id | subsubitem.id ... ko'rinishida hosil qilamiz
         const selectedValue = [category.id, option.id, ...itemIds].join("|");
+
         return (
-            <div key={item.id} className="space-y-1">
+            <div key={item.id} className="space-y-1 ml-2 border-l border-white/5 pl-2">
                 <button
                     type="button"
-                    onClick={() => setCategoryId(selectedValue)}
+                    onClick={() => {
+                        console.log("Selected Value:", selectedValue);
+                        setCategoryId(selectedValue);
+                    }}
                     aria-pressed={categoryId === selectedValue}
-                    className={`${categoryId === selectedValue ? "bg-sky-700/10 border-sky-500" : "bg-black/20 border-white/5"} flex w-full items-center gap-2 rounded-lg border p-1.5`}
+                    className={`${
+                        categoryId === selectedValue 
+                            ? "bg-sky-700/20 border-sky-500 text-sky-300" 
+                            : "bg-black/20 border-white/5 text-neutral-200 hover:bg-white/5"
+                    } flex w-full items-center gap-2 rounded-lg border p-1.5 transition`}
                 >
                     {item.image ? (
                         <div className="relative h-8 w-8 flex-shrink-0 overflow-hidden rounded-md">
                             <Image src={item.image} alt={item.title} fill className="object-cover" />
                         </div>
-                    ) : <span className="h-8 w-8" />}
-                    <span className="truncate text-xs text-neutral-200">{item.title}</span>
+                    ) : <span className="h-8 w-8 rounded-md bg-white/5 flex items-center justify-center text-[10px]">No Img</span>}
+                    
+                    <span className="truncate text-xs font-medium">{item.title}</span>
+                    
                     <span className="ml-auto text-[10px] text-neutral-500">
-                        {item.children?.length ? "Oraliq kategoriya" : "Mahsulot tanlovi"}
+                        {item.children && item.children.length > 0 ? "Oraliq kategoriya" : "Mahsulot tanlovi"}
                     </span>
                 </button>
-                {item.children?.map((child) => renderItem(category, option, child, itemIds))}
+
+                {/* Agarda child mavjud bo'lsa, rekursiv ravishda yana chaqiriladi va itemIds uzatiladi */}
+                {item.children && item.children.map((child) => renderItem(category, option, child, itemIds))}
             </div>
         );
     };
@@ -132,7 +202,6 @@ function CategoriesContent({ setCategoryId, categoryId }: { setCategoryId: React
                 actions={(row) => {
                     const cat = row as unknown as Categorie;
                     const isExpanded = expandedRow === cat.id;
-                    const originalDisc = categories.find(c => c.title === cat.title && c.market === market) || cat;
 
                     return (
                         <div className="flex flex-col gap-2 w-full">
@@ -148,6 +217,11 @@ function CategoriesContent({ setCategoryId, categoryId }: { setCategoryId: React
                                     <span>{cat.options?.length || 0} ta Option</span>
                                     <ChevronDown className={cn("w-3.5 h-3.5 transition-transform", isExpanded && "rotate-180")} />
                                 </button>
+                                <div className="flex items-center gap-2">
+                                    <button className="rounded-xl bg-sky-500/10 p-2 text-sky-400 hover:bg-sky-500/20" title="Edit">
+                                        <Edit3 className="h-4 w-4" />
+                                    </button>
+                                </div>
                             </div>
 
                             <AnimatePresence>
@@ -158,11 +232,14 @@ function CategoriesContent({ setCategoryId, categoryId }: { setCategoryId: React
                                         exit={{ opacity: 0, height: 0 }}
                                         className="overflow-hidden space-y-2 pt-2 border-t border-white/10"
                                     >
-                                        {cat.options?.map((opt, idx) => (
-                                            <div key={idx} className="bg-white/5 p-3 rounded-xl border border-white/10 space-y-2">
-                                                <span className="font-bold text-xs text-sky-400">{opt.title}</span>
+                                        {cat.options?.map((opt) => (
+                                            <div key={opt.id ?? opt.title} className="bg-white/5 p-3 rounded-xl border border-white/10 space-y-2">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-bold text-xs text-sky-400">{opt.title}</span>
+                                                    {opt.hidden && <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-400">Hidden</span>}
+                                                </div>
                                                 <div className="space-y-2">
-                                                    {opt.items?.map((item) => renderItem(originalDisc, opt, item))}
+                                                    {opt.items?.map((item) => renderItem(cat, opt, item))}
                                                 </div>
                                             </div>
                                         ))}

@@ -13,10 +13,13 @@ import { useNotification } from '@/components/Notification'
 import { API_URL } from '@/lib/api'
 import AccountSwitcher from '@/components/AccountSwitcher'
 import { refreshToken } from '../_components/refresh'
+import { Edit2, Trash2 } from 'lucide-react'
 
 interface Market {
     id: string
     title: string
+    lat: number
+    lng: number
     logo: string
 }
 
@@ -58,8 +61,10 @@ export default function ProfilePage() {
     const [mapLng, setMapLng] = useState(0)
 
     const [selectedMarket, setSelectedMarket] = useState('')
-    const [isEditModalOpen, setIsEditModalOpen] = useState(false)
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
+
+    const [editId, setEditId] = useState<string | null>(null)
+    const [deleteAccountText, setDeleteAccountText] = useState('')
 
     useEffect(() => {
         if (!marketAdd) {
@@ -156,6 +161,11 @@ export default function ProfilePage() {
     }
 
     const handleDeleteAccount = async () => {
+        if (deleteAccountText !== 'DELETE') {
+            notify.show("Xatolik: 'DELETE' so'zini kiriting", "error", dark ? 'dark' : 'light')
+            return
+        }
+
         try {
             const response = await fetch(`${API_URL}/auth/account`, {
                 method: 'DELETE',
@@ -163,6 +173,8 @@ export default function ProfilePage() {
             });
 
             if (response.ok) {
+                setDeleteAccountText('')
+                setDeleteAkkModalOpen(false)
                 removeAccount(email)
                 notify.show("Akkaunt muvaffaqiyatli o'chirildi", "success", dark ? 'dark' : 'light')
 
@@ -180,7 +192,7 @@ export default function ProfilePage() {
         }
     };
 
-    const handleCreateMarket = async (e: React.FormEvent<HTMLFormElement>) => {
+    const handleMarket = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault()
         const formData = new FormData(e.currentTarget);
         formData.append('lat', mapLat.toString());
@@ -203,17 +215,18 @@ export default function ProfilePage() {
         setMarketAdd(false)
 
         try {
-            const response = await fetch(`${API_URL}/markets`, {
-                method: 'POST',
+            const method = editId ? 'PATCH' : 'POST';
+            const response = await fetch(`${API_URL}/markets${editId ? `/${editId}` : ''}`, {
+                method,
                 headers: { 'Authorization': `Bearer ${token}` },
                 body: formData
             });
 
             if (response.ok) {
-                notify.show("Market muvaffaqiyatli ochildi!", "success", dark ? 'dark' : 'light')
+                notify.show(`Market muvaffaqiyatli ${editId ? 'tahrirlandi' : 'yaratildi'}!`, "success", dark ? 'dark' : 'light')
                 if (token) handleGetMarkets(token);
             } else {
-                notify.show("Market ochishda xatolik", "error", dark ? 'dark' : 'light')
+                notify.show(`Market ${editId ? 'yangilashda' : 'yaratishda'} xatolik`, "error", dark ? 'dark' : 'light')
             }
         } catch (error) {
             notify.show("Server bilan aloqada xatolik", "error", dark ? 'dark' : 'light')
@@ -264,7 +277,7 @@ export default function ProfilePage() {
                                     }` }
                             >
                                 <span className="w-5 h-5 rounded-full overflow-hidden relative inline-block">
-                                    <Image src={ acc.image || 'https://i.ibb.co/nNZrjBSD/user.png' } alt="" fill className="object-cover" />
+                                    <Image src={ acc.image || 'https://i.ibb.co/nNZrjBSD/user.png' } alt="user" fill className="object-cover" />
                                 </span>
                                 { acc.userName || acc.email }
                             </button>
@@ -346,10 +359,16 @@ export default function ProfilePage() {
                                         Boshqarish
                                     </button>
                                     <button
+                                        onClick={ () => setEditId(market.id) }
+                                        className={ `p-2 rounded-xl ${dark ? 'bg-white/5 text-neutral-300' : 'bg-black/5 text-neutral-600'} hover:bg-sky-500/20 hover:text-sky-500 transition-all` }
+                                    >
+                                        <Edit2 size={ 16 } />
+                                    </button>
+                                    <button
                                         onClick={ (e) => { e.stopPropagation(); setSelectedMarket(market.id); setIsDeleteModalOpen(true); } }
                                         className={ `p-2 rounded-xl ${dark ? 'bg-white/5 text-neutral-300' : 'bg-black/5 text-neutral-600'} hover:bg-red-500/20 hover:text-red-500 transition-all` }
                                     >
-                                        🗑️
+                                        <Trash2 size={ 16 } />
                                     </button>
                                 </div>
                             </div>
@@ -410,25 +429,56 @@ export default function ProfilePage() {
                     <p className="text-zinc-400 text-sm">Yangi profil rasmini tanlang:</p>
                     <GlassInput name='image' type='file' required />
                     <div className="flex justify-end gap-3 pt-4">
-                        <button type="button" onClick={ () => setImageUploadModal(false) } className="px-4 py-2.5 rounded-xl text-sm text-zinc-400 hover:bg-white/5">Bekor qilish</button>
+                        <button type="button" onClick={ () => setImageUploadModal(false) } className="px-4 py-2.5 rounded-xl text-sm text-zinc-400 hover:bg-white/5">Cancel</button>
                         <GlassButton type="submit">Yuklash</GlassButton>
                     </div>
                 </form>
             </GlassModal>
 
-            <GlassModal title="Market ochish" onClose={ () => setMarketAdd(false) } open={ marketAdd }>
-                <form onSubmit={ handleCreateMarket } className="space-y-4">
+            <GlassModal title={ editId ? "Marketni tahrirlash" : "Market ochish" } onClose={ () => { setMarketAdd(false), setEditId(null) } } open={ marketAdd || editId !== null }>
+                <form onSubmit={ handleMarket } className="space-y-4">
                     <p className="text-zinc-400 text-sm">Yangi market ochish uchun nomini kiriting, rasmini yuklang va xaritadan koordinatasini belgilang.</p>
+
                     <div className="flex flex-col w-full gap-4">
-                        <GlassInput name='title' type='text' maxLength={ 26 } placeholder="Market nomini yozing" required />
-                        <GlassInput name='logo' type='file' required />
+                        <GlassInput
+                            name='title'
+                            type='text'
+                            defaultValue={ editId ? markets.find(m => m.id === editId)?.title : '' }
+                            maxLength={ 26 }
+                            placeholder="Market nomini yozing"
+                            required
+                        />
+
+                        <div className="flex flex-col gap-3">
+                            { editId && markets.find(m => m.id === editId)?.logo && (
+                                <div className="relative w-full h-40 rounded-xl overflow-hidden border border-white/10 bg-black/20">
+                                    <img
+                                        src={ markets.find(m => m.id === editId)?.logo }
+                                        alt="Market logo"
+                                        className="w-full h-full object-cover"
+                                    />
+                                </div>
+                            ) }
+
+                            { editId ? (
+                                <input
+                                    type="hidden"
+                                    name="logo"
+                                    value={ markets.find(m => m.id === editId)?.logo || '' }
+                                />
+                            ) : null }
+
+                            <GlassInput name='logo' type='file' required={ !editId } />
+                        </div>
                     </div>
-                    <GlassButton type='button' className='w-full' onClick={ () => setOpenMap(true) }>
+
+                    <GlassButton type='button' className='w-full' onClick={ () => { setOpenMap(true), editId ? (setMapLat(markets.find(m => m.id === editId)?.lat || 0), setMapLng(markets.find(m => m.id === editId)?.lng || 0)) : null } }>
                         { mapLat !== 0 ? "Koordinata belgilandi ✓" : "Xaritadan belgilash" }
                     </GlassButton>
+
                     <div className="flex items-center justify-end gap-3 pt-4">
-                        <button onClick={ () => setMarketAdd(false) } type="button" className="px-4 py-2.5 rounded-xl text-sm text-zinc-400 hover:bg-white/5">Bekor qilish</button>
-                        <GlassButton type="submit">Yuborish</GlassButton>
+                        <button onClick={ () => { setMarketAdd(false), setEditId(null) } } type="button" className="px-4 py-2.5 rounded-xl text-sm text-zinc-400 hover:bg-white/5">Cancel</button>
+                        <GlassButton type="submit">{ editId ? "Update" : "Create" }</GlassButton>
                     </div>
                 </form>
             </GlassModal>
@@ -436,7 +486,7 @@ export default function ProfilePage() {
             <GlassModal size='full' open={ openMap } onClose={ () => setOpenMap(false) } title='Xaritadan belgilang'>
                 <Map
                     isDarkMode={ dark }
-                    onLocationSelect={ (lat, lng) => {
+                    onLocationSelect={ (lat = mapLat, lng = mapLng) => {
                         setMapLat(lat)
                         setMapLng(lng)
                     } }
@@ -450,12 +500,26 @@ export default function ProfilePage() {
                 </GlassButton>
             </GlassModal>
 
-            <GlassModal title="Akkauntni o'chirish" onClose={ () => setDeleteAkkModalOpen(false) } open={ deleteAkkModalOpen }>
+            <GlassModal title="Akkauntni o'chirish" onClose={ () => { setDeleteAkkModalOpen(false), setDeleteAccountText('') } } open={ deleteAkkModalOpen }>
                 <div className="space-y-4">
                     <p className="text-sm text-neutral-400">Haqiqatan ham akkauntingizni o'chirib yubormoqchimisiz? Bu amalni ortga qaytarib bo'lmaydi.</p>
+                    <GlassInput
+                        placeholder='DELETE'
+                        value={ deleteAccountText }
+                        onChange={ e => setDeleteAccountText(e.target.value.toUpperCase()) }
+                    />
                     <div className="flex items-center justify-end gap-3 pt-4">
-                        <button onClick={ () => setDeleteAkkModalOpen(false) } className="px-4 py-2.5 rounded-xl text-sm hover:bg-white/5">Bekor qilish</button>
-                        <button onClick={ handleDeleteAccount } className="px-5 py-2.5 rounded-xl text-sm font-medium bg-red-600 text-white hover:bg-red-500 shadow-lg shadow-red-500/20">O'chirish</button>
+                        <button onClick={ () => { setDeleteAkkModalOpen(false), setDeleteAccountText('') } } className="px-4 py-2.5 rounded-xl text-sm hover:bg-white/5">Cancel</button>
+                        <button
+                            onClick={ handleDeleteAccount }
+                            disabled={ deleteAccountText !== 'DELETE' }
+                            className={ `px-5 py-2.5 rounded-xl text-sm font-medium text-white transition-all ${deleteAccountText === 'DELETE'
+                                ? 'bg-red-600/90 hover:bg-red-500 shadow-lg shadow-red-500/20 cursor-pointer'
+                                : 'bg-red-600/30 shadow-lg shadow-red-300/20 cursor-not-allowed'
+                                }` }
+                        >
+                            O'chirish
+                        </button>
                     </div>
                 </div>
             </GlassModal>
@@ -464,7 +528,7 @@ export default function ProfilePage() {
                 <div className="space-y-4">
                     <p className="text-sm text-neutral-400">Haqiqatan ham bu marketni o'chirib yubormoqchimisiz?</p>
                     <div className="flex items-center justify-end gap-3 pt-4">
-                        <button onClick={ () => setIsDeleteModalOpen(false) } className="px-4 py-2.5 rounded-xl text-sm hover:bg-white/5">Bekor qilish</button>
+                        <button onClick={ () => setIsDeleteModalOpen(false) } className="px-4 py-2.5 rounded-xl text-sm hover:bg-white/5">Cancel</button>
                         <button onClick={ () => { handleDeleteMarket(selectedMarket); setIsDeleteModalOpen(false); } } className="px-5 py-2.5 rounded-xl text-sm font-medium bg-red-600 text-white hover:bg-red-500 shadow-lg shadow-red-500/20">O'chirish</button>
                     </div>
                 </div>
