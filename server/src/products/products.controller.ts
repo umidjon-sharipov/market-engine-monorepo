@@ -3,6 +3,7 @@ import {
     Controller,
     ForbiddenException,
     Get,
+    Delete,
     Param,
     ParseUUIDPipe,
     ParseIntPipe,
@@ -64,6 +65,14 @@ export class ProductsController {
             throw new ForbiddenException('Mahsulotlarni ko‘rish uchun ruxsat yo‘q.');
         }
         return this.productsService.search(marketId, search, page, limit);
+    }
+
+    @Get('data')
+    @UseGuards(JwtAuthGuard)
+    async getProductData(
+        @Req() req: any,
+    ) {
+        return this.productsService.findData(req.user.userName);
     }
 
     @Post()
@@ -147,5 +156,37 @@ export class ProductsController {
         }
 
         return this.productsService.updateProduct(id, body, files ?? []);
+    }
+
+    @Delete(':id')
+    @UseGuards(JwtAuthGuard)
+    async deleteProduct(@Req() req: any, @Param('id', ParseUUIDPipe) id: string) {
+        const currentProduct = await this.prisma.product.findUnique({
+            where: { id },
+            select: { marketId: true },
+        });
+        if (!currentProduct) {
+            throw new NotFoundException('Mahsulot topilmadi.');
+        }
+
+        const GuardClass = MarketAccessGuard(
+            'product',
+            req.user?.email,
+            ['owner', 'admin', 'warehouse'],
+            currentProduct.marketId,
+            'delete',
+        );
+        const instance = new GuardClass(this.prisma);
+        const canAccess = await instance.canActivate({
+            switchToHttp: () => ({ getRequest: () => req }),
+        } as any);
+
+        if (!canAccess) {
+            throw new ForbiddenException(
+                "Sizda bu marketda mahsulotni o'chirish uchun ruxsat yo'q.",
+            );
+        }
+
+        return this.productsService.deleteProduct(id);
     }
 }

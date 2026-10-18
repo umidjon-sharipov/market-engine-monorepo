@@ -222,8 +222,6 @@ model Product {
     uom            UnitOfMeasure   @default(PCS)
     gradient       Json            @default("[]")
     discountId     String?         @db.Uuid
-    categoryId     String?         @db.Uuid
-    categoryItemId String?         @db.Uuid
     options        ProductOption[]
     images         Json            @default("[]")
     quantity       Float           @default(0)
@@ -231,13 +229,13 @@ model Product {
     warehouseId    String?         @db.Uuid
     createdAt      DateTime        @default(now()) @db.Timestamptz(6)
     barcode        String?         @db.VarChar(100)
+    categoryPath   String?         @db.VarChar(2000)
 
     market            Market                  @relation(fields: [marketId], references: [id], onDelete: Cascade)
     warehouse         Warehouse?              @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
     discount          Discount?               @relation(fields: [discountId], references: [id], onDelete: SetNull)
-    category          Category?               @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-    categoryItem      CategoryOptionItem?     @relation(fields: [categoryItemId], references: [id], onDelete: SetNull)
     comments          Comment[]
+    // category     Category?     @relation(fields: [categoryId], references: [id], onDelete: SetNull)
     inventories       WarehouseInventory[]
     stockMovements    StockMovement[]
     stockReservations OrderStockReservation[]
@@ -245,8 +243,6 @@ model Product {
 
     @@index([marketId, createdAt(sort: Desc)])
     @@index([warehouseId])
-    @@index([categoryId])
-    @@index([categoryItemId])
     @@index([discountId])
     @@map("Products")
 }
@@ -670,7 +666,6 @@ model Category {
     createdAt DateTime @default(now()) @db.Timestamptz(6)
 
     market   Market           @relation(fields: [marketId], references: [id], onDelete: Cascade)
-    products Product[]
     options  CategoryOption[]
 
     @@unique([marketId, title])
@@ -704,7 +699,6 @@ model CategoryOptionItem {
     option   CategoryOption?      @relation(fields: [optionId], references: [id], onDelete: Cascade)
     parent   CategoryOptionItem?  @relation("CategoryItemTree", fields: [parentId], references: [id], onDelete: Cascade)
     children CategoryOptionItem[] @relation("CategoryItemTree")
-    products Product[]
 
     @@index([optionId])
     @@index([parentId])

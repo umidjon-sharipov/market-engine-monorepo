@@ -48,7 +48,6 @@ export class ProductsService {
             orderBy: { createdAt: 'desc' },
             include: {
                 options: { include: { items: true } },
-                categoryItem: { select: { id: true, title: true } },
             },
         });
     }
@@ -103,13 +102,25 @@ export class ProductsService {
         };
     }
 
+    async findData(userId: string) {
+        return await this.prisma.product.findMany({
+            // where: {
+            //     market: {
+            //         followers: {
+            //             some: {
+            //                 userId: userId,
+            //             }
+            //         }
+            //     }
+            // }
+        });
+    }
+
     async createProduct(
         body: CreateProductDto,
         files: Array<Express.Multer.File>,
     ) {
         await this.validateCategorySelection(
-            body.categoryId,
-            body.categoryItemId,
             body.categoryPath,
             body.marketId,
         );
@@ -128,12 +139,10 @@ export class ProductsService {
         if (!current) throw new NotFoundException('Product topilmadi.');
 
         const marketId = body.marketId ?? current.marketId;
-        await this.validateCategorySelection(
-            body.categoryId,
-            body.categoryItemId,
-            body.categoryPath,
-            marketId,
-        );
+
+        if (body.categoryPath !== undefined) {
+            await this.validateCategorySelection(body.categoryPath, marketId);
+        }
 
         const data: Prisma.ProductUpdateInput = {};
         if (body.title !== undefined) data.title = body.title;
@@ -145,15 +154,9 @@ export class ProductsService {
             data.gradient = this.jsonValue(body.gradient);
         if (body.marketId !== undefined)
             data.market = { connect: { id: body.marketId } };
-        if (body.categoryId !== undefined) {
-            data.category = body.categoryId
-                ? { connect: { id: body.categoryId } }
-                : { disconnect: true };
-        }
-        if (body.categoryItemId !== undefined) {
-            data.categoryItem = body.categoryItemId
-                ? { connect: { id: body.categoryItemId } }
-                : { disconnect: true };
+
+        if (body.categoryPath !== undefined) {
+            data.categoryPath = body.categoryPath || null;
         }
         if (
             body.images !== undefined ||
@@ -195,11 +198,8 @@ export class ProductsService {
             gradient: this.jsonValue(body.gradient ?? []),
             images: imageUrls,
             market: { connect: { id: body.marketId } },
-            ...(body.categoryId && {
-                category: { connect: { id: body.categoryId } },
-            }),
-            ...(body.categoryItemId && {
-                categoryItem: { connect: { id: body.categoryItemId } },
+            ...(body.categoryPath && {
+                categoryPath: body.categoryPath,
             }),
             options: {
                 create: this.toOptionInputs(body.options, uploaded),
@@ -279,120 +279,69 @@ export class ProductsService {
     }
 
     private async validateCategorySelection(
-        categoryId?: string,
-        categoryItemId?: string,
         categoryPath?: string,
         marketId?: string,
     ) {
-        if (!categoryItemId && !categoryPath) return;
+        if (!categoryPath) return;
 
-        if (categoryPath) {
-            const [pathCategoryId, optionId, ...itemIds] = categoryPath.split('|');
-            if (
-                !pathCategoryId ||
-                !optionId ||
-                !itemIds.length ||
-                pathCategoryId !== categoryId ||
-                itemIds[itemIds.length - 1] !== categoryItemId
-            ) {
-                throw new BadRequestException(
-                    'Kategoriya yo‘li va tanlangan element mos emas.',
-                );
-            }
+        const [pathCategoryId, optionId, ...itemIds] = categoryPath.split('|');
 
-            const option = await this.prisma.categoryOption.findUnique({
-                where: { id: optionId },
-                select: {
-                    categoryId: true,
-                    category: { select: { marketId: true } },
-                },
-            });
-            if (!option || option.categoryId !== pathCategoryId) {
-                throw new BadRequestException(
-                    'Kategoriya opsiyasi ushbu kategoriyaga tegishli emas.',
-                );
-            }
-            if (marketId && option.category.marketId !== marketId) {
-                throw new BadRequestException(
-                    'Kategoriya mahsulot marketiga tegishli emas.',
-                );
-            }
-
-            let parentId: string | null = null;
-            for (const [index, itemId] of itemIds.entries()) {
-                const item = await this.prisma.categoryOptionItem.findUnique({
-                    where: { id: itemId },
-                    select: { id: true, optionId: true, parentId: true },
-                });
-                if (!item) {
-                    throw new BadRequestException('Kategoriya elementi topilmadi.');
-                }
-                const validRoot =
-                    index === 0 && item.optionId === optionId && !item.parentId;
-                const validChild =
-                    index > 0 && item.parentId === parentId && !item.optionId;
-                if (!validRoot && !validChild) {
-                    throw new BadRequestException(
-                        'Kategoriya elementlari zanjiri noto‘g‘ri yoki uzilgan.',
-                    );
-                }
-                parentId = item.id;
-            }
-            return;
+        if (!pathCategoryId || !optionId) {
+            throw new BadRequestException('Kategoriya yo‘li noto‘g‘ri shakllantirilgan.');
         }
 
-        let item = await this.prisma.categoryOptionItem.findUnique({
-            where: { id: categoryItemId },
-            select: {
-                id: true,
-                optionId: true,
-                parentId: true,
-                option: {
-                    select: {
-                        categoryId: true,
-                        category: { select: { marketId: true } },
-                    },
-                },
-            },
+        const category = await this.prisma.category.findUnique({
+            where: { id: pathCategoryId },
+            select: { id: true, marketId: true },
         });
-        if (!item) throw new BadRequestException('Kategoriya elementi topilmadi.');
 
-        const visited = new Set<string>();
-        while (item && !item.option && item.parentId) {
-            if (visited.has(item.parentId)) {
-                throw new BadRequestException(
-                    'Kategoriya daraxtida parent zanjiri buzilgan.',
-                );
-            }
-            visited.add(item.parentId);
-            const parent = await this.prisma.categoryOptionItem.findUnique({
-                where: { id: item.parentId },
-                select: {
-                    id: true,
-                    optionId: true,
-                    parentId: true,
-                    option: {
-                        select: {
-                            categoryId: true,
-                            category: { select: { marketId: true } },
-                        },
-                    },
-                },
+        if (!category) {
+            throw new BadRequestException('Kategoriya topilmadi.');
+        }
+
+        if (marketId && category.marketId !== marketId) {
+            throw new BadRequestException('Kategoriya ushbu marketga tegishli emas.');
+        }
+
+        const option = await this.prisma.categoryOption.findUnique({
+            where: { id: optionId },
+            select: { id: true, categoryId: true },
+        });
+
+        if (!option || option.categoryId !== pathCategoryId) {
+            throw new BadRequestException('Kategoriya opsiyasi ushbu kategoriyaga tegishli emas.');
+        }
+
+        let parentId: string | null = null;
+        for (const [index, itemId] of itemIds.entries()) {
+            const item = await this.prisma.categoryOptionItem.findUnique({
+                where: { id: itemId },
+                select: { id: true, optionId: true, parentId: true },
             });
-            if (!parent) {
-                throw new BadRequestException('Kategoriya parent elementi topilmadi.');
+
+            if (!item) {
+                throw new BadRequestException('Kategoriya elementi topilmadi.');
             }
-            item = parent;
+
+            const validRoot = index === 0 && item.optionId === optionId && !item.parentId;
+            const validChild = index > 0 && item.parentId === parentId;
+
+            if (!validRoot && !validChild) {
+                throw new BadRequestException('Kategoriya elementlari zanjiri noto‘g‘ri yoki uzilgan.');
+            }
+
+            parentId = item.id;
         }
-        if (!item?.option || (categoryId && item.option.categoryId !== categoryId)) {
-            throw new BadRequestException(
-                'Kategoriya elementi tanlangan kategoriyaga tegishli emas.',
-            );
+    }
+
+    async deleteProduct(id: string) {
+        const product = await this.prisma.product.findUnique({
+            where: { id },
+            select: { id: true },
+        });
+        if (!product) {
+            throw new NotFoundException('Mahsulot topilmadi.');
         }
-        if (marketId && item.option.category.marketId !== marketId) {
-            throw new BadRequestException(
-                'Kategoriya elementi mahsulot marketiga tegishli emas.',
-            );
-        }
+        return this.products.delete({ id });
     }
 }

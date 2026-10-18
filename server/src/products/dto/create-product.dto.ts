@@ -69,7 +69,7 @@ export class CreateProductDto {
 
   @IsOptional()
   @IsObject()
-  description?: Record<string, unknown>;
+  description!: Record<string, unknown>;
 
   @Type(() => Number)
   @IsNumber()
@@ -83,17 +83,8 @@ export class CreateProductDto {
   uom!: UnitOfMeasure;
 
   @IsOptional()
-  @IsUUID()
-  categoryId?: string;
-
-  @IsOptional()
-  @IsUUID()
-  categoryItemId?: string;
-
-  @IsOptional()
   @IsString()
-  @MaxLength(2000)
-  categoryPath?: string;
+  categoryPath!: string;
 
   @IsOptional()
   @IsArray()
@@ -102,12 +93,12 @@ export class CreateProductDto {
   @IsOptional()
   @IsArray()
   @IsString({ each: true })
-  images?: string[];
+  images!: string[];
 
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => ProductOptionDto)
-  options!: ProductOptionDto[];
+  options?: ProductOptionDto[];
 }
 
 export class UpdateProductDto extends PartialType(CreateProductDto) {}

@@ -24,7 +24,7 @@ export class CategoriesService {
     const categories = await this.prisma.category.findMany({
       where: { marketId },
       orderBy: { createdAt: 'desc' },
-      include: { options: true, products: true },
+      include: { options: true },
     });
     return this.withItemTrees(categories);
   }
@@ -32,7 +32,7 @@ export class CategoriesService {
   async findOne(id: string) {
     const category = await this.prisma.category.findUnique({
       where: { id },
-      include: { options: true, products: true },
+      include: { options: true },
     });
     if (!category)
       throw new NotFoundException('Requested resource was not found');
