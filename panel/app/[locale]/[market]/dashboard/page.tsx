@@ -71,7 +71,6 @@ export default function Dashboard({ params }: DashboardProps) {
 
                 if (res.ok) {
                     const formatted = Array.isArray(data) ? data.map((item: any) => item.user || item) : [];
-                    notify.show(JSON.stringify(data), "success", dark ? 'dark' : 'light')
                     console.log(data)
                     setUsers(formatted);
                 } else {

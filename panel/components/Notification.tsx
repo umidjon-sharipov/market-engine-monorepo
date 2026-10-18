@@ -135,7 +135,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
                                             {currentStatus.icon}
                                         </div>
 
-                                        <div className="flex-1 text-sm font-medium tracking-tight select-none">
+                                        <div className="flex-1 text-sm font-medium tracking-tight whitespace-pre-line select-none">
                                             {item.message}
                                         </div>
 

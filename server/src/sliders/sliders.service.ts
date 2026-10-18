@@ -1,12 +1,13 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { SliderRepository } from './slider.repository';
 import { CreateSliderDto } from './dto/create-slider.dto';
 import { UpdateSliderDto } from './dto/update-slider.dto';
+import { PrismaService } from 'src/prisma/prisma.service';
 
 @Injectable()
 export class SlidersService {
-    constructor(private readonly sliders: SliderRepository) { }
+    constructor(private readonly sliders: SliderRepository, private readonly prisma: PrismaService) { }
 
     findAll() {
         return this.sliders.findAll({
@@ -15,9 +16,48 @@ export class SlidersService {
         });
     }
 
-    findData(userName: string) {
+    async findData(userName: string) {
+        const user = await this.prisma.user.findFirst({
+            where: { userName: userName },
+            select: { id: true },
+        });
+
+        if (!user) {
+            throw new BadRequestException("Foydalanuvchi topilmadi");
+        }
+
+        const followings = await this.prisma.following.findMany({
+            where: {
+                userId: user.id,
+            },
+        });
+
+        const activeMarketIds = followings
+            .filter(item => {
+                const isFollowing = Array.isArray(item.follow) && item.follow.length % 2 !== 0;
+
+                const isBlocked = Array.isArray(item.block) && item.block.length % 2 !== 0;
+
+                return isFollowing && !isBlocked;
+            })
+            .map(item => item.marketId);
+
+        if (activeMarketIds.length === 0) {
+            throw new BadRequestException("Siz birorta aktiv marketga obuna bo'lmagansiz");
+        }
+
         return this.sliders.findAll({
+            where: {
+                marketId: {
+                    in: activeMarketIds,
+                },
+            },
             orderBy: { createdAt: 'desc' },
+            include: {
+                market: {
+                    select: { id: true, title: true, logo: true }
+                }
+            },
         });
     }
 
