@@ -12,6 +12,7 @@ import { useRouter } from 'solito/navigation';
 import { useUrlStore } from 'app/store/useUrlStore'
 import { useTokenStore } from 'app/store/useTokenStore';
 import { fetchWithAuth } from 'app/features/app/auth/fetchWithAuth'
+import { NotificationProvider, useNotification } from '../../components/UI/Notification'
 
 interface Product {
     id: string;
@@ -44,6 +45,7 @@ const HomeScreen = () => {
     const url = process.env.BACKEND_URL || 'http://localhost:4000';
     const token = useTokenStore(state => state.token)
     const router = useRouter()
+    const notify = useNotification()
     const [products, setProducts] = useState<Product[]>([]);
     const [sliders, setSliders] = useState<SliderTypes[]>([])
     const [loading, setLoading] = useState('loading');
@@ -63,6 +65,11 @@ const HomeScreen = () => {
 
             const data = await response.json();
             if (response.ok) {
+                notify.show('success', 'success', 'light')
+                notify.show('success', 'success', 'light')
+                notify.show('success', 'success', 'light')
+                notify.show('success', 'success', 'light')
+                notify.show('success', 'success', 'light')
                 setProducts(data);
             } else {
                 console.log(data)

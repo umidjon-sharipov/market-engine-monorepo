@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Online Market",
-    "slug": "solito-blank",
+    "slug": "market-engine-monorepo",
     "version": "3.0.0",
     "scheme": "online-market",
     "platforms": [
@@ -17,7 +17,7 @@
     },
     "extra": {
       "eas": {
-        "projectId": "4cc687c0-0518-4abe-aa9f-5f2b258af593"
+        "projectId": "3be75600-6672-4146-8fe9-572226a4b1de"
       }
     },
     "android": {
@@ -27,6 +27,6 @@
         "backgroundColor": "#13a255"
       }
     },
-    "owner": "umidjonfrontenddeveloper"
+    "owner": "umidjonfrontendengineer"
   }
 }

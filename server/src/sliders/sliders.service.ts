@@ -61,6 +61,10 @@ export class SlidersService {
         });
     }
 
+    findByMarket(id: string) {
+        return this.prisma.slider.findMany({ where: { marketId: id } })
+    }
+
     findOne(id: string) {
         return this.sliders.findOne({ id });
     }

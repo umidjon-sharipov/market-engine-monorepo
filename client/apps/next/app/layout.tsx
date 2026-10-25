@@ -1,4 +1,5 @@
 import { StylesProvider } from './styles-provider'
+import { NotificationProvider } from 'app/components/UI/Notification'
 import './globals.css'
 import { Provider } from 'app/provider'
 import HeaderC from 'app/features/app/Header'
@@ -38,13 +39,15 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
     return (
-        <html lang="en" style={{ overflowX: 'hidden' }}>
+        <html lang="en" style={ { overflowX: 'hidden' } }>
             <body>
-                <StylesProvider>
-                    <HeaderC />
-                    {children}
-                    <CursorC />
-                </StylesProvider>
+                <NotificationProvider>
+                    <StylesProvider>
+                        <HeaderC />
+                        { children }
+                        <CursorC />
+                    </StylesProvider>
+                </NotificationProvider>
             </body>
         </html>
     )

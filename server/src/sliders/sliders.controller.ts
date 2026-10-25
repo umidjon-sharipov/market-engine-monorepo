@@ -21,6 +21,16 @@ export class SlidersController {
         return await this.slidersService.findAll();
     }
 
+    @Get(':id')
+    @UseGuards(JwtAuthGuard)
+    async findSlidersByMarket(@Req() req: any, @Param('id') id: string) {
+        const GuardClass = MarketAccessGuard('discount', req.user.email, ['owner', 'admin'], id || '', 'get');
+        const instance = new GuardClass(this.prisma);
+        await instance.canActivate({ switchToHttp: () => ({ getRequest: () => req }) } as any);
+
+        return await this.slidersService.findByMarket(id)
+    }
+
     @Get('data')
     @UseGuards(JwtAuthGuard)
     async findData(@Req() req: any) {

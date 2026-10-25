@@ -32,7 +32,7 @@ function SlidersContent() {
     const [editId, setEditId] = useState<string | null>(null);
     const [deleteModal, setDeleteModal] = useState<string | null>(null);
 
-    const {getActiveToken} = useTokenStore((state) => state);
+    const { getActiveToken } = useTokenStore((state) => state);
     const token = getActiveToken()
     const dark = useThemeStore((state) => state.theme) === "dark";
     const params = useParams();
@@ -51,12 +51,17 @@ function SlidersContent() {
     const fetchData = async () => {
         try {
             setLoading(true);
-            const res = await fetch(`${API_URL}/sliders`);
+            const res = await fetch(`${API_URL}/sliders/${market}`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
             const req = await res.json();
 
             if (res.ok && Array.isArray(req)) {
-                const filteredData = req.filter((item: Slider) => item.marketId === market);
-                setSliders(filteredData);
+                setSliders(req);
+            } else {
+                notify.show(req, 'error', dark === true ? 'dark' : 'light')
             }
         } catch (err) {
             console.error("Xatolik:", err);
@@ -195,28 +200,28 @@ function SlidersContent() {
                 <div className="flex items-center gap-4">
                     <div className="flex bg-white/5 border border-white/10 rounded-xl p-1">
                         <button
-                            onClick={() => setViewMode("slider")}
-                            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${viewMode === "slider" ? "bg-sky-500 text-white shadow" : "text-neutral-400 hover:text-white"
-                                }`}
+                            onClick={ () => setViewMode("slider") }
+                            className={ `flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${viewMode === "slider" ? "bg-sky-500 text-white shadow" : "text-neutral-400 hover:text-white"
+                                }` }
                         >
                             <LayoutGrid className="w-3.5 h-3.5" /> Slider
                         </button>
                         <button
-                            onClick={() => setViewMode("table")}
-                            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${viewMode === "table" ? "bg-sky-500 text-white shadow" : "text-neutral-400 hover:text-white"
-                                }`}
+                            onClick={ () => setViewMode("table") }
+                            className={ `flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${viewMode === "table" ? "bg-sky-500 text-white shadow" : "text-neutral-400 hover:text-white"
+                                }` }
                         >
                             <TableIcon className="w-3.5 h-3.5" /> Table
                         </button>
                     </div>
 
-                    <GlassButton onClick={handleOpenCreate}>
+                    <GlassButton onClick={ handleOpenCreate }>
                         <Plus className="w-4 h-4 mr-2 inline" /> Create Slider
                     </GlassButton>
                 </div>
             </div>
 
-            {loading ? (
+            { loading ? (
                 <div className="text-center py-12 text-gray-500 text-lg">Yuklanmoqda...</div>
             ) : sliders.length === 0 ? (
                 <div className="text-center py-12 text-neutral-400 text-base bg-white/5 rounded-2xl border border-white/10">
@@ -225,45 +230,45 @@ function SlidersContent() {
             ) : viewMode === "slider" ? (
                 <div className="relative group">
                     <button
-                        onClick={() => scrollSlider("left")}
+                        onClick={ () => scrollSlider("left") }
                         className="absolute left-2 top-1/2 -translate-y-1/2 z-10 p-3 bg-black/60 hover:bg-sky-500 text-white rounded-full backdrop-blur-md transition shadow-lg opacity-0 group-hover:opacity-100"
                     >
                         <ChevronLeft className="w-5 h-5" />
                     </button>
                     <button
-                        onClick={() => scrollSlider("right")}
+                        onClick={ () => scrollSlider("right") }
                         className="absolute right-2 top-1/2 -translate-y-1/2 z-10 p-3 bg-black/60 hover:bg-sky-500 text-white rounded-full backdrop-blur-md transition shadow-lg opacity-0 group-hover:opacity-100"
                     >
                         <ChevronRight className="w-5 h-5" />
                     </button>
 
                     <div
-                        ref={sliderRef}
-                        onPointerDown={handlePointerDown}
-                        onPointerMove={handlePointerMove}
-                        onPointerUp={handlePointerUp}
-                        onPointerLeave={handlePointerUp}
+                        ref={ sliderRef }
+                        onPointerDown={ handlePointerDown }
+                        onPointerMove={ handlePointerMove }
+                        onPointerUp={ handlePointerUp }
+                        onPointerLeave={ handlePointerUp }
                         className="flex gap-6 overflow-x-auto scrollbar-none select-none cursor-grab active:cursor-grabbing pb-6 pt-2 px-2"
-                        style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+                        style={ { scrollbarWidth: 'none', msOverflowStyle: 'none' } }
                     >
-                        {sliders.map((slider) => (
+                        { sliders.map((slider) => (
                             <div
-                                key={slider.id}
+                                key={ slider.id }
                                 className="min-w-[380px] md:min-w-[450px] h-[240px] rounded-2xl overflow-hidden relative group/card border border-white/10 bg-white/5 flex-shrink-0 shadow-xl"
                             >
-                                <img src={slider.image} alt="Slider" className="w-full h-full object-cover pointer-events-none" />
+                                <img src={ slider.image } alt="Slider" className="w-full h-full object-cover pointer-events-none" />
 
                                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover/card:opacity-100 transition-opacity duration-300 flex flex-col justify-between p-4">
                                     <div className="flex justify-end gap-2">
                                         <button
-                                            onClick={() => handleOpenEdit(slider)}
+                                            onClick={ () => handleOpenEdit(slider) }
                                             className="p-2 bg-sky-500/80 hover:bg-sky-500 text-white rounded-xl backdrop-blur-md transition shadow"
                                             title="Tahrirlash"
                                         >
                                             <Edit3 className="w-4 h-4" />
                                         </button>
                                         <button
-                                            onClick={() => setDeleteModal(slider.id)}
+                                            onClick={ () => setDeleteModal(slider.id) }
                                             className="p-2 bg-red-500/80 hover:bg-red-500 text-white rounded-xl backdrop-blur-md transition shadow"
                                             title="O'chirish"
                                         >
@@ -273,63 +278,63 @@ function SlidersContent() {
 
                                     <div className="flex items-center justify-between bg-black/40 backdrop-blur-md p-3 rounded-xl border border-white/10">
                                         <a
-                                            href={slider.link}
+                                            href={ slider.link }
                                             target="_blank"
                                             rel="noreferrer"
                                             className="text-xs text-sky-300 truncate max-w-[300px] hover:underline flex items-center gap-1.5"
                                         >
-                                            {slider.link} <ExternalLink className="w-3 h-3 flex-shrink-0" />
+                                            { slider.link } <ExternalLink className="w-3 h-3 flex-shrink-0" />
                                         </a>
                                     </div>
                                 </div>
                             </div>
-                        ))}
+                        )) }
                     </div>
                 </div>
             ) : (
                 <GlassCustomTable
-                    columns={[
+                    columns={ [
                         { key: "image", label: "Image" },
                         { key: "link", label: "Link" },
-                    ]}
-                    data={sliders.map((slider) => ({
+                    ] }
+                    data={ sliders.map((slider) => ({
                         id: slider.id,
                         marketId: slider.marketId,
                         image: (
                             <div className="flex items-center gap-4">
                                 <img
-                                    src={slider.image}
+                                    src={ slider.image }
                                     alt="Slider"
                                     className="w-32 h-16 object-cover rounded-xl border border-white/20 shadow-md flex-shrink-0"
                                 />
-                                <span className="text-xs text-neutral-400 truncate max-w-[250px] font-mono">{slider.image}</span>
+                                <span className="text-xs text-neutral-400 truncate max-w-[250px] font-mono">{ slider.image }</span>
                             </div>
                         ),
                         link: (
                             <a
-                                href={slider.link}
+                                href={ slider.link }
                                 target="_blank"
                                 rel="noreferrer"
                                 className="text-sky-400 hover:underline flex items-center gap-1.5 text-xs font-medium truncate max-w-[350px]"
                             >
-                                {slider.link} <ExternalLink className="w-3.5 h-3.5 flex-shrink-0" />
+                                { slider.link } <ExternalLink className="w-3.5 h-3.5 flex-shrink-0" />
                             </a>
                         )
-                    })) as Record<string, React.ReactNode>[]}
-                    actions={(row) => {
+                    })) as Record<string, React.ReactNode>[] }
+                    actions={ (row) => {
                         const slider = sliders.find(s => s.id === row.id) || (row as unknown as Slider);
 
                         return (
                             <div className="flex items-center gap-2">
                                 <button
-                                    onClick={() => handleOpenEdit(slider)}
+                                    onClick={ () => handleOpenEdit(slider) }
                                     className="p-2 bg-sky-500/10 text-sky-400 rounded-xl hover:bg-sky-500/20 transition"
                                     title="Tahrirlash"
                                 >
                                     <Edit3 className="w-4 h-4" />
                                 </button>
                                 <button
-                                    onClick={() => setDeleteModal(slider.id)}
+                                    onClick={ () => setDeleteModal(slider.id) }
                                     className="p-2 bg-red-500/10 text-red-400 rounded-xl hover:bg-red-500/20 transition"
                                     title="O'chirish"
                                 >
@@ -337,21 +342,21 @@ function SlidersContent() {
                                 </button>
                             </div>
                         );
-                    }}
+                    } }
                 />
-            )}
+            ) }
 
             <GlassModal
-                title={editId ? "Sliderni Tahrirlash" : "Create Slider"}
-                open={isOpen}
-                onClose={() => setIsOpen(false)}
+                title={ editId ? "Sliderni Tahrirlash" : "Create Slider" }
+                open={ isOpen }
+                onClose={ () => setIsOpen(false) }
             >
-                <form className="space-y-4 w-full pb-4" onSubmit={handleSubmitForm}>
+                <form className="space-y-4 w-full pb-4" onSubmit={ handleSubmitForm }>
                     <GlassInput
                         label="Yo'naltirish havolasi (Link)"
                         placeholder="https://example.com/category/..."
-                        value={link}
-                        onChange={(e) => setLink(e.target.value)}
+                        value={ link }
+                        onChange={ (e) => setLink(e.target.value) }
                         required
                     />
 
@@ -369,29 +374,29 @@ function SlidersContent() {
                                 type="file"
                                 className="hidden"
                                 accept="image/*"
-                                onChange={(e) => {
+                                onChange={ (e) => {
                                     if (e.target.files && e.target.files[0]) {
                                         const file = e.target.files[0];
                                         setImageFile(file);
                                         setImagePreview(URL.createObjectURL(file));
                                     }
-                                }}
+                                } }
                             />
                         </label>
                     </div>
 
-                    {imagePreview && (
+                    { imagePreview && (
                         <div className="space-y-1.5">
                             <label className="text-xs text-neutral-400 font-medium">Tanlangan rasm ko'rinishi</label>
                             <div className="w-full h-32 rounded-xl overflow-hidden border border-white/10 bg-black/20 flex items-center justify-center">
-                                <img src={imagePreview} alt="Preview" className="w-full h-full object-cover" />
+                                <img src={ imagePreview } alt="Preview" className="w-full h-full object-cover" />
                             </div>
                         </div>
-                    )}
+                    ) }
 
                     <div className="flex items-center justify-end gap-3 pt-4">
                         <button
-                            onClick={() => setIsOpen(false)}
+                            onClick={ () => setIsOpen(false) }
                             type="button"
                             className="px-4 py-2.5 rounded-xl text-sm font-medium text-zinc-400 hover:text-white hover:bg-white/5 transition-all"
                         >
@@ -401,30 +406,30 @@ function SlidersContent() {
                             type="submit"
                             className="px-5 py-2.5 rounded-xl text-sm font-medium bg-sky-500 text-white hover:bg-sky-600 transition-all shadow-lg shadow-sky-500/20"
                         >
-                            {editId ? "Yangilash" : "Saqlash"}
+                            { editId ? "Yangilash" : "Saqlash" }
                         </GlassButton>
                     </div>
                 </form>
             </GlassModal>
 
-            <GlassModal title="Delete slider" open={!!deleteModal} onClose={() => setDeleteModal(null)}>
+            <GlassModal title="Delete slider" open={ !!deleteModal } onClose={ () => setDeleteModal(null) }>
                 <div className="space-y-4">
                     <p className="text-sm text-neutral-400">Haqiqatan ham bu sliderni o'chirib yubormoqchimisiz?</p>
 
                     <div className="flex items-center justify-end gap-3 pt-6">
                         <button
-                            onClick={() => setDeleteModal(null)}
+                            onClick={ () => setDeleteModal(null) }
                             className="px-4 py-2.5 rounded-xl text-sm font-medium text-zinc-400 hover:text-white hover:bg-white/5 transition-colors"
                         >
                             Cancel
                         </button>
                         <button
-                            onClick={() => {
+                            onClick={ () => {
                                 if (deleteModal) {
                                     handleDeleteSlider(deleteModal);
                                     setDeleteModal(null);
                                 }
-                            }}
+                            } }
                             className="px-5 py-2.5 rounded-xl text-sm font-medium bg-red-600 text-white hover:bg-red-500 transition-colors shadow-lg shadow-red-500/20"
                         >
                             Delete
@@ -438,7 +443,7 @@ function SlidersContent() {
 
 export default function SlidersPage() {
     return (
-        <Suspense fallback={<div className="p-8 text-center text-white">Yuklanmoqda...</div>}>
+        <Suspense fallback={ <div className="p-8 text-center text-white">Yuklanmoqda...</div> }>
             <SlidersContent />
         </Suspense>
     );
