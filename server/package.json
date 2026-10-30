@@ -6,6 +6,7 @@
   "private": true,
   "main": "api/vercel.ts",
   "license": "UNLICENSED",
+  "type": "module",
   "scripts": {
     "build": "prisma generate && node build.js",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",

@@ -6,12 +6,10 @@ async function build() {
             entryPoints: ['src/main.ts'],
             bundle: true,
             platform: 'node',
+            format: 'esm',
             target: 'node20',
             outfile: 'dist/main.js',
             sourcemap: true,
-            banner: {
-                js: "import { createRequire } from 'module'; const require = createRequire(import.meta.url);",
-            },
             external: [
                 '@prisma/client',
                 '.prisma/client',
@@ -25,7 +23,7 @@ async function build() {
             loader: { '.ts': 'ts' },
             logLevel: 'info',
         });
-        console.log('⚡ NestJS successfully bundled with Esbuild!');
+        console.log('⚡ NestJS successfully bundled with Esbuild as ESM!');
     } catch (error) {
         console.error('Build failed:', error);
         process.exit(1);
