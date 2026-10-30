@@ -9,6 +9,9 @@ async function build() {
             target: 'node20',
             outfile: 'dist/main.js',
             sourcemap: true,
+            banner: {
+                js: "import { createRequire } from 'module'; const require = createRequire(import.meta.url);",
+            },
             external: [
                 '@prisma/client',
                 '.prisma/client',
