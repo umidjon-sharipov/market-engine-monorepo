@@ -5,7 +5,6 @@ import { ServeStaticModule } from '@nestjs/serve-static';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { join } from 'path';
 import * as fs from 'fs';
-import { DatabaseModule } from './database/database.module';
 import { UsersModule } from './users/users.module';
 import { MarketsModule } from './markets/markets.module';
 import { ProductsModule } from './products/products.module';
@@ -58,7 +57,6 @@ const getPublicPath = () => {
     ThrottlerModule.forRoot({
       throttlers: [{ ttl: 60_000, limit: 100 }],
     }),
-    DatabaseModule,
     UsersModule,
     MarketsModule,
     ProductsModule,
