@@ -30,19 +30,29 @@ async function bootstrap() {
     //     }
     // }
 
+    // app.enableCors({
+    //     // origin: (origin, callback) => {
+    //     //     if (!origin || allowedOrigins.includes(origin)) {
+    //     //         callback(null, true);
+    //     //     } else {
+    //     //         callback(new Error('CORS bo\'yicha kirishga ruxsat berilmadi'));
+    //     //     }
+    //     // },
+    //     origin: true,
+    //     credentials: true,
+    //     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    //     allowedHeaders:
+    //         'Content-Type, Authorization, Accept, X-Requested-With, marketid, token, x-custom-header, Range',
+    // });
+
     app.enableCors({
-        // origin: (origin, callback) => {
-        //     if (!origin || allowedOrigins.includes(origin)) {
-        //         callback(null, true);
-        //     } else {
-        //         callback(new Error('CORS bo\'yicha kirishga ruxsat berilmadi'));
-        //     }
-        // },
-        origin: true,
+        origin: (origin, callback) => {
+            callback(null, true);
+        },
         credentials: true,
         methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-        allowedHeaders:
-            'Content-Type, Authorization, Accept, X-Requested-With, marketid, token, x-custom-header, Range',
+        allowedHeaders: '*',
+        exposedHeaders: '*',
     });
 
     app.use(
