@@ -35,48 +35,25 @@ import toggleTheme from "./toggleTheme";
 import { cn } from "@/lib/utils/cn";
 
 
-type ConsoleEntity = "Product" | "Slider" | "User" | "Worker";
-type ConsoleRecord = { id: string;[key: string]: unknown };
-type ConsoleField = { type: "string" | "number" | "boolean"; required?: boolean; default?: unknown };
+const MCL_EXAMPLES = `MCL/1;
 
-const CONSOLE_SCHEMA: Record<ConsoleEntity, Record<string, ConsoleField>> = {
-    Product: {
-        title: { type: "string", required: true },
-        categoryPath: { type: "string", required: true },
-        price: { type: "number", required: true, default: 0 },
-        description: { type: "string", default: "" },
-        isActive: { type: "boolean", default: true },
-        createdAt: { type: "string", default: new Date().toISOString().slice(0, 19).replace('T', ' ') }
-    },
-    Slider: {
-        title: { type: "string", required: true },
-        imageUrl: { type: "string", required: true },
-        link: { type: "string", default: "" },
-        isActive: { type: "boolean", default: true },
-    },
-    User: {
-        name: { type: "string", required: true },
-        email: { type: "string", required: true },
-        status: { type: "string", default: "active" },
-    },
-    Worker: {
-        name: { type: "string", required: true },
-        role: { type: "string", required: true },
-        email: { type: "string", default: "" },
-        isActive: { type: "boolean", default: true },
-    },
+READ Product FIELDS [id,title,price,quantity] LIMIT 20;
+READ Product WHERE title CONTAINS "mouse" FIELDS [id,title,price,options] LIMIT 10;
+COUNT Product WHERE quantity LTE 5;
+
+CREATE Product DATA {
+  "title": "Wireless Mouse",
+  "price": 29.99,
+  "uom": "PCS",
+  "description": [{ "language": "uz", "text": "Simsiz sichqoncha" }],
+  "options": [{
+    "title": "Color",
+    "items": [{ "key": "Black", "value": 0 }, { "key": "White", "value": 2 }]
+  }]
 };
 
-const CONSOLE_EXAMPLES = `// Local-only ORM console — scripts never leave this browser
-list Product
-create Product { title: "Wireless Mouse", categoryPath: "Tech/Accessories", price: 29.99 }
-find Product where title = "Wireless Mouse"
-update Product where id = "rec_..." set price = 24.99
-delete Product where id = "rec_..."
-
-# Supported entities: Product, Slider, User, Worker
-# Commands: list, find, create, update, delete
-# Use Ctrl/⌘ + Enter to run a multi-line script.`;
+// UPDATE Product WHERE id = "UUID" DATA { "price": 24.99 };
+// DELETE Product WHERE id = "UUID" CONFIRM "UUID";`;
 
 export default function LayoutWrapper({ children }: { children: React.ReactNode }) {
     const containerRef = useRef<HTMLDivElement | null>(null);
@@ -89,10 +66,8 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
 
     const inputRef = useRef<HTMLTextAreaElement | null>(null)
     const [consoleValue, setConsoleValue] = useState("")
-    const [consoleData, setConsoleData] = useState<Record<ConsoleEntity, ConsoleRecord[]>>({
-        Product: [], Slider: [], User: [], Worker: [],
-    })
     const [consoleOutput, setConsoleOutput] = useState<string[]>([])
+    const [consoleBusy, setConsoleBusy] = useState(false)
 
     useEffect(() => {
         const handleKeyDown = (event: KeyboardEvent) => {
@@ -110,106 +85,42 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
     const router = useRouter()
     const { switchAccount, removeAccount } = useTokenStore(state => state)
 
-    const runConsoleScript = (source: string) => {
-        const rawLines = source.split(/\r?\n/).map(line => line.trim()).filter(line => line && !line.startsWith("//") && !line.startsWith("#"));
-        const lines: string[] = [];
-        let statement = "", braceDepth = 0;
-        for (const rawLine of rawLines) {
-            statement += (statement ? " " : "") + rawLine;
-            braceDepth += (rawLine.match(/\{/g) || []).length - (rawLine.match(/\}/g) || []).length;
-            if (braceDepth <= 0) { lines.push(statement); statement = ""; braceDepth = 0; }
+    const runConsoleScript = async (source: string) => {
+        if (!source.trim() || consoleBusy) return;
+        if (!token || !market) {
+            notify.show("AI terminal uchun token yoki marketId topilmadi", "error", dark ? "dark" : "light");
+            return;
         }
-        if (statement) lines.push(statement);
-        let nextData = { Product: [...consoleData.Product], Slider: [...consoleData.Slider], User: [...consoleData.User], Worker: [...consoleData.Worker] };
-        const logs: string[] = [];
-        const parseValues = (raw: string): Record<string, unknown> => {
-            const out: Record<string, unknown> = {};
-            const re = /([A-Za-z_$][\w$]*)\s*:\s*("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|true|false|null|-?\d+(?:\.\d+)?)/g;
-            let m: RegExpExecArray | null;
-            while ((m = re.exec(raw))) {
-                const v = m[2];
-                out[m[1]] = v.startsWith('"') ? JSON.parse(v) : v.startsWith("'") ? v.slice(1, -1) : v === "true" ? true : v === "false" ? false : v === "null" ? null : Number(v);
+
+        setConsoleBusy(true);
+        try {
+            const apiBase = API_URL.replace(/\/+$/, '');
+            const response = await fetch(`${apiBase}/ai/execute`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${token}`,
+                },
+                body: JSON.stringify({ marketId: market, script: source }),
+            });
+            const payload: { results?: unknown[]; message?: string; error?: string } = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(payload.message || payload.error || `AI backend xatosi (${response.status})`);
             }
-            return out;
-        };
-        const matches = (record: ConsoleRecord, clause: string) => {
-            const m = clause.match(/^\s*([\w$]+)\s*=\s*("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|-?\d+(?:\.\d+)?|true|false)\s*$/);
-            if (!m) return false;
-            let v: unknown = m[2];
-            if (typeof v === "string" && (v.startsWith('"') || v.startsWith("'"))) v = v.slice(1, -1);
-            else if (v === "true") v = true;
-            else if (v === "false") v = false;
-            else if (!Number.isNaN(Number(v))) v = Number(v);
-            return String(record[m[1]]) === String(v);
-        };
-        for (const line of lines) {
-            try {
-                const list = line.match(/^(?:list|findAll)\s+(Product|Slider|User|Worker)$/i);
-                const find = line.match(/^find\s+(Product|Slider|User|Worker)\s+where\s+(.+)$/i);
-                const create = line.match(/^create\s+(Product|Slider|User|Worker)\s*\{([\s\S]*)\}\s*;?$/i);
-                const update = line.match(/^update\s+(Product|Slider|User|Worker)\s+where\s+(.+?)\s+set\s+([\s\S]+)$/i);
-                const del = line.match(/^delete\s+(Product|Slider|User|Worker)\s+where\s+(.+)$/i);
-                if (list || find) {
-                    const entity = (list?.[1] || find?.[1]) as ConsoleEntity;
-                    const rows = find ? nextData[entity].filter(r => matches(r, find[2])) : nextData[entity];
-                    logs.unshift(`${entity}: ${rows.length} ta yozuv — ${JSON.stringify(rows)}`);
-                    notify.show(`${entity}: ${rows.length} ta yozuv topildi`, "success", dark ? "dark" : "light");
-                    continue;
-                }
-                if (create) {
-                    const entity = create[1] as ConsoleEntity, values = parseValues(create[2]), schema = CONSOLE_SCHEMA[entity];
-                    const unknown = Object.keys(values).filter(k => !(k in schema));
-                    if (unknown.length) throw new Error(`Schema'da yo'q field: ${unknown.join(", ")}`);
-                    const record: ConsoleRecord = { id: `rec_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}` };
-                    for (const [field, def] of Object.entries(schema)) {
-                        if (field in values) {
-                            if (values[field] !== null && typeof values[field] !== def.type) throw new Error(`${field} ${def.type} bo'lishi kerak`);
-                            record[field] = values[field];
-                        } else if ("default" in def) record[field] = def.default;
-                        else if (def.required) throw new Error(`Majburiy field yetishmayapti: ${field}`);
-                    }
-                    nextData[entity] = [...nextData[entity], record];
-                    const summary = Object.entries(record).filter(([k]) => k !== "id").map(([k, v]) => `${k}: ${String(v)}`).join(", ");
-                    logs.unshift(`✓ ${entity} yaratildi — ${JSON.stringify(record)}`);
-                    notify.show(`${entity} yaratildi | ${summary}`, "success", dark ? "dark" : "light");
-                    continue;
-                }
-                if (update) {
-                    const entity = update[1] as ConsoleEntity, values = parseValues(update[3]), schema = CONSOLE_SCHEMA[entity];
-                    const unknown = Object.keys(values).filter(k => !(k in schema));
-                    if (unknown.length) throw new Error(`Schema'da yo'q field: ${unknown.join(", ")}`);
-                    let changed = 0;
-                    nextData[entity] = nextData[entity].map(record => {
-                        if (!matches(record, update[2])) return record;
-                        const updated = { ...record };
-                        for (const [key, value] of Object.entries(values)) {
-                            if (value !== null && typeof value !== schema[key].type) throw new Error(`${key} ${schema[key].type} bo'lishi kerak`);
-                            updated[key] = value;
-                        }
-                        changed++; return updated;
-                    });
-                    logs.unshift(`✓ ${entity} yangilandi — ${changed} ta yozuv`);
-                    notify.show(`${entity} yangilandi: ${changed} ta yozuv`, changed ? "success" : "error", dark ? "dark" : "light");
-                    continue;
-                }
-                if (del) {
-                    const entity = del[1] as ConsoleEntity, before = nextData[entity].length;
-                    nextData[entity] = nextData[entity].filter(record => !matches(record, del[2]));
-                    const count = before - nextData[entity].length;
-                    logs.unshift(`✓ ${entity} o'chirildi — ${count} ta yozuv`);
-                    notify.show(`${entity}: ${count} ta yozuv o'chirildi`, count ? "success" : "error", dark ? "dark" : "light");
-                    continue;
-                }
-                if (/drop\s+(?:field|column|schema)|alter\s+schema/i.test(line)) throw new Error("Schema terminaldan o'zgartirilmaydi.");
-                throw new Error(`Buyruq tushunilmadi: ${line}`);
-            } catch (err) {
-                const message = err instanceof Error ? err.message : "Noma'lum xatolik";
-                logs.unshift(`✕ ${message}`);
-                notify.show(message, "error", dark ? "dark" : "light");
-            }
+
+            const results: unknown[] = Array.isArray(payload.results) ? payload.results : [];
+            const timestamp = new Date().toLocaleTimeString();
+            const lines = results.map((item: unknown, index: number) => `#${index + 1}\n${JSON.stringify(item, null, 2)}`);
+            setConsoleOutput(prev => [`✓ MCL/1 · ${results.length} ta natija · ${timestamp}`, ...lines.reverse(), ...prev].slice(0, 24));
+            setConsoleValue("");
+            notify.show(`MCL/1 muvaffaqiyatli bajarildi: ${results.length} ta natija`, "success", dark ? "dark" : "light");
+        } catch (error) {
+            const message = error instanceof Error ? error.message : "MCL bajarishda noma'lum xatolik";
+            setConsoleOutput(prev => [`✕ ${message}`, ...prev].slice(0, 30));
+            notify.show(message, "error", dark ? "dark" : "light");
+        } finally {
+            setConsoleBusy(false);
         }
-        setConsoleData(nextData);
-        setConsoleOutput(prev => [...logs, ...prev].slice(0, 30));
     };
 
     const handleKeyDownInput = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -217,14 +128,14 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
         event.preventDefault();
         const value = consoleValue.trim();
         if (!value) return;
-        if (isFullScreenConsole) { runConsoleScript(value); setConsoleValue(""); return; }
+        if (isFullScreenConsole) { void runConsoleScript(value); return; }
         if (value === "@Back") router.back();
         else if (value === "@Next") router.forward();
         else if (value === "@Reload" || value === "@Refresh") router.refresh();
         else if (value === "@Home") router.push(`/${locale}`);
         else if (value === "@Theme") toggleTheme();
         else if (value === "@Clear") { setConsoleValue(""); return; }
-        else if (value === "@Help") notify.show(`Mavjud: @Back, @Next, @Home, @Reload, @Theme, @Clear. ORM uchun konsolni kengaytiring.`, "success", mode === 'dark' ? 'dark' : 'light');
+        else if (value === "@Help") notify.show(`Mavjud: @Back, @Next, @Home, @Reload, @Theme, @Clear. MCL terminalini kengaytiring.`, "success", mode === 'dark' ? 'dark' : 'light');
         else if (value === "@Logout") { removeAccount(); router.push(useTokenStore.getState().accounts.length > 0 ? `/${locale}` : `/${locale}/auth`); }
         else if (value === "@Auth") router.push(`/${locale}/auth`);
         else if (value.startsWith("@Lang ")) {
@@ -422,6 +333,10 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
         { label: 'Discounts', href: '/discounts' }
     ]
 
+    const sliders = [
+        { label: 'Sliders', href: '/sliders' }
+    ]
+
     const users = [
         { label: 'All Users', href: '/users' },
         ...([{ label: 'Blocked Users', href: '/blocked-users' }]),
@@ -506,6 +421,9 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
                     </div> }
                     { discounts.length > 0 && <div className={ `backdrop-blur-2xl rounded-3xl ${dark ? "bg-neutral-900/40 border-white/10 text-white shadow-xl shadow-black/20" : "bg-white/40 border-white/60 text-neutral-900 shadow-xl shadow-black/5"}` }>
                         <GlassMenu title="Discounts" items={ discounts } defaultOpen={ true } />
+                    </div> }
+                    { sliders.length > 0 && <div className={ `backdrop-blur-2xl rounded-3xl ${dark ? "bg-neutral-900/40 border-white/10 text-white shadow-xl shadow-black/20" : "bg-white/40 border-white/60 text-neutral-900 shadow-xl shadow-black/5"}` }>
+                        <GlassMenu title="Sliders" items={ sliders } defaultOpen={ true } />
                     </div> }
                 </div>
             );
@@ -913,29 +831,36 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
                                     <AnimatePresence>{ isFullScreenConsole && <motion.button key="console-backdrop" initial={ { opacity: 0 } } animate={ { opacity: 1 } } exit={ { opacity: 0 } } onClick={ () => setIsFullScreenConsole(false) } className="fixed inset-0 -z-10 bg-black/65 backdrop-blur-md" aria-label="Konsolni yopish" /> }</AnimatePresence>
                                     <motion.div layout className={ cn("relative flex min-h-10 flex-col overflow-hidden border shadow-2xl backdrop-blur-3xl", isFullScreenConsole ? "h-full rounded-3xl" : "rounded-2xl", dark ? "border-sky-400/20 bg-[#090d16]/95 text-slate-100 shadow-sky-950/40" : "border-sky-300/70 bg-white/95 text-slate-900 shadow-sky-900/10") }>
                                         <div className={ cn("flex items-center gap-2 border-b px-3 py-2", dark ? "border-white/10" : "border-black/5") }>
-                                            <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_9px_rgba(52,211,153,.8)]" /><span className="font-mono text-[11px] font-semibold tracking-wide text-sky-400">{ pathname.split(market)[1] || 'LOCAL ORM' }</span>
-                                            <span className="ml-auto font-mono text-[10px] opacity-50">{ Object.values(consoleData).reduce<number>((sum, rows) => sum + (rows as ConsoleRecord[]).length, 0) } records</span>
+                                            <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_9px_rgba(52,211,153,.8)]" /><span className="font-mono text-[11px] font-semibold tracking-wide text-sky-400">MCL / MARKET AI</span>
+                                            <span className="ml-auto font-mono text-[10px] opacity-50">{ consoleBusy ? 'RUNNING' : 'API READY' }</span>
                                             <button type="button" onClick={ () => setIsFullScreenConsole(prev => !prev) } className={ cn("flex h-7 w-7 items-center justify-center rounded-lg transition-all hover:scale-105 active:scale-95", dark ? "text-slate-300 hover:bg-white/10 hover:text-white" : "text-slate-600 hover:bg-black/5 hover:text-slate-950") } aria-label={ isFullScreenConsole ? "Konsolni kichraytirish" : "Konsolni kengaytirish" } title={ isFullScreenConsole ? "Kichraytirish" : "Kengaytirish" }>{ isFullScreenConsole ? <X className="h-4 w-4" /> : <Maximize className="h-4 w-4" /> }</button>
                                         </div>
                                         { isFullScreenConsole ? (
                                             <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-y-auto p-3 sm:p-4 lg:grid-cols-[minmax(0,1fr)_minmax(240px,0.42fr)]">
                                                 <div className="flex min-h-[45vh] flex-col overflow-hidden rounded-2xl border border-sky-400/15 bg-black/20">
-                                                    <div className="flex items-center justify-between border-b border-white/10 px-3 py-2"><span className="font-mono text-xs text-sky-300">script.console</span><span className="font-mono text-[10px] text-slate-500">Ctrl/⌘ + Enter to run</span></div>
+                                                    <div className="flex items-center justify-between border-b border-white/10 px-3 py-2"><span className="flex items-center gap-2 font-mono text-xs font-semibold tracking-wide text-sky-300"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> script.console <span className="rounded border border-sky-400/20 bg-sky-400/10 px-1.5 py-0.5 text-[9px] text-sky-200/70">MCL/1</span></span><span className="font-mono text-[10px] text-slate-500">JWT protected · Ctrl/⌘ + Enter</span></div>
                                                     <div className="relative flex-1">
-                                                        <pre aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-auto whitespace-pre-wrap break-words p-4 font-mono text-[13px] leading-6 text-slate-400">{ consoleValue.split(/(\b(?:create|list|find|update|delete|where|set|Product|Slider|User|Worker|true|false)\b|"[^"]*"|'[^']*'|-?\d+(?:\.\d+)?|\/\/.*|#.*)/g).map((part, index) => { const keyword = /^(create|list|find|update|delete|where|set|Product|Slider|User|Worker|true|false)$/.test(part); const string = /^("|').*\1$/.test(part), comment = /^(\/\/|#)/.test(part), number = /^-?\d+(?:\.\d+)?$/.test(part); return <span key={ index } className={ keyword ? "text-sky-300" : string ? "text-emerald-300" : comment ? "text-slate-600 italic" : number ? "text-amber-300" : "" }>{ part }</span>; }) }</pre>
-                                                        <textarea ref={ inputRef } value={ consoleValue } onChange={ event => setConsoleValue(event.target.value) } onKeyDown={ handleKeyDownInput } spellCheck={ false } autoCapitalize="off" autoCorrect="off" aria-label="ORM script editor" placeholder={ '// Local-only ORM console\nlist Product\ncreate Product { title: "Wireless Mouse", categoryPath: "Tech/Accessories", price: 29.99 }\nfind Product where title = "Wireless Mouse"\nupdate Product where id = "rec_..." set price = 24.99\ndelete Product where id = "rec_..."\n\nCtrl/⌘ + Enter to run' } className="absolute inset-0 h-full w-full resize-none overflow-auto bg-transparent p-4 font-mono text-[13px] leading-6 text-transparent caret-sky-300 outline-none placeholder:text-slate-600 selection:bg-sky-500/30" />
+                                                        <pre aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-auto whitespace-pre-wrap break-words p-4 font-mono text-[13px] leading-6 text-slate-400">{ consoleValue.split(/(\b(?:READ|COUNT|CREATE|UPDATE|DELETE|WHERE|FIELDS|LIMIT|AFTER|CONFIRM|DATA|AND|Product|Slider|Discount|Category|Warehouse|WarehouseInventory|StockMovement|WarehouseTask|Worker|Vacancy|Comment|true|false|null)\b|"[^"]*"|'[^']*'|-?\d+(?:\.\d+)?|\/\/.*|#.*)/g).map((part, index) => { const keyword = /^(READ|COUNT|CREATE|UPDATE|DELETE|WHERE|FIELDS|LIMIT|AFTER|CONFIRM|DATA|AND|Product|Slider|Discount|Category|Warehouse|WarehouseInventory|StockMovement|WarehouseTask|Worker|Vacancy|Comment|true|false|null)$/.test(part); const string = /^".*"$/.test(part), comment = /^(\/\/|#)/.test(part), number = /^-?\d+(?:\.\d+)?$/.test(part); return <span key={ index } className={ keyword ? "text-sky-300" : string ? "text-emerald-300" : comment ? "text-slate-600 italic" : number ? "text-amber-300" : "" }>{ part }</span>; }) }</pre>
+                                                        <textarea ref={ inputRef } value={ consoleValue } onChange={ event => setConsoleValue(event.target.value) } onKeyDown={ handleKeyDownInput } spellCheck={ false } autoCapitalize="off" autoCorrect="off" aria-label="ORM script editor" placeholder={ MCL_EXAMPLES } className="absolute inset-0 h-full w-full resize-none overflow-auto bg-transparent p-4 font-mono text-[13px] leading-6 text-transparent caret-sky-300 outline-none placeholder:text-slate-600 selection:bg-sky-500/30" />
                                                     </div>
-                                                    <div className="flex items-center justify-between gap-2 border-t border-white/10 px-3 py-2"><span className="text-[10px] text-slate-500">Frontend memory only · API ga yuborilmaydi</span><button onClick={ () => { runConsoleScript(consoleValue); setConsoleValue(""); } } className="rounded-xl bg-sky-500 px-4 py-2 font-mono text-xs font-bold text-white shadow-lg shadow-sky-950/30 transition hover:bg-sky-400 active:scale-95">▶ Run script</button></div>
+                                                    <div className="flex items-center justify-between gap-2 border-t border-white/10 px-3 py-2"><span className="text-[10px] text-slate-500">JWT · market scope · permissions backendda tekshiriladi</span><button disabled={ consoleBusy || !consoleValue.trim() } onClick={ () => { void runConsoleScript(consoleValue); } } className="rounded-xl bg-sky-500 px-4 py-2 font-mono text-xs font-bold text-white shadow-lg shadow-sky-950/30 transition hover:bg-sky-400 active:scale-95 disabled:opacity-50">{ consoleBusy ? 'Running…' : '▶ Run MCL' }</button></div>
                                                 </div>
                                                 <div className="flex min-h-[260px] flex-col gap-3">
                                                     <section className={ cn("rounded-2xl border p-3", dark ? "border-white/10 bg-white/[0.03]" : "border-black/10 bg-black/[0.02]") }>
-                                                        <div className="mb-2 flex items-center justify-between"><h3 className="text-xs font-bold uppercase tracking-wider text-sky-400">Schema</h3><span className="text-[10px] opacity-50">read-only contract</span></div>
-                                                        <div className="space-y-3">{ (Object.entries(CONSOLE_SCHEMA) as [ConsoleEntity, Record<string, ConsoleField>][]).map(([entity, fields]) => <div key={ entity }><div className="mb-1 font-mono text-xs font-bold">{ entity }</div><div className="flex flex-wrap gap-1">{ Object.entries(fields).map(([field, definition]) => <span key={ field } className={ cn("rounded-md border px-1.5 py-1 font-mono text-[10px]", dark ? "border-white/10 bg-white/5 text-slate-300" : "border-black/10 bg-white text-slate-700") }>{ field }<span className="text-sky-400">: { definition.type }</span>{ definition.required ? <span className="text-rose-400"> *</span> : null }{ definition.default !== undefined ? <span className="text-emerald-500"> = { String(definition.default) }</span> : null }</span>) }</div></div>) }</div>
-                                                        <p className="mt-3 text-[10px] leading-relaxed opacity-55">Schema'ni fayldagi CONSOLE_SCHEMA orqali yangilang. Terminal faqat schema bilan ruxsat etilgan field'larga amal qiladi.</p>
+                                                        <div className="mb-2 flex items-center justify-between"><h3 className="text-xs font-bold uppercase tracking-wider text-sky-400">MCL / 1</h3><span className="text-[10px] opacity-50">server-side parser</span></div>
+                                                        <div className="space-y-2 font-mono text-[10px] leading-relaxed opacity-80">
+                                                            <p>READ Product FIELDS [id,title,price] LIMIT 20;</p>
+                                                            <p>READ Product WHERE title CONTAINS "mouse" LIMIT 10;</p>
+                                                            <p>COUNT Product WHERE quantity LTE 5;</p>
+                                                            <p>CREATE Product DATA {`{ JSON }`};</p>
+                                                            <p>UPDATE Product WHERE id = "UUID" DATA {`{ JSON }`};</p>
+                                                            <p>DELETE Product WHERE id = "UUID" CONFIRM "UUID";</p>
+                                                        </div>
+                                                        <p className="mt-3 text-[10px] leading-relaxed opacity-55">JSONB va Product.options ichidagi nested items qo‘llanadi. LIMIT maksimal 50; barcha buyruqlar market scope va permission bilan tekshiriladi.</p>
                                                     </section>
                                                     <section className={ cn("min-h-0 flex-1 overflow-hidden rounded-2xl border p-3", dark ? "border-white/10 bg-black/20" : "border-black/10 bg-white/60") }>
                                                         <div className="mb-2 flex items-center justify-between"><h3 className="text-xs font-bold uppercase tracking-wider text-sky-400">Output</h3><button onClick={ () => setConsoleOutput([]) } className="text-[10px] opacity-50 hover:opacity-100">Clear</button></div>
-                                                        <div className="max-h-56 space-y-2 overflow-auto font-mono text-[10px] leading-relaxed">{ consoleOutput.length ? consoleOutput.map((line, index) => <div key={ `${index}-${line}` } className={ line.startsWith("✕") ? "text-rose-400" : "text-emerald-300" }>{ line }</div>) : <p className="opacity-40">Natijalar shu yerda ko'rinadi…</p> }</div>
+                                                        <div className="max-h-56 space-y-2 overflow-auto font-mono text-[10px] leading-relaxed">{ consoleOutput.length ? consoleOutput.map((line, index) => <pre key={ `${index}-${line}` } className={ cn("whitespace-pre-wrap break-words", line.startsWith("✕") ? "text-rose-400" : line.startsWith("✓") ? "text-sky-300" : "text-emerald-300") }>{ line }</pre>) : <p className="opacity-40">Natijalar shu yerda ko'rinadi…</p> }</div>
                                                     </section>
                                                 </div>
                                             </div>
