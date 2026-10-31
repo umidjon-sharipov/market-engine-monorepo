@@ -224,13 +224,13 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
         else if (value === "@Home") router.push(`/${locale}`);
         else if (value === "@Theme") toggleTheme();
         else if (value === "@Clear") { setConsoleValue(""); return; }
-        else if (value === "@Help") notify.show(`Mavjud: @Back, @Next, @Home, @Reload, @Theme, @Clear. ORM uchun konsolni kengaytiring.`, "success", mode);
+        else if (value === "@Help") notify.show(`Mavjud: @Back, @Next, @Home, @Reload, @Theme, @Clear. ORM uchun konsolni kengaytiring.`, "success", mode === 'dark' ? 'dark' : 'light');
         else if (value === "@Logout") { removeAccount(); router.push(useTokenStore.getState().accounts.length > 0 ? `/${locale}` : `/${locale}/auth`); }
         else if (value === "@Auth") router.push(`/${locale}/auth`);
         else if (value.startsWith("@Lang ")) {
             const langCode = value.split(" ")[1];
             if (["uz", "ru", "en"].includes(langCode)) router.push(`/${langCode}/${market}/dashboard`);
-            else notify.show("Til kodi: @Lang uz", "error", mode);
+            else notify.show("Til kodi: @Lang uz", "error", mode === 'dark' ? 'dark' : 'light');
         } else if (value === "@New") router.push(`${pathname}?create=true`);
         else window.location.href = `/${locale}/${market}/${value}`;
         setConsoleValue("");
