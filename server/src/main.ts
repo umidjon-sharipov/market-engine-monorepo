@@ -31,13 +31,14 @@ async function bootstrap() {
     // }
 
     app.enableCors({
-        origin: (origin, callback) => {
-            if (!origin || allowedOrigins.includes(origin)) {
-                callback(null, true);
-            } else {
-                callback(new Error('CORS bo\'yicha kirishga ruxsat berilmadi'));
-            }
-        },
+        // origin: (origin, callback) => {
+        //     if (!origin || allowedOrigins.includes(origin)) {
+        //         callback(null, true);
+        //     } else {
+        //         callback(new Error('CORS bo\'yicha kirishga ruxsat berilmadi'));
+        //     }
+        // },
+        origin: true,
         credentials: true,
         methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
         allowedHeaders:
