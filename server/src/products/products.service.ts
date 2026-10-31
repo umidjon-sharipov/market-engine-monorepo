@@ -272,18 +272,7 @@ export class ProductsService {
     ): Prisma.ProductOptionCreateWithoutProductInput[] {
         return options.map((option, optionIndex) => {
             const searchable = option.searchEnabled ?? false;
-            const searchKeys = searchable
-                ? [
-                    ...new Set(
-                        (option.searchKeys.length
-                            ? option.searchKeys
-                            : [option.title, ...option.items.map((item) => item.key)]
-                        )
-                            .map((key) => key.trim().toLocaleLowerCase())
-                            .filter(Boolean),
-                    ),
-                ]
-                : [];
+            const searchKeys = (option.searchKeys ?? []).map((key: any) => String(key));
 
             return {
                 title: option.title,
