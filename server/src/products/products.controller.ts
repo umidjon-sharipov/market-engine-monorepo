@@ -24,8 +24,8 @@ import {
     CreateProductDto,
     UpdateProductDto,
 } from './dto/create-product.dto';
-import { MarketAccessGuard } from 'src/auth/guards/market-access.guard';
-import { PrismaService } from 'src/prisma/prisma.service';
+import { MarketAccessGuard } from '../auth/guards/market-access.guard';
+import { PrismaService } from '../prisma/prisma.service';
 
 @Controller('products')
 export class ProductsController {

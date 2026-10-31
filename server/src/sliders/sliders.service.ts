@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { SliderRepository } from './slider.repository';
 import { CreateSliderDto } from './dto/create-slider.dto';
 import { UpdateSliderDto } from './dto/update-slider.dto';
-import { PrismaService } from 'src/prisma/prisma.service';
+import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class SlidersService {

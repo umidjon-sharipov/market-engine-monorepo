@@ -22,7 +22,7 @@ import { MarketAccessGuard } from '../auth/guards/market-access.guard';
 import { uploadImageToImgBB } from '../common/helpers/image-upload.helper';
 import { CreateMarketDto, UpdateMarketDto } from './dto/create-market.dto';
 import { MarketsService } from './markets.service';
-import { PrismaService } from 'src/prisma/prisma.service';
+import { PrismaService } from '../prisma/prisma.service';
 
 type AuthenticatedRequest = Request & { user: { email: string } };
 type UploadedImage = { buffer: Buffer; originalname: string };
