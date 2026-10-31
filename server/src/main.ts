@@ -11,12 +11,24 @@ async function bootstrap() {
 
     app.getHttpAdapter().getInstance().set('trust proxy', 1);
 
-    const allowedOrigins = process.env.ALLOW_ORIGINS
-        ? JSON.parse(process.env.ALLOW_ORIGINS)
-        : ['http://localhost:3000',
-            'http://localhost:3001',
-            'https://market-engine-monorepo.vercel.app',
-            'https://panel-market-engine-monorepo.vercel.app',];
+    let allowedOrigins = [
+        'http://localhost:3000',
+        'http://localhost:3001',
+        'https://market-engine-monorepo.vercel.app',
+        'https://panel-market-engine-monorepo.vercel.app',
+    ];
+
+    if (process.env.ALLOW_ORIGINS) {
+        try {
+            allowedOrigins = JSON.parse(process.env.ALLOW_ORIGINS);
+        } catch (e) {
+            allowedOrigins = process.env.ALLOW_ORIGINS
+                .replace(/[\[\]']/g, '')
+                .split(',')
+                .map((origin) => origin.trim())
+                .filter(Boolean);
+        }
+    }
 
     app.enableCors({
         origin: (origin, callback) => {
