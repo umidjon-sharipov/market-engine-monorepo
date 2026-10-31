@@ -18,17 +18,17 @@ async function bootstrap() {
         'https://panel-market-engine-monorepo.vercel.app',
     ];
 
-    if (process.env.ALLOW_ORIGINS) {
-        try {
-            allowedOrigins = JSON.parse(process.env.ALLOW_ORIGINS);
-        } catch (e) {
-            allowedOrigins = process.env.ALLOW_ORIGINS
-                .replace(/[\[\]']/g, '')
-                .split(',')
-                .map((origin) => origin.trim())
-                .filter(Boolean);
-        }
-    }
+    // if (process.env.ALLOW_ORIGINS) {
+    //     try {
+    //         allowedOrigins = JSON.parse(process.env.ALLOW_ORIGINS);
+    //     } catch (e) {
+    //         allowedOrigins = process.env.ALLOW_ORIGINS
+    //             .replace(/[\[\]']/g, '')
+    //             .split(',')
+    //             .map((origin) => origin.trim())
+    //             .filter(Boolean);
+    //     }
+    // }
 
     app.enableCors({
         origin: (origin, callback) => {
