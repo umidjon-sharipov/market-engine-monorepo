@@ -5,54 +5,22 @@ import * as express from 'express';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'path';
+import { getAllowedOrigins } from './common/helpers/allowed-origins.helper';
 
 async function bootstrap() {
     const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
     app.getHttpAdapter().getInstance().set('trust proxy', 1);
-
-    let allowedOrigins = [
-        'http://localhost:3000',
-        'http://localhost:3001',
-        'https://market-engine-monorepo.vercel.app',
-        'https://panel-market-engine-monorepo.vercel.app',
-    ];
-
-    // if (process.env.ALLOW_ORIGINS) {
-    //     try {
-    //         allowedOrigins = JSON.parse(process.env.ALLOW_ORIGINS);
-    //     } catch (e) {
-    //         allowedOrigins = process.env.ALLOW_ORIGINS
-    //             .replace(/[\[\]']/g, '')
-    //             .split(',')
-    //             .map((origin) => origin.trim())
-    //             .filter(Boolean);
-    //     }
-    // }
-
-    // app.enableCors({
-    //     // origin: (origin, callback) => {
-    //     //     if (!origin || allowedOrigins.includes(origin)) {
-    //     //         callback(null, true);
-    //     //     } else {
-    //     //         callback(new Error('CORS bo\'yicha kirishga ruxsat berilmadi'));
-    //     //     }
-    //     // },
-    //     origin: true,
-    //     credentials: true,
-    //     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-    //     allowedHeaders:
-    //         'Content-Type, Authorization, Accept, X-Requested-With, marketid, token, x-custom-header, Range',
-    // });
+    const allowedOrigins = getAllowedOrigins();
 
     app.enableCors({
         origin: (origin, callback) => {
-            callback(null, true);
+            callback(null, !origin || allowedOrigins.includes(origin));
         },
         credentials: true,
         methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-        allowedHeaders: '*',
-        exposedHeaders: '*',
+        allowedHeaders:
+            'Content-Type, Authorization, Accept, X-Requested-With, marketid, token, x-custom-header, Range',
     });
 
     app.use(
@@ -88,8 +56,8 @@ async function bootstrap() {
     app.use(express.json({ limit: '1mb' }));
     app.use(express.urlencoded({ limit: '1mb', extended: true }));
 
-    const port = process.env.PORT || 4000;
-    await app.listen(port);
+    const port = Number(process.env.PORT) || 4000;
+    await app.listen(port, '0.0.0.0');
     console.log(`Server is running on: http://localhost:${port}`);
 }
 bootstrap();

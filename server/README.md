@@ -61,6 +61,14 @@ $ yarn run test:cov
 
 When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
 
+### Deploying on Render
+
+- Set the service's **Root Directory** to `server`.
+- Use `yarn install --frozen-lockfile && yarn build` as the build command.
+- Use `yarn start:prod` as the start command.
+- Add the server's environment variables in Render's **Environment** settings. Render supplies `PORT`; do not commit `.env` files.
+- Set `ALLOW_ORIGINS` to a JSON array of frontend origins, for example `["https://store.example.com","https://admin.example.com"]`. Include only scheme and host, with no path. Comma-separated values are also accepted.
+
 If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
 
 ```bash
