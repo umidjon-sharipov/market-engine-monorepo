@@ -7,63 +7,66 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'path';
 
 async function bootstrap() {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+    const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
-  app.getHttpAdapter().getInstance().set('trust proxy', 1);
+    app.getHttpAdapter().getInstance().set('trust proxy', 1);
 
-  const allowedOrigins = process.env.ALLOW_ORIGINS
-    ? JSON.parse(process.env.ALLOW_ORIGINS)
-    : ['http://localhost:3000', 'http://localhost:3001'];
+    const allowedOrigins = process.env.ALLOW_ORIGINS
+        ? JSON.parse(process.env.ALLOW_ORIGINS)
+        : ['http://localhost:3000',
+            'http://localhost:3001',
+            'https://market-engine-monorepo.vercel.app',
+            'https://panel-market-engine-monorepo.vercel.app',];
 
-  app.enableCors({
-    origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error('CORS bo\'yicha kirishga ruxsat berilmadi'));
-      }
-    },
-    credentials: true,
-    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-    allowedHeaders:
-      'Content-Type, Authorization, Accept, X-Requested-With, marketid, token, x-custom-header, Range',
-  });
+    app.enableCors({
+        origin: (origin, callback) => {
+            if (!origin || allowedOrigins.includes(origin)) {
+                callback(null, true);
+            } else {
+                callback(new Error('CORS bo\'yicha kirishga ruxsat berilmadi'));
+            }
+        },
+        credentials: true,
+        methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+        allowedHeaders:
+            'Content-Type, Authorization, Accept, X-Requested-With, marketid, token, x-custom-header, Range',
+    });
 
-  app.use(
-    (
-      req: express.Request,
-      res: express.Response,
-      next: express.NextFunction,
-    ) => {
-      res.setHeader('X-DNS-Prefetch-Control', 'off');
-      res.setHeader('X-Frame-Options', 'SAMEORIGIN');
-      res.setHeader('Content-Security-Policy', "frame-ancestors 'self'");
-      res.setHeader('X-Content-Type-Options', 'nosniff');
-      res.setHeader('Referrer-Policy', 'no-referrer');
-      res.setHeader('X-XSS-Protection', '1; mode=block');
-      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-      res.setHeader('Cross-Origin-Opener-Policy', 'unsafe-none');
-      next();
-    },
-  );
+    app.use(
+        (
+            req: express.Request,
+            res: express.Response,
+            next: express.NextFunction,
+        ) => {
+            res.setHeader('X-DNS-Prefetch-Control', 'off');
+            res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+            res.setHeader('Content-Security-Policy', "frame-ancestors 'self'");
+            res.setHeader('X-Content-Type-Options', 'nosniff');
+            res.setHeader('Referrer-Policy', 'no-referrer');
+            res.setHeader('X-XSS-Protection', '1; mode=block');
+            res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+            res.setHeader('Cross-Origin-Opener-Policy', 'unsafe-none');
+            next();
+        },
+    );
 
-  app.useStaticAssets(join(__dirname, '..', 'public'));
+    app.useStaticAssets(join(__dirname, '..', 'public'));
 
-  app.useGlobalPipes(
-    new ValidationPipe({
-      transform: true,
-      whitelist: true,
-      forbidNonWhitelisted: false,
-      stopAtFirstError: false,
-    }),
-  );
-  app.useGlobalFilters(new HttpExceptionFilter());
+    app.useGlobalPipes(
+        new ValidationPipe({
+            transform: true,
+            whitelist: true,
+            forbidNonWhitelisted: false,
+            stopAtFirstError: false,
+        }),
+    );
+    app.useGlobalFilters(new HttpExceptionFilter());
 
-  app.use(express.json({ limit: '1mb' }));
-  app.use(express.urlencoded({ limit: '1mb', extended: true }));
+    app.use(express.json({ limit: '1mb' }));
+    app.use(express.urlencoded({ limit: '1mb', extended: true }));
 
-  const port = process.env.PORT || 4000;
-  await app.listen(port);
-  console.log(`Server is running on: http://localhost:${port}`);
+    const port = process.env.PORT || 4000;
+    await app.listen(port);
+    console.log(`Server is running on: http://localhost:${port}`);
 }
 bootstrap();
