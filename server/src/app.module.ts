@@ -29,6 +29,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { StockMovementsModule } from './stock-movements/stock-movements.module';
 import { PickPointsModule } from './pickpoints/pickpoints.module';
 import { WarehouseTasksModule } from './warehouse-tasks/warehouse-tasks.module';
+import { AIModule } from './ai/ai.module';
 
 const getPublicPath = () => {
   const paths = [
@@ -78,6 +79,7 @@ const getPublicPath = () => {
     StockMovementsModule,
     PickPointsModule,
     WarehouseTasksModule,
+    AIModule
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],
