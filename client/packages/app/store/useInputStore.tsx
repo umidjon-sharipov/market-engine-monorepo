@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
-import AsyncStorage from '@react-native-async-storage/async-storage'
+import { getAppStorage } from 'app/storage'
 
 interface inputTypes {
     input: string,
@@ -15,9 +15,7 @@ export const useInputStorage = create<inputTypes>()(
         }),
         {
             name: 'input-storage',
-            storage: createJSONStorage(() =>
-                AsyncStorage
-            ),
+            storage: createJSONStorage(getAppStorage),
         }
     )
 )

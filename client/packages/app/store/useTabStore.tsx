@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
-import AsyncStorage from '@react-native-async-storage/async-storage'
+import { getAppStorage } from 'app/storage'
 
 interface TabState {
     tab: number
@@ -15,9 +15,7 @@ export const useTabStore = create<TabState>()(
         }),
         {
             name: 'tab-storage',
-            storage: createJSONStorage(() =>
-                AsyncStorage
-            ),
+            storage: createJSONStorage(getAppStorage),
         }
     )
 )

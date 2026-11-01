@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Image, ActivityIndicator, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { useTokenStore } from 'app/store/useTokenStore';
 import { useUrlStore } from 'app/store/useUrlStore';
 import { fetchWithAuth } from 'app/features/app/auth/fetchWithAuth';
+import { pickProfileImage } from 'app/utils/pickProfileImage';
 
 interface Props {
     currentImage?: string;
@@ -59,30 +60,15 @@ export default function ProfileImageUpload({ currentImage, onImageUpdated, rende
 
     const handleMobilePickImage = async () => {
         try {
-            const ImagePicker = await import('expo-image-picker');
-
-            const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-            if (!permissionResult.granted) {
-                return;
-            }
-
-            const result = await ImagePicker.launchImageLibraryAsync({
-                mediaTypes: ImagePicker.MediaTypeOptions.Images,
-                allowsEditing: true,
-                aspect: [1, 1],
-                quality: 0.8,
-            });
-
-            if (result.canceled) return;
-
-            const asset = result.assets[0];
-            setImageUri(asset.uri);
+            const image = await pickProfileImage();
+            if (!image) return;
+            setImageUri(image.uri);
 
             const formData = new FormData();
             const fileData = {
-                uri: asset.uri,
+                uri: image.uri,
                 type: 'image/jpeg',
-                name: asset.fileName || 'profile.jpg',
+                name: image.fileName || 'profile.jpg',
             } as any;
 
             formData.append('image', fileData);

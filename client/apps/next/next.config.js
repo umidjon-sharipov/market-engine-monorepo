@@ -13,7 +13,6 @@ const withWebpack = {
       ...(config.resolve.alias || {}),
       'react-native': 'react-native-web',
       'react-native$': 'react-native-web',
-      'react-native-gesture-handler': 'react-native-gesture-handler',
       'react-native/Libraries/EventEmitter/RCTDeviceEventEmitter$':
         'react-native-web/dist/vendor/react-native/NativeEventEmitter/RCTDeviceEventEmitter',
       'react-native/Libraries/vendor/emitter/EventEmitter$':
@@ -41,8 +40,6 @@ const withTurpopack = {
   turbopack: {
     resolveAlias: {
       'react-native': 'react-native-web',
-      'expo-linking': 'react-native-web',
-      'react-native-gesture-handler': 'react-native-gesture-handler',
       'react-native/Libraries/EventEmitter/RCTDeviceEventEmitter$':
         'react-native-web/dist/vendor/react-native/NativeEventEmitter/RCTDeviceEventEmitter',
       'react-native/Libraries/vendor/emitter/EventEmitter$':
@@ -72,26 +69,21 @@ const withTurpopack = {
  */
 module.exports = {
   typescript: {
-    ignoreBuildErrors: true, 
+    ignoreBuildErrors: true,
   },
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
-  
+
   transpilePackages: [
+    'expo',
+    'expo-modules-core',
+    'expo-blur',
+    'expo-linear-gradient',
     'react-native',
     'react-native-web',
     'solito',
-    'react-native-reanimated',
     'moti',
-    'react-native-gesture-handler',
     'react-native-safe-area-context',
-    'expo-blur',
     'react-native-maps',
-    'expo-image',
-    'expo-modules-core',
-    'expo-linear-gradient',
-    'app'
+    'app',
   ],
 
   compiler: {

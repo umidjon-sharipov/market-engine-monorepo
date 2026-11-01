@@ -1,15 +1,5 @@
 import React from 'react';
-import { Platform } from 'react-native';
 import { SolitoImage } from 'solito/image';
-
-let ExpoImage: any = null;
-if (Platform.OS !== 'web') {
-    try {
-        ExpoImage = require('expo-image').Image;
-    } catch (e) {
-
-    }
-}
 
 interface UniversalImageProps {
     src: string | any;
@@ -29,21 +19,7 @@ export function UniversalImage({
     height,
     resizeMode = 'contain',
     style,
-    cachePolicy = 'memory-disk',
-    transition = 200,
 }: UniversalImageProps) {
-    if (Platform.OS !== 'web' && ExpoImage) {
-        return (
-            <ExpoImage
-                source={src}
-                style={[{ width, height }, style]}
-                contentFit={resizeMode}
-                cachePolicy={cachePolicy}
-                transition={transition}
-            />
-        );
-    }
-
     return (
         <SolitoImage
             src={src}

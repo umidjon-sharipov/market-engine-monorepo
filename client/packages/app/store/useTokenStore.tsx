@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
-import AsyncStorage from '@react-native-async-storage/async-storage'
+import { getAppStorage } from 'app/storage'
 
 export interface Account {
     email: string
@@ -73,12 +73,13 @@ export const useTokenStore = create<TokenState>()(
         }),
         {
             name: 'token-storage',
-            storage: createJSONStorage(() => AsyncStorage),
+            storage: createJSONStorage(getAppStorage),
             version: 1,
             migrate: (persistedState, version) => {
                 if (version === 0) {
-                    const legacyState = persistedState as Pick<TokenState, 'token'>
+                    const legacyState = persistedState as Partial<TokenState>
                     return {
+                        ...legacyState,
                         token: legacyState.token ?? '',
                         accounts: [],
                         activeEmail: null,

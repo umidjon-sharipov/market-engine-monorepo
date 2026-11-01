@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getAppStorage } from 'app/storage';
 import type { AddressCoordinates } from 'app/components/UI/AddressMap.types';
 
 interface DeliveryLocationState {
@@ -20,7 +20,7 @@ export const useDeliveryLocationStore = create<DeliveryLocationState>()(
         }),
         {
             name: 'delivery-location-storage',
-            storage: createJSONStorage(() => AsyncStorage),
+            storage: createJSONStorage(getAppStorage),
         }
     )
 );
