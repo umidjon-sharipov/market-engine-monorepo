@@ -280,7 +280,7 @@ export class WarehouseTasksService {
         optionItemId: body.optionItemId ?? null,
         quantity: body.quantity,
       });
-      return tx.warehouseTask.create({
+      const task = await tx.warehouseTask.create({
         data: {
           marketId,
           assignedWorkerId: body.assignedWorkerId,
@@ -297,6 +297,8 @@ export class WarehouseTasksService {
         },
         include: taskInclude,
       });
+      await this.notifyTaskRecipients(tx, task);
+      return task;
     });
   }
 
@@ -379,10 +381,60 @@ export class WarehouseTasksService {
           'Faqat hali boshlanmagan warehouse taskni tahrirlash mumkin.',
         );
       }
-      return tx.warehouseTask.findFirstOrThrow({
+      const updatedTask = await tx.warehouseTask.findFirstOrThrow({
         where: { id, marketId },
         include: taskInclude,
       });
+      if (
+        body.assignedWorkerId &&
+        body.assignedWorkerId !== task.assignedWorkerId
+      ) {
+        await this.notifyTaskRecipients(tx, updatedTask);
+      }
+      return updatedTask;
+    });
+  }
+
+  private async notifyTaskRecipients(
+    tx: Prisma.TransactionClient,
+    task: {
+      id: string;
+      marketId: string;
+      warehouseId: string;
+      productId: string;
+      orderId: string | null;
+      assignedWorkerId: string | null;
+      quantity: number;
+    },
+  ) {
+    const workers = await tx.worker.findMany({
+      where: task.assignedWorkerId
+        ? { id: task.assignedWorkerId, marketId: task.marketId }
+        : {
+            marketId: task.marketId,
+            permissions: {
+              hasSome: ['warehouse:get', 'warehouse:income', 'stock:update'],
+            },
+          },
+      select: { userId: true },
+    });
+    const userIds = [...new Set(workers.map((worker) => worker.userId))];
+    if (!userIds.length) return;
+    await tx.notification.createMany({
+      data: userIds.map((userId) => ({
+        userId,
+        type: 'WAREHOUSE_TASK',
+        title: 'Yangi ombor topshirig‘i',
+        message: `Mahsulotni omborda tayyorlash topshirig‘i #${task.id.slice(0, 8)}.`,
+        data: {
+          taskId: task.id,
+          marketId: task.marketId,
+          warehouseId: task.warehouseId,
+          productId: task.productId,
+          orderId: task.orderId,
+          quantity: task.quantity,
+        },
+      })),
     });
   }
 

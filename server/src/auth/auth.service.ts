@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Injectable,
   UnauthorizedException,
   ForbiddenException,
@@ -226,6 +227,8 @@ export class AuthService {
         lastName: true,
         email: true,
         phone: true,
+        latitude: true,
+        longitude: true,
         gender: true,
         image: true,
         bio: true,
@@ -238,6 +241,11 @@ export class AuthService {
   }
 
   async updateProfile(userId: string, body: UpdateProfileDto) {
+    if ((body.latitude === undefined) !== (body.longitude === undefined)) {
+      throw new BadRequestException(
+        'Latitude va longitude koordinatalari birga yuborilishi kerak.',
+      );
+    }
     const updatedUser = await this.prisma.user.update({
       where: { id: userId },
       data: this.toUpdateProfileInput(body),
@@ -248,6 +256,8 @@ export class AuthService {
         lastName: true,
         email: true,
         phone: true,
+        latitude: true,
+        longitude: true,
         gender: true,
         bio: true,
         image: true,
@@ -361,6 +371,8 @@ export class AuthService {
       ...(body.firstName !== undefined && { firstName: body.firstName }),
       ...(body.lastName !== undefined && { lastName: body.lastName }),
       ...(body.phone !== undefined && { phone: body.phone }),
+      ...(body.latitude !== undefined && { latitude: body.latitude }),
+      ...(body.longitude !== undefined && { longitude: body.longitude }),
       ...(body.gender !== undefined && { gender: body.gender }),
       ...(body.bio !== undefined && { bio: body.bio }),
       ...(body.image && { image: body.image }),

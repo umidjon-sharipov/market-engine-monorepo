@@ -4,6 +4,7 @@ import {
     PipeTransform,
     Optional,
 } from '@nestjs/common';
+import { ProductStatus } from '@prisma/client';
 import {
     CreateProductDto,
     ProductOptionDto,
@@ -41,6 +42,14 @@ export class ProductParsePipe implements PipeTransform {
                 throw new BadRequestException('isOptionOnly qiymati noto‘g‘ri.');
             }
             body.isOptionOnly = body.isOptionOnly === true || body.isOptionOnly === 'true';
+        }
+        if (body.status !== undefined) {
+            if (
+                typeof body.status !== 'string' ||
+                !Object.values(ProductStatus).includes(body.status as ProductStatus)
+            ) {
+                throw new BadRequestException('Mahsulot statusi noto‘g‘ri.');
+            }
         }
         if (body.uom === undefined && !this.partial) body.uom = 'PCS';
         if (body.searchEnabled !== undefined) {

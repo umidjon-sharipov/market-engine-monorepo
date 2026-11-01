@@ -12,6 +12,9 @@ import { useTokenStore } from 'app/store/useTokenStore'
 import { useLocationOpenStore } from 'app/store/useLocationOpenStore'
 import { useUrlStore } from 'app/store/useUrlStore'
 import { fetchWithAuth } from 'app/features/app/auth/fetchWithAuth'
+import AddressMap from 'app/components/UI/AddressMap'
+import type { AddressCoordinates } from 'app/components/UI/AddressMap.types'
+import { useDeliveryLocationStore } from 'app/store/useDeliveryLocationStore'
 
 const translations = {
     uz: {
@@ -21,6 +24,8 @@ const translations = {
         cart: 'Savat',
         language: 'Til',
         location: 'Joylashuv',
+        mapInstructions: 'Xaritani bosib manzilingizni belgilang.',
+        saveFailed: 'Profilni saqlab bo‘lmadi. Qayta urinib ko‘ring.',
         orders: 'Buyurtmalar',
         feedPreference: 'Ekran sozlamalari',
         subscription: 'Kuzatish',
@@ -60,6 +65,8 @@ const translations = {
         cart: 'Cart',
         language: 'Language',
         location: 'Location',
+        mapInstructions: 'Select your location by tapping the map.',
+        saveFailed: 'Could not save your profile. Please try again.',
         orders: 'Orders',
         feedPreference: 'Display settings',
         subscription: 'Follow',
@@ -98,6 +105,8 @@ const translations = {
         cart: 'Корзина',
         language: 'Язык',
         location: 'Местоположение',
+        mapInstructions: 'Выберите местоположение, нажав на карту.',
+        saveFailed: 'Не удалось сохранить профиль. Попробуйте ещё раз.',
         orders: 'Заказы',
         feedPreference: 'Параметры экрана',
         subscription: 'Подписаться',
@@ -158,6 +167,9 @@ const Profile = () => {
     const [bio, setBio] = useState('bio')
     const [focus, setFocus] = useState(0)
     const [genderOpen, setGenderOpen] = useState(false)
+    const [deliveryCoordinates, setDeliveryCoordinates] = useState<AddressCoordinates | null>(null)
+    const [profileError, setProfileError] = useState('')
+    const setSavedDeliveryLocation = useDeliveryLocationStore(state => state.setLocation)
     const router = useRouter()
     const setOpenLocation = useLocationOpenStore(state => state.setLocationOpen)
 
@@ -202,6 +214,11 @@ const Profile = () => {
             setGender(req.gender)
             setBio(req.bio)
             setImage(req.image)
+            const profileCoordinates = Number.isFinite(req.latitude) && Number.isFinite(req.longitude)
+                ? { latitude: req.latitude, longitude: req.longitude }
+                : null
+            setDeliveryCoordinates(profileCoordinates)
+            if (profileCoordinates) setSavedDeliveryLocation(profileCoordinates)
         } catch (err) {
             console.log(err)
         }
@@ -225,6 +242,7 @@ const Profile = () => {
     };
 
     const handleUpdateProfile = async () => {
+        setProfileError('')
         try {
             const response = await fetchWithAuth(`${url}/auth/update-profile`, {
                 method: 'PATCH',
@@ -239,17 +257,29 @@ const Profile = () => {
                     gender,
                     image,
                     bio,
+                    ...(deliveryCoordinates
+                        ? {
+                            latitude: deliveryCoordinates.latitude,
+                            longitude: deliveryCoordinates.longitude,
+                        }
+                        : {}),
                 })
             });
 
-            const data = await response.json();
-
             if (response.ok) {
                 await renderToken(useTokenStore.getState().token)
-            } else {
+                if (deliveryCoordinates) setSavedDeliveryLocation(deliveryCoordinates)
+                return true
             }
+            const result: unknown = await response.json().catch(() => null)
+            const serverMessage = result && typeof result === 'object' && 'message' in result
+                ? String(result.message)
+                : t.saveFailed
+            throw new Error(serverMessage)
         } catch (error) {
             console.error('Server xatosi:', error);
+            setProfileError(error instanceof Error ? error.message : t.saveFailed)
+            return false
         }
     };
 
@@ -632,6 +662,18 @@ const Profile = () => {
                                     </Pressable>
                                 </View>
 
+                                <View style={ styles.inputBox }>
+                                    <Text style={ styles.inputLabel }>{ t.location }</Text>
+                                    <Text style={ styles.locationInstructions }>{ t.mapInstructions }</Text>
+                                    <AddressMap value={ deliveryCoordinates } onSelect={ setDeliveryCoordinates } />
+                                    { deliveryCoordinates ? (
+                                        <Text style={ styles.locationCoordinates }>
+                                            { deliveryCoordinates.latitude.toFixed(5) }, { deliveryCoordinates.longitude.toFixed(5) }
+                                        </Text>
+                                    ) : null }
+                                </View>
+                                { profileError ? <Text style={ styles.profileError }>{ profileError }</Text> : null }
+
                                 <Pressable
                                     android_ripple={ { color: 'rgba(255, 255, 255, 0.3)' } }
                                     style={ ({ pressed, hovered }: { pressed?: boolean; hovered?: boolean }) => [
@@ -658,7 +700,9 @@ const Profile = () => {
                                             shadowRadius: 8,
                                         }
                                     ] }
-                                    onPress={ () => { setIsEditing(false), handleUpdateProfile() } }
+                                    onPress={ async () => {
+                                        if (await handleUpdateProfile()) setIsEditing(false)
+                                    } }
                                 >
                                     { ({ pressed, hovered }: { pressed?: boolean; hovered?: boolean }) => (
                                         <LinearGradient
@@ -1344,6 +1388,21 @@ const styles = StyleSheet.create({
         color: '#64748B',
         fontWeight: '600',
         marginBottom: 4,
+    },
+    locationInstructions: {
+        color: '#64748B',
+        fontSize: 13,
+        marginBottom: 10,
+    },
+    locationCoordinates: {
+        color: '#475569',
+        fontSize: 12,
+        marginTop: 8,
+    },
+    profileError: {
+        color: '#dc2626',
+        fontSize: 13,
+        marginBottom: 8,
     },
     textInput: {
         fontSize: 15,

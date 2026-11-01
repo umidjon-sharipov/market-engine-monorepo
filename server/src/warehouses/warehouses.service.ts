@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateWarehouseDto } from './dto/warehouse/create-warehouse.dto';
 import { UpdateWarehouseDto } from './dto/warehouse/update-warehouse.dto';
@@ -376,26 +377,59 @@ export class WarehousesService {
 
   async searchBins(warehouseId: string, search: string, page: number, limit: number) {
     const skip = (page - 1) * limit;
-    return this.prisma.storageBin.findMany({
-      where: {
-        shelf: {
-          rack: {
-            aisle: {
-              zone: {
-                warehouseId,
+    const where: Prisma.StorageBinWhereInput = {
+      status: 'active',
+      shelf: {
+        rack: {
+          aisle: {
+            zone: {
+              warehouseId,
+            },
+          },
+        },
+      },
+      ...(search
+        ? {
+            OR: [
+              { code: { contains: search, mode: 'insensitive' } },
+              { title: { contains: search, mode: 'insensitive' } },
+            ],
+          }
+        : {}),
+    };
+    const [data, total] = await this.prisma.$transaction([
+      this.prisma.storageBin.findMany({
+        where,
+        orderBy: [{ code: 'asc' }, { id: 'asc' }],
+        skip,
+        take: limit,
+        include: {
+          shelf: {
+            include: {
+              rack: {
+                include: {
+                  aisle: {
+                    include: {
+                      zone: {
+                        select: { id: true, code: true, title: true, type: true },
+                      },
+                    },
+                  },
+                },
               },
             },
           },
         },
-        OR: [
-          { code: { contains: search, mode: 'insensitive' } },
-          { title: { contains: search, mode: 'insensitive' } },
-        ],
-      },
-      skip,
-      take: limit,
-      include: { shelf: true },
-    });
+      }),
+      this.prisma.storageBin.count({ where }),
+    ]);
+    return {
+      data,
+      total,
+      page,
+      limit,
+      hasMore: page * limit < total,
+    };
   }
 
   async findInventory(warehouseId: string) {
@@ -405,22 +439,44 @@ export class WarehousesService {
     });
   }
 
-  async searchBinInventory(warehouseId: string, binId: string, search: string, page: number, limit: number) {
+  async searchBinInventory(
+    warehouseId: string,
+    binId: string,
+    search: string,
+    page: number,
+    limit: number,
+  ) {
     const skip = (page - 1) * limit;
-    return this.prisma.warehouseInventory.findMany({
-      where: {
-        warehouseId,
-        binId,
-        product: {
-          OR: [
-            { title: { contains: search, mode: 'insensitive' } },
-            { barcode: { contains: search, mode: 'insensitive' } },
-          ],
-        },
-      },
-      skip,
-      take: limit,
-      include: { product: true, bin: true },
-    });
+    const where: Prisma.WarehouseInventoryWhereInput = {
+      warehouseId,
+      binId,
+      ...(search
+        ? {
+            product: {
+              OR: [
+                { title: { contains: search, mode: 'insensitive' } },
+                { barcode: { contains: search, mode: 'insensitive' } },
+              ],
+            },
+          }
+        : {}),
+    };
+    const [data, total] = await this.prisma.$transaction([
+      this.prisma.warehouseInventory.findMany({
+        where,
+        orderBy: [{ product: { title: 'asc' } }, { lotNumber: 'asc' }],
+        skip,
+        take: limit,
+        include: { product: true, bin: true },
+      }),
+      this.prisma.warehouseInventory.count({ where }),
+    ]);
+    return {
+      data,
+      total,
+      page,
+      limit,
+      hasMore: page * limit < total,
+    };
   }
 }

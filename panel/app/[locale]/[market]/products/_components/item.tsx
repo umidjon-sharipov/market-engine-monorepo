@@ -9,7 +9,7 @@ import { Trash2 } from "lucide-react";
 interface ItemProps {
     index: number;
     defaultProductId?: string;
-    products: { id: string; title: string }[];
+    products: { id: string; title: string; quantity: number }[];
     onSelectProduct: (index: number, productId: string) => void;
     onRemove: (index: number) => void;
 }
@@ -42,7 +42,9 @@ const Item = ({
                 onClick={ () => setIsModalOpen(true) }
             >
                 <span className={ selectedProduct ? (theme === "dark" ? "text-white" : "text-zinc-900") : "text-neutral-400" }>
-                    { selectedProduct ? selectedProduct.title : "Mahsulotni tanlang..." }
+                    { selectedProduct
+                        ? `${selectedProduct.title}${selectedProduct.quantity > 0 ? ` · qoldiq ${selectedProduct.quantity}` : ' · omborda qoldiq yo‘q'}`
+                        : "Mahsulotni tanlang..." }
                 </span>
                 <span className="text-xs text-sky-500 font-mono">
                     { selectedProductId ? `ID: ${selectedProductId}` : "" }
@@ -71,6 +73,7 @@ const Item = ({
                             variant="ghost"
                             className="w-full justify-start text-left"
                             key={ product.id }
+                            disabled={product.quantity <= 0 && product.id !== selectedProductId}
                             onClick={ () => {
                                 setSelectedProductId(product.id);
                                 onSelectProduct(index, product.id);
@@ -78,12 +81,17 @@ const Item = ({
                                 setSearch("");
                             } }
                         >
-                            { product.title }
+                            {product.title} · qoldiq {product.quantity}
                         </GlassButton>
                     )) }
                     {matchingProducts.length === 0 && (
                         <p className="py-4 text-center text-sm text-neutral-500">
                             Mos mahsulot topilmadi.
+                        </p>
+                    )}
+                    {selectedProduct?.quantity === 0 && (
+                        <p className="py-2 text-center text-sm text-amber-500">
+                            Qayta ulash uchun avval mahsulotni omborga kiriting.
                         </p>
                     )}
                 </div>

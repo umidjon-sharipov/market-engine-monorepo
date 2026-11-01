@@ -1,6 +1,6 @@
 import { Transform, TransformFnParams, Type } from 'class-transformer';
 import { PartialType } from '@nestjs/mapped-types';
-import { UnitOfMeasure } from '@prisma/client';
+import { ProductStatus, UnitOfMeasure } from '@prisma/client';
 import {
   IsArray,
   IsBoolean,
@@ -75,6 +75,10 @@ export class CreateProductDto {
   @IsOptional()
   @IsBoolean()
   isOptionOnly?: boolean;
+
+  @IsOptional()
+  @IsEnum(ProductStatus)
+  status?: ProductStatus;
 
   @IsUUID()
   marketId!: string;

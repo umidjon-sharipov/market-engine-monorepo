@@ -11,9 +11,20 @@ import {
   MovementType,
   OrderStatus,
   Prisma,
+  ProductStatus,
   WarehouseTaskStatus,
 } from '@prisma/client';
 import { StockMovementsService } from '../stock-movements/stock-movements.service';
+
+const orderProductInclude = {
+  options: {
+    include: {
+      items: {
+        include: { includedProduct: true },
+      },
+    },
+  },
+} satisfies Prisma.ProductInclude;
 
 @Injectable()
 export class OrdersService {
@@ -81,17 +92,46 @@ export class OrdersService {
           const productIds = [...new Set(createOrderDto.items.map((item) => item.productId))];
           const products = await tx.product.findMany({
             where: { id: { in: productIds } },
-            include: {
-              options: {
-                include: {
-                  items: { include: { includedProduct: true } },
-                },
-              },
-            },
+            include: orderProductInclude,
           });
           const productsById = new Map(products.map((product) => [product.id, product]));
           if (productsById.size !== productIds.length) {
             throw new BadRequestException('Savatda mavjud bo‘lmagan mahsulot bor.');
+          }
+          let productFrontier = products.flatMap((product) =>
+            product.options.flatMap((group) =>
+              group.items.flatMap((item) =>
+                item.includeProductId ? [item.includeProductId] : [],
+              ),
+            ),
+          );
+          for (let depth = 0; productFrontier.length && depth < 8; depth += 1) {
+            const missingIds = [...new Set(productFrontier)].filter(
+              (id) => !productsById.has(id),
+            );
+            if (!missingIds.length) break;
+            const nestedProducts = await tx.product.findMany({
+              where: { id: { in: missingIds } },
+              include: orderProductInclude,
+            });
+            nestedProducts.forEach((product) => productsById.set(product.id, product));
+            productFrontier = nestedProducts.flatMap((product) =>
+              product.options.flatMap((group) =>
+                group.items.flatMap((item) =>
+                  item.includeProductId ? [item.includeProductId] : [],
+                ),
+              ),
+            );
+          }
+          for (const product of products) {
+            if (
+              product.status !== ProductStatus.ACTIVE ||
+              product.isOptionOnly
+            ) {
+              throw new BadRequestException(
+                `“${product.title}” hozir alohida sotuvda mavjud emas.`,
+              );
+            }
           }
 
           const ordersByMarket = new Map<string, {
@@ -121,42 +161,77 @@ export class OrdersService {
             ordersByMarket.set(product.marketId, marketOrder);
 
             const selections = line.optionSelections ?? {};
-            const groupsById = new Map(product.options.map((group) => [group.id, group]));
-            if (Object.keys(selections).some((groupId) => !groupsById.has(groupId))) {
-              throw new BadRequestException('Savatdagi option tanlovi mahsulotga tegishli emas.');
-            }
-            const selectedOptions: {
-              groupId: string;
-              title: string;
-              productId: string;
-              productTitle: string;
-              unitPrice: number;
-            }[] = [];
-            for (const group of product.options) {
-              const selectedItemId = selections[group.id];
-              if (!group.isOptional && !selectedItemId) {
-                throw new BadRequestException(`“${group.title}” uchun mahsulot tanlang.`);
+            const consumedSelectionKeys = new Set<string>();
+            const resolveSelections = (
+              current: (typeof products)[number],
+              path: string[],
+              ancestors = new Set([product.id]),
+            ): { additionalPrice: number; options: Record<string, unknown>[] } => {
+              let additionalPrice = 0;
+              const options: Record<string, unknown>[] = [];
+              for (const group of current.options) {
+                const selectionKey = path.length
+                  ? `${path.join('/')}/${group.id}`
+                  : group.id;
+                consumedSelectionKeys.add(selectionKey);
+                const selectedItemId =
+                  selections[selectionKey] ??
+                  (path.length === 0 ? selections[group.id] : undefined);
+                if (!selectedItemId) {
+                  if (!group.isOptional) {
+                    throw new BadRequestException(
+                      `“${group.title}” uchun mahsulot tanlang.`,
+                    );
+                  }
+                  continue;
+                }
+                const selectedItem = group.items.find(
+                  (item) => item.id === selectedItemId,
+                );
+                const includedProduct = selectedItem?.includeProductId
+                  ? productsById.get(selectedItem.includeProductId)
+                  : undefined;
+                if (
+                  !selectedItem ||
+                  !includedProduct ||
+                  includedProduct.marketId !== product.marketId ||
+                  ancestors.has(includedProduct.id) ||
+                  path.length >= 8
+                ) {
+                  throw new BadRequestException(
+                    'Tanlangan option mahsuloti yaroqsiz.',
+                  );
+                }
+                addDemand(product.marketId, includedProduct.id, line.quantity);
+                const nested = resolveSelections(includedProduct, [
+                  ...path,
+                  selectedItem.id,
+                ], new Set([...ancestors, includedProduct.id]));
+                additionalPrice += includedProduct.price + nested.additionalPrice;
+                options.push({
+                  groupId: group.id,
+                  groupTitle: group.title,
+                  itemId: selectedItem.id,
+                  productId: includedProduct.id,
+                  productTitle: includedProduct.title,
+                  unitPrice: includedProduct.price + nested.additionalPrice,
+                  options: nested.options,
+                });
               }
-              if (!selectedItemId) continue;
-              const selectedItem = group.items.find((item) => item.id === selectedItemId);
-              const includedProduct = selectedItem?.includedProduct;
-              if (!includedProduct || includedProduct.marketId !== product.marketId) {
-                throw new BadRequestException('Tanlangan option mahsuloti yaroqsiz.');
-              }
-              selectedOptions.push({
-                groupId: group.id,
-                title: group.title,
-                productId: includedProduct.id,
-                productTitle: includedProduct.title,
-                unitPrice: includedProduct.price,
-              });
-              addDemand(product.marketId, includedProduct.id, line.quantity);
+              return { additionalPrice, options };
+            };
+            const configuration = resolveSelections(product, []);
+            if (
+              Object.keys(selections).some(
+                (key) => !consumedSelectionKeys.has(key),
+              )
+            ) {
+              throw new BadRequestException(
+                'Savatdagi option tanlovi mahsulot konfiguratsiyasiga tegishli emas.',
+              );
             }
             addDemand(product.marketId, product.id, line.quantity);
-            const unitPrice = product.price + selectedOptions.reduce(
-              (sum, option) => sum + option.unitPrice,
-              0,
-            );
+            const unitPrice = product.price + configuration.additionalPrice;
             const lineTotal = Math.round(unitPrice * line.quantity * 100) / 100;
             marketOrder.total += lineTotal;
             marketOrder.lines.push({
@@ -164,7 +239,7 @@ export class OrdersService {
               title: product.title,
               quantity: line.quantity,
               unitPrice,
-              options: selectedOptions,
+              options: configuration.options,
               total: lineTotal,
             });
           }
@@ -175,6 +250,7 @@ export class OrdersService {
 
           const createdOrders = [];
           for (const [marketId, marketOrder] of ordersByMarket) {
+            let fulfillmentWarehouseId: string | undefined;
             if (createOrderDto.pickPointId) {
               const pickPoint = await tx.pickPoint.findFirst({
                 where: {
@@ -182,11 +258,45 @@ export class OrdersService {
                   warehouse: { marketId, },
                   isActive: true,
                 },
-                select: { id: true },
+                select: {
+                  id: true,
+                  warehouseId: true,
+                  latitude: true,
+                  longitude: true,
+                  serviceRadiusMeters: true,
+                },
               });
               if (!pickPoint) {
                 throw new BadRequestException('Tanlangan pickup point ushbu marketda faol emas.');
               }
+              if (
+                createOrderDto.deliveryLatitude === undefined ||
+                createOrderDto.deliveryLongitude === undefined
+              ) {
+                throw new BadRequestException(
+                  'Topshirish punktini tanlash uchun joylashuv koordinatalari talab qilinadi.',
+                );
+              }
+              const radians = (degrees: number) => (degrees * Math.PI) / 180;
+              const latitudeDelta = radians(
+                pickPoint.latitude - createOrderDto.deliveryLatitude,
+              );
+              const longitudeDelta = radians(
+                pickPoint.longitude - createOrderDto.deliveryLongitude,
+              );
+              const haversine =
+                Math.sin(latitudeDelta / 2) ** 2 +
+                Math.cos(radians(createOrderDto.deliveryLatitude)) *
+                  Math.cos(radians(pickPoint.latitude)) *
+                  Math.sin(longitudeDelta / 2) ** 2;
+              const distanceMeters =
+                2 * 6_371_000 * Math.asin(Math.sqrt(Math.min(1, haversine)));
+              if (distanceMeters > pickPoint.serviceRadiusMeters) {
+                throw new BadRequestException(
+                  'Tanlangan topshirish punkti xizmat radiusidan tashqarida.',
+                );
+              }
+              fulfillmentWarehouseId = pickPoint.warehouseId;
             }
             const order = await tx.order.create({
               data: {
@@ -206,7 +316,14 @@ export class OrdersService {
               select: { id: true, marketId: true, status: true, total: true },
             });
             for (const [productId, quantity] of marketOrder.demand) {
-              await this.reserveDemand(tx, order.id, marketId, productId, quantity);
+              await this.reserveDemand(
+                tx,
+                order.id,
+                marketId,
+                productId,
+                quantity,
+                fulfillmentWarehouseId,
+              );
             }
             createdOrders.push(order);
           }
@@ -442,11 +559,14 @@ export class OrdersService {
     marketId: string,
     productId: string,
     quantity: number,
+    warehouseId?: string,
   ) {
     const lots = await tx.warehouseInventory.findMany({
       where: {
         productId,
         warehouse: { marketId },
+        ...(warehouseId ? { warehouseId } : {}),
+        bin: { status: 'active' },
         quantity: { gt: 0 },
         OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
       },
@@ -480,6 +600,7 @@ export class OrdersService {
     }
 
     let remaining = quantity;
+    let warehouseWorkerUserIds: string[] | null = null;
     for (const location of locations.values()) {
       const allocatedQuantity = Math.min(location.available, remaining);
       if (allocatedQuantity <= 0) continue;
@@ -502,7 +623,7 @@ export class OrdersService {
           },
           select: { id: true },
         });
-        await tx.warehouseTask.create({
+        const task = await tx.warehouseTask.create({
           data: {
             marketId,
             assignedWorkerId: null,
@@ -515,7 +636,40 @@ export class OrdersService {
             status: WarehouseTaskStatus.OPEN,
             note: `Order pick task for ${orderId}`,
           },
+          select: { id: true },
         });
+        if (warehouseWorkerUserIds === null) {
+          const workers = await tx.worker.findMany({
+            where: {
+              marketId,
+              permissions: {
+                hasSome: ['warehouse:get', 'warehouse:income', 'stock:update'],
+              },
+            },
+            select: { userId: true },
+          });
+          warehouseWorkerUserIds = [
+            ...new Set(workers.map((worker) => worker.userId)),
+          ];
+        }
+        if (warehouseWorkerUserIds.length) {
+          await tx.notification.createMany({
+            data: warehouseWorkerUserIds.map((userId) => ({
+              userId,
+              type: 'WAREHOUSE_TASK',
+              title: 'Yangi ombor topshirig‘i',
+              message: `Yangi buyurtma uchun mahsulotni tayyorlash topshirig‘i #${task.id.slice(0, 8)}.`,
+              data: {
+                taskId: task.id,
+                marketId,
+                warehouseId: location.warehouseId,
+                productId,
+                orderId,
+                quantity: allocation.quantity,
+              },
+            })),
+          });
+        }
         remaining -= allocation.quantity;
       }
       if (remaining <= 0.0000001) break;

@@ -26,6 +26,13 @@ import { useUrlStore } from 'app/store/useUrlStore';
 import { useTokenStore } from 'app/store/useTokenStore';
 import { fetchWithAuth } from 'app/features/app/auth/fetchWithAuth';
 import { pickCommentImages, type PickedCommentImage } from 'app/utils/pickCommentImages';
+import ProductOptionConfigurator from '../ProductOptionConfigurator';
+import {
+    evaluateConfiguration,
+    type ConfigurableProduct,
+    type OptionSelections,
+    type ProductOption as ConfigProductOption,
+} from '../productConfiguration';
 
 interface ProductComment {
     id: string;
@@ -41,26 +48,7 @@ interface EditableCommentImage extends PickedCommentImage {
     file?: File;
 }
 
-interface OptionItem {
-    id: string;
-    includeProductId: string | null;
-    includedProduct: {
-        id: string;
-        title: string;
-        price: number;
-        images: string[];
-    } | null;
-}
-
-interface OptionGroup {
-    id: string;
-    title: string;
-    isOptional: boolean;
-    searchEnabled: boolean;
-    items: OptionItem[];
-}
-
-interface Product {
+interface Product extends ConfigurableProduct {
     id: string;
     title: string;
     price: number;
@@ -71,7 +59,12 @@ interface Product {
     gradient: string[];
     images: string[];
     quantity: number;
-    options: OptionGroup[];
+    options: Array<ConfigProductOption & {
+        searchEnabled: boolean;
+        items: Array<ConfigProductOption['items'][number] & {
+            includedProduct: (ConfigurableProduct & { images: string[] }) | null;
+        }>;
+    }>;
 }
 
 const ProductID = () => {
@@ -80,7 +73,7 @@ const ProductID = () => {
     const lan = useLanStorage(state => state.lan);
     const inputValue = useInputStorage(state => state.input);
     const pathname = usePathname();
-    const [selectedOptions, setSelectedOptions] = useState<Record<string, Record<string, string>>>({});
+    const [selectedOptions, setSelectedOptions] = useState<Record<string, OptionSelections>>({});
     const [selectionError, setSelectionError] = useState('');
     const [comments, setComments] = useState<ProductComment[]>([]);
     const [commentsLoading, setCommentsLoading] = useState(false);
@@ -114,6 +107,9 @@ const ProductID = () => {
 
     const product: Product | undefined = products.find(p => String(p.id) === String(productIdToFind));
     const currentSelections = product ? selectedOptions[String(product.id)] ?? {} : {};
+    const configuration = product
+        ? evaluateConfiguration(product, currentSelections)
+        : null;
     const isInCart = cart.some(item =>
         String(item.id) === String(product?.id) &&
         Object.keys(item.optionSelections ?? {}).length === Object.keys(currentSelections).length &&
@@ -127,7 +123,7 @@ const ProductID = () => {
     useEffect(() => {
         if (!product) return;
 
-        let parsedSelections: Record<string, string> = {};
+        let parsedSelections: OptionSelections = {};
         if (optionQuery) {
             try {
                 const parsed: unknown = JSON.parse(optionQuery);
@@ -141,12 +137,7 @@ const ProductID = () => {
             }
         }
 
-        const validSelections = Object.fromEntries(product.options.flatMap(group => {
-            const selectedId = parsedSelections[group.id];
-            return selectedId && group.items.some(option => option.id === selectedId && option.includedProduct)
-                ? [[group.id, selectedId] as [string, string]]
-                : [];
-        }));
+        const validSelections = evaluateConfiguration(product, parsedSelections).validSelections;
         setSelectedOptions(previous => ({ ...previous, [String(product.id)]: validSelections }));
     }, [product, optionQuery]);
 
@@ -208,14 +199,16 @@ const ProductID = () => {
         return () => controller.abort();
     }, [authToken, product?.id, url]);
 
-    const handleOptionSelect = (productId: string, groupId: string, optionId: string) => {
-        const group = product?.options.find((item) => item.id === groupId);
+    const handleOptionSelect = (productId: string, groupKey: string, optionId: string, isOptional: boolean) => {
         const currentSelection = selectedOptions[productId] ?? {};
         const nextSelections = { ...currentSelection };
-        if (group?.isOptional && currentSelection[groupId] === optionId) {
-            delete nextSelections[groupId];
+        if (isOptional && currentSelection[groupKey] === optionId) {
+            delete nextSelections[groupKey];
         } else {
-            nextSelections[groupId] = optionId;
+            nextSelections[groupKey] = optionId;
+        }
+        for (const key of Object.keys(nextSelections)) {
+            if (key.startsWith(`${groupKey}/`)) delete nextSelections[key];
         }
         setSelectedOptions(previous => ({ ...previous, [productId]: nextSelections }));
         setSelectionError('');
@@ -231,9 +224,7 @@ const ProductID = () => {
 
     const handleAddToCart = (buyNow = false) => {
         if (!product) return;
-        const missingOption = product.options.find(
-            (group) => !group.isOptional && !currentSelections[group.id],
-        );
+        const missingOption = evaluateConfiguration(product, currentSelections).missingGroups[0];
         if (missingOption) {
             setSelectionError(`“${missingOption.title}” uchun mahsulot tanlang.`);
             return;
@@ -472,14 +463,7 @@ const ProductID = () => {
     }, [url]);
 
 
-    const totalPrice = product
-        ? product.price + product.options.reduce((sum, group) => {
-            const selectedId = currentSelections[group.id];
-            return sum + (
-                group.items.find(option => option.id === selectedId)?.includedProduct?.price ?? 0
-            );
-        }, 0)
-        : 0;
+    const totalPrice = configuration?.totalPrice ?? 0;
     const averageRating = comments.length
         ? comments.reduce((total, comment) => total + comment.rate, 0) / comments.length
         : 0;
@@ -589,74 +573,18 @@ const ProductID = () => {
                                 </View>
 
                                 <View style={{ width: '100%', gap: 4, flexDirection: 'column' }}>
-                                    {product.options && product.options.length > 0 && (
+                                    {product.options.length > 0 && (
                                         <View style={styles.container}>
                                             <Text style={[styles.mainTitle, theme === 'dark' ? styles.textDark : styles.textLight]}>
                                                 Konfiguratsiyani o&apos;zgartirish:
                                             </Text>
-                                            <View style={styles.groupContainer}>
-                                                {product?.options?.map((optGroup, optIdx) => {
-                                                    const activeVal = selectedOptions[product.id]?.[optGroup.id];
-                                                    return (
-                                                        <View
-                                                            key={optIdx}
-                                                            style={[
-                                                                styles.card,
-                                                                theme === 'dark' ? styles.cardDark : styles.cardLight
-                                                            ]}
-                                                        >
-                                                            <Text style={[styles.groupTitle, theme === 'dark' ? styles.groupTitleDark : styles.groupTitleLight]}>
-                                                                {optGroup.title}{optGroup.isOptional ? ' · ixtiyoriy' : ' · tanlash majburiy'}
-                                                            </Text>
-                                                            <View style={styles.optionsList}>
-                                                                {optGroup.items.map((opt, valIdx) => {
-                                                                    const isSelected = activeVal === opt.id;
-
-                                                                    return (
-                                                                        <TouchableOpacity
-                                                                            key={opt.id}
-                                                                            onPress={() => handleOptionSelect(String(product.id), optGroup.id, opt.id)}
-                                                                            disabled={!opt.includedProduct}
-                                                                            activeOpacity={0.7}
-                                                                            style={[
-                                                                                styles.optionButton,
-                                                                                isSelected
-                                                                                    ? styles.buttonSelected
-                                                                                    : theme === 'dark'
-                                                                                        ? styles.buttonDark
-                                                                                        : styles.buttonLight
-                                                                            ]}
-                                                                        >
-                                                                            <Text style={[
-                                                                                styles.buttonText,
-                                                                                isSelected
-                                                                                    ? styles.textSelected
-                                                                                    : theme === 'dark'
-                                                                                        ? styles.textDark
-                                                                                        : styles.textLight
-                                                                            ]}>
-                                                                                {opt.includedProduct?.title ?? 'Mahsulot mavjud emas'}
-                                                                            </Text>
-                                                                            <Text style={[
-                                                                                styles.priceText,
-                                                                                isSelected
-                                                                                    ? styles.textSelected
-                                                                                    : theme === 'dark'
-                                                                                        ? styles.priceDark
-                                                                                        : styles.priceLight
-                                                                            ]}>
-                                                                                {opt.includedProduct
-                                                                                    ? `+${opt.includedProduct.price.toLocaleString()} UZS`
-                                                                                    : 'Tanlab bo‘lmaydi'}
-                                                                            </Text>
-                                                                        </TouchableOpacity>
-                                                                    );
-                                                                })}
-                                                            </View>
-                                                        </View>
-                                                    );
-                                                })}
-                                            </View>
+                                            <ProductOptionConfigurator
+                                                product={product}
+                                                selections={currentSelections}
+                                                onSelect={(key, optionId, optional) =>
+                                                    handleOptionSelect(String(product.id), key, optionId, optional)
+                                                }
+                                            />
                                         </View>
                                     )}
                                 </View>
@@ -1022,74 +950,18 @@ const ProductID = () => {
 
                     {(isTabletView || isMobileView) ? (
 
-                        product.options && product.options.length > 0 && (
+                        product.options.length > 0 && (
                             <View style={styles.container}>
                                 <Text style={[styles.mainTitle, theme === 'dark' ? styles.textDark : styles.textLight]}>
                                     Konfiguratsiyani o&apos;zgartirish:
                                 </Text>
-                                <View style={styles.groupContainer}>
-                                    {product.options.map((optGroup, optIdx) => {
-                                        const activeVal = selectedOptions[product.id]?.[optGroup.id];
-                                        return (
-                                            <View
-                                                key={optIdx}
-                                                style={[
-                                                    styles.card,
-                                                    theme === 'dark' ? styles.cardDark : styles.cardLight
-                                                ]}
-                                            >
-                                                <Text style={[styles.groupTitle, theme === 'dark' ? styles.groupTitleDark : styles.groupTitleLight]}>
-                                                    {optGroup.title}{optGroup.isOptional ? ' · ixtiyoriy' : ' · tanlash majburiy'}
-                                                </Text>
-                                                <View style={styles.optionsList}>
-                                                    {optGroup.items.map((opt, valIdx) => {
-                                                        const isSelected = activeVal === opt.id;
-
-                                                        return (
-                                                            <TouchableOpacity
-                                                                key={opt.id}
-                                                                onPress={() => handleOptionSelect(String(product.id), optGroup.id, opt.id)}
-                                                                disabled={!opt.includedProduct}
-                                                                activeOpacity={0.7}
-                                                                style={[
-                                                                    styles.optionButton,
-                                                                    isSelected
-                                                                        ? styles.buttonSelected
-                                                                        : theme === 'dark'
-                                                                            ? styles.buttonDark
-                                                                            : styles.buttonLight
-                                                                ]}
-                                                            >
-                                                                <Text style={[
-                                                                    styles.buttonText,
-                                                                    isSelected
-                                                                        ? styles.textSelected
-                                                                        : theme === 'dark'
-                                                                            ? styles.textDark
-                                                                            : styles.textLight
-                                                                ]}>
-                                                                    {opt.includedProduct?.title ?? 'Mahsulot mavjud emas'}
-                                                                </Text>
-                                                                <Text style={[
-                                                                    styles.priceText,
-                                                                    isSelected
-                                                                        ? styles.textSelected
-                                                                        : theme === 'dark'
-                                                                            ? styles.priceDark
-                                                                            : styles.priceLight
-                                                                ]}>
-                                                                    {opt.includedProduct
-                                                                        ? `+${opt.includedProduct.price.toLocaleString()} UZS`
-                                                                        : 'Tanlab bo‘lmaydi'}
-                                                                </Text>
-                                                            </TouchableOpacity>
-                                                        );
-                                                    })}
-                                                </View>
-                                            </View>
-                                        );
-                                    })}
-                                </View>
+                                <ProductOptionConfigurator
+                                    product={product}
+                                    selections={currentSelections}
+                                    onSelect={(key, optionId, optional) =>
+                                        handleOptionSelect(String(product.id), key, optionId, optional)
+                                    }
+                                />
                             </View>
                         )
 

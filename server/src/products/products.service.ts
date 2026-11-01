@@ -3,7 +3,7 @@ import {
     Injectable,
     NotFoundException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, ProductStatus } from '@prisma/client';
 import { uploadImageToImgBB } from '../common/helpers/image-upload.helper';
 import { PrismaService } from '../prisma/prisma.service';
 import { ProductRepository } from './product.repository';
@@ -12,6 +12,47 @@ import {
     ProductOptionDto,
     UpdateProductDto,
 } from './dto/create-product.dto';
+
+const productCatalogInclude = {
+    market: { select: { id: true, title: true, logo: true } },
+    options: {
+        include: {
+            items: {
+                include: {
+                    includedProduct: {
+                        select: {
+                            id: true,
+                            title: true,
+                            price: true,
+                            uom: true,
+                            images: true,
+                            quantity: true,
+                            marketId: true,
+                            isOptionOnly: true,
+                            status: true,
+                        },
+                    },
+                },
+            },
+        },
+    },
+} satisfies Prisma.ProductInclude;
+
+type ProductCatalogRow = Prisma.ProductGetPayload<{
+    include: typeof productCatalogInclude;
+}>;
+type ProductCatalogNode = Omit<ProductCatalogRow, 'options'> & {
+    quantity: number;
+    options: Array<
+        Omit<ProductCatalogRow['options'][number], 'items'> & {
+            items: Array<
+                Omit<ProductCatalogRow['options'][number]['items'][number], 'includedProduct'> & {
+                    includedProduct: ProductCatalogNode | null;
+                }
+            >;
+        }
+    >;
+};
 
 @Injectable()
 export class ProductsService {
@@ -80,8 +121,10 @@ export class ProductsService {
                        SUM(inventory.quantity - inventory."reservedQuantity")::float AS "availableQuantity"
                 FROM "WarehouseInventories" AS inventory
                 INNER JOIN "Warehouses" AS warehouse ON warehouse.id = inventory."warehouseId"
+                INNER JOIN "StorageBins" AS bin ON bin.id = inventory."binId"
                 INNER JOIN "Products" AS product ON product.id = inventory."productId"
                 WHERE warehouse."marketId" = product."marketId"
+                  AND bin.status = 'active'
                   AND inventory.quantity > inventory."reservedQuantity"
                   AND (inventory."expiresAt" IS NULL OR inventory."expiresAt" > NOW())
                   ${marketCondition}
@@ -101,68 +144,74 @@ export class ProductsService {
         const available = new Map(
             inventory.map((item) => [item.productId, item.availableQuantity]),
         );
-        const products = await this.prisma.product.findMany({
+        const marketScope = where.marketId;
+        const allProducts = await this.prisma.product.findMany({
+            where: marketScope ? { marketId: marketScope } : {},
+            include: productCatalogInclude,
+            orderBy: [{ title: 'asc' }, { id: 'asc' }],
+        });
+        const productsById = new Map(
+            allProducts.map((product) => [product.id, product]),
+        );
+        const buildProduct = (
+            current: ProductCatalogRow,
+            ancestors: Set<string>,
+            depth = 0,
+        ): ProductCatalogNode => ({
+            ...current,
+            quantity: available.get(current.id) ?? 0,
+            options: current.options.map((group) => ({
+                ...group,
+                items: group.items.flatMap((item) => {
+                    const includedProductId = item.includeProductId;
+                    const includedProduct = includedProductId
+                        ? productsById.get(includedProductId)
+                        : undefined;
+                    if (
+                        !includedProduct ||
+                        depth >= 8 ||
+                        ancestors.has(includedProduct.id) ||
+                        (!includeUnavailable &&
+                            (available.get(includedProduct.id) ?? 0) <= 0)
+                    ) {
+                        return [];
+                    }
+                    return [{
+                        ...item,
+                        includedProduct: buildProduct(
+                            includedProduct,
+                            new Set([...ancestors, current.id]),
+                            depth + 1,
+                        ),
+                    }];
+                }),
+            })),
+        });
+
+        const rootProducts = await this.prisma.product.findMany({
             where: {
                 ...where,
                 ...(!includeUnavailable
                     ? {
                         id: { in: inventory.map((item) => item.productId) },
                         isOptionOnly: false,
+                        status: ProductStatus.ACTIVE,
                     }
                     : {}),
             },
             orderBy: { createdAt: 'desc' },
-            include: {
-                market: { select: { id: true, title: true, logo: true } },
-                options: {
-                    include: {
-                        items: {
-                            include: {
-                                includedProduct: {
-                                    select: {
-                                        id: true,
-                                        title: true,
-                                        price: true,
-                                        uom: true,
-                                        images: true,
-                                        quantity: true,
-                                    },
-                                },
-                            },
-                        },
-                    },
-                },
-            },
+            select: { id: true },
         });
 
-        return products.flatMap((product) => {
-            const optionGroups = product.options.map((group) => ({
-                ...group,
-                items: includeUnavailable
-                    ? group.items.map((item) => ({
-                        ...item,
-                        includedProduct: item.includedProduct
-                            ? {
-                                ...item.includedProduct,
-                                quantity: available.get(item.includedProduct.id) ?? 0,
-                            }
-                            : null,
-                    }))
-                    : group.items.flatMap((item) => {
-                        const includedProduct = item.includedProduct;
-                        const quantity = includedProduct ? available.get(includedProduct.id) : undefined;
-                        return includedProduct && quantity
-                            ? [{ ...item, includedProduct: { ...includedProduct, quantity } }]
-                            : [];
-                    }),
-            }));
+        return rootProducts.flatMap(({ id }) => {
+            const baseProduct = productsById.get(id);
+            if (!baseProduct) return [];
+            const product = buildProduct(baseProduct, new Set());
             const hasUnavailableRequiredOption = !includeUnavailable &&
-                optionGroups.some((group) => !group.isOptional && group.items.length === 0);
+                product.options.some((group) => !group.isOptional && group.items.length === 0);
             if (hasUnavailableRequiredOption) return [];
             return [{
                 ...product,
-                quantity: available.get(product.id) ?? 0,
-                options: optionGroups,
             }];
         });
     }
@@ -264,6 +313,7 @@ export class ProductsService {
         const data: Prisma.ProductUpdateInput = {};
         if (body.title !== undefined) data.title = body.title;
         if (body.isOptionOnly !== undefined) data.isOptionOnly = body.isOptionOnly;
+        if (body.status !== undefined) data.status = body.status;
         if (body.description !== undefined)
             data.description = this.jsonValue(body.description);
         if (body.price !== undefined) data.price = body.price;
@@ -310,6 +360,7 @@ export class ProductsService {
             title: body.title,
             price: body.price,
             isOptionOnly: body.isOptionOnly ?? false,
+            status: body.status ?? ProductStatus.ACTIVE,
             uom: body.uom,
             quantity: 0,
             description: this.jsonValue(body.description),
@@ -413,6 +464,81 @@ export class ProductsService {
             throw new BadRequestException(
                 'Option ichidagi barcha mahsulotlar shu marketga tegishli bo‘lishi kerak.',
             );
+        }
+        const previouslyLinkedIds = parentProductId
+            ? new Set(
+                  (
+                      await this.prisma.productOptionItem.findMany({
+                          where: {
+                              includeProductId: { in: uniqueIds },
+                              option: { productId: parentProductId },
+                          },
+                          select: { includeProductId: true },
+                      })
+                  )
+                      .map((item) => item.includeProductId)
+                      .filter((id): id is string => id !== null),
+              )
+            : new Set<string>();
+        const newProductIds = uniqueIds.filter(
+            (productId) => !previouslyLinkedIds.has(productId),
+        );
+        if (newProductIds.length) {
+            const stockedProducts = await this.prisma.warehouseInventory.groupBy({
+                by: ['productId'],
+                where: {
+                    productId: { in: newProductIds },
+                    warehouse: { marketId },
+                    bin: { status: 'active' },
+                    quantity: { gt: 0 },
+                    OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+                },
+                _sum: { quantity: true, reservedQuantity: true },
+            });
+            const availableProductIds = new Set(
+                stockedProducts
+                    .filter(
+                        (inventory) =>
+                            (inventory._sum.quantity ?? 0) -
+                                (inventory._sum.reservedQuantity ?? 0) >
+                            0,
+                    )
+                    .map((inventory) => inventory.productId),
+            );
+            if (newProductIds.some((productId) => !availableProductIds.has(productId))) {
+                throw new BadRequestException(
+                    'Optionga faqat omborda yaroqli qoldig‘i bor mahsulotni ulash mumkin.',
+                );
+            }
+        }
+        if (parentProductId) {
+            const visited = new Set<string>();
+            let frontier = [...uniqueIds];
+            for (let depth = 0; frontier.length && depth < 8; depth += 1) {
+                if (frontier.includes(parentProductId)) {
+                    throw new BadRequestException(
+                        'Product option konfiguratsiyasida o‘zaro sikl hosil qilib bo‘lmaydi.',
+                    );
+                }
+                const nextIds = frontier.filter((id) => !visited.has(id));
+                nextIds.forEach((id) => visited.add(id));
+                if (!nextIds.length) break;
+                const children = await this.prisma.productOptionItem.findMany({
+                    where: {
+                        option: { productId: { in: nextIds } },
+                        includeProductId: { not: null },
+                    },
+                    select: { includeProductId: true },
+                });
+                frontier = children
+                    .map((item) => item.includeProductId)
+                    .filter((id): id is string => !!id && !visited.has(id));
+            }
+            if (frontier.length) {
+                throw new BadRequestException(
+                    'Product konfiguratsiyasining chuqurligi 8 pog‘onadan oshmasligi kerak.',
+                );
+            }
         }
     }
 

@@ -45,6 +45,7 @@ interface Product {
     marketId: string;
     quantity: number;
     isOptionOnly: boolean;
+    status: 'ACTIVE' | 'INACTIVE';
     categoryPath: string;
     uom: 'PCS' | 'KG' | 'LITRE' | 'METER';
     gradient: string[];
@@ -158,6 +159,7 @@ const ProductsGet = () => {
     const [descriptionRu, setDescriptionRu] = useState('')
     const [price, setPrice] = useState('')
     const [isOptionOnly, setIsOptionOnly] = useState(false)
+    const [productStatus, setProductStatus] = useState<Product['status']>('ACTIVE')
     const [uom, setUom] = useState<Product['uom']>('PCS')
     const [existingImages, setExistingImages] = useState<string[]>([])
 
@@ -266,6 +268,7 @@ const ProductsGet = () => {
         setDescriptionRu('');
         setPrice('');
         setIsOptionOnly(false);
+        setProductStatus('ACTIVE');
         setCategoryId('NULL');
         setUom('PCS');
         setExistingImages([]);
@@ -297,6 +300,7 @@ const ProductsGet = () => {
             formData.set('descriptionRu', descriptionRu);
             formData.set('price', price);
             formData.set('isOptionOnly', String(isOptionOnly));
+            formData.set('status', productStatus);
             formData.set('uom', uom);
             formData.set('images', JSON.stringify(existingImages));
             formData.append('gradient', JSON.stringify(colors));
@@ -365,6 +369,7 @@ const ProductsGet = () => {
         setDescriptionRu(product.description?.ru || '');
         setPrice(product.price?.toString() || '');
         setIsOptionOnly(Boolean(product.isOptionOnly));
+        setProductStatus(product.status ?? 'ACTIVE');
         setUom(product.uom ?? 'PCS');
         const itemSelection = categories
             .flatMap((category) => category.options.flatMap((option) => {
@@ -514,6 +519,9 @@ const ProductsGet = () => {
                                             <div className="flex flex-wrap items-center gap-2">
                                                 <h2 className={ `text-xl sm:text-2xl font-bold mt-1 mb-3 tracking-tight ${theme === 'dark' ? 'text-white' : 'text-zinc-900'}` }>{ item.title }</h2>
                                                 {item.isOptionOnly && <span className="mb-2 rounded-full bg-amber-500/10 px-2.5 py-1 text-xs font-semibold text-amber-500">Faqat option tarkibida</span>}
+                                                <span className={`mb-2 rounded-full px-2.5 py-1 text-xs font-semibold ${item.status === 'ACTIVE' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-zinc-500/10 text-zinc-400'}`}>
+                                                    {item.status === 'ACTIVE' ? 'Faol sotuvda' : 'Sotuvdan yashirilgan'}
+                                                </span>
                                             </div>
 
                                             <div className={ `mb-4 p-4 rounded-2xl border ${theme === 'dark' ? 'bg-sky-400/10 border-zinc-800/50' : 'bg-sky-50 border-sky-100'}` }>
@@ -614,6 +622,18 @@ const ProductsGet = () => {
                                         onChange={(event) => setIsOptionOnly(event.target.checked)}
                                         className="h-4 w-4 accent-sky-500"
                                     />
+                                </label>
+                                <label className="flex flex-col gap-2 text-sm">
+                                    <span>Mustaqil sotuv holati</span>
+                                    <select
+                                        name="status"
+                                        value={productStatus}
+                                        onChange={(event) => setProductStatus(event.target.value as Product['status'])}
+                                        className={`rounded-xl border px-3 py-2.5 outline-none ${dark ? 'border-white/10 bg-zinc-900 text-white' : 'border-zinc-200 bg-white text-zinc-900'}`}
+                                    >
+                                        <option value="ACTIVE">Faol — mijozlarga ko‘rinadi</option>
+                                        <option value="INACTIVE">Faol emas — mijozlarga ko‘rinmaydi</option>
+                                    </select>
                                 </label>
                                 <label className="flex flex-col gap-2 text-sm">
                                     <span>O&apos;lchov birligi</span>

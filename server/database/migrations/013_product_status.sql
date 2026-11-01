@@ -1,0 +1,9 @@
+DO $$
+BEGIN
+  CREATE TYPE "ProductStatus" AS ENUM ('ACTIVE', 'INACTIVE');
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+
+ALTER TABLE "Products"
+  ADD COLUMN IF NOT EXISTS status "ProductStatus" NOT NULL DEFAULT 'ACTIVE';

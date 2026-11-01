@@ -12,8 +12,11 @@ import Empty from 'app/components/UI/Empty';
 import { useUrlStore } from 'app/store/useUrlStore';
 import AddressMap from 'app/components/UI/AddressMap';
 import { useDeliveryLocationStore } from 'app/store/useDeliveryLocationStore';
+import { useTokenStore } from 'app/store/useTokenStore';
+import { fetchWithAuth } from 'app/features/app/auth/fetchWithAuth';
+import { evaluateConfiguration, type ConfigurableProduct } from 'app/features/app/product/productConfiguration';
 
-interface Product {
+interface Product extends ConfigurableProduct {
     id: string;
     title: string;
     price: number;
@@ -23,7 +26,6 @@ interface Product {
     discountId: string;
     images: string[];
     quantity: number;
-    options: any[];
 }
 
 interface CartItem {
@@ -50,6 +52,7 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3
 const Savat = () => {
     const router = useRouter();
     const url = useUrlStore(state => state.url)
+    const token = useTokenStore(state => state.token)
     const [products, setProducts] = useState<Product[]>([]);
     const [loading, setLoading] = useState('loading');
 
@@ -78,6 +81,23 @@ const Savat = () => {
         pickPointsUnavailable: lan === 'ru' ? 'Не удалось загрузить пункты выдачи.' : lan === 'en' ? 'Could not load pickup points.' : 'Topshirish punktlarini yuklab bo‘lmadi.',
     };
 
+    useEffect(() => {
+        if (!token || !url || deliveryLocation) return;
+        fetchWithAuth(`${url}/auth/profile`)
+            .then(async response => {
+                if (!response.ok) return;
+                const profile: unknown = await response.json();
+                if (!profile || typeof profile !== 'object' || !('latitude' in profile) || !('longitude' in profile)) return;
+                const { latitude, longitude } = profile;
+                if (typeof latitude === 'number' && Number.isFinite(latitude) &&
+                    typeof longitude === 'number' && Number.isFinite(longitude) &&
+                    !useDeliveryLocationStore.getState().location) {
+                    setDeliveryLocation({ latitude, longitude });
+                }
+            })
+            .catch(error => console.error('Profil lokatsiyasini yuklashda xatolik:', error));
+    }, [deliveryLocation, setDeliveryLocation, token, url]);
+
     const fetchCartProducts = useCallback(async () => {
         if (!url) {
             setLoading('notLoad');
@@ -105,14 +125,23 @@ const Savat = () => {
         }
     }, [cartIds.join(','), fetchCartProducts]);
 
-    const cartLines = cart.flatMap(cartItem => {
+    const cartLines = React.useMemo(() => cart.flatMap(cartItem => {
         const product = products.find(item => String(item.id) === String(cartItem.id));
         return product ? [{ product, cartItem }] : [];
-    });
+    }), [cart, products]);
     const marketIds = Array.from(new Set(cartLines.map(line => line.product.marketId).filter(Boolean)));
     const marketId = marketIds.length === 1 ? marketIds[0] : undefined;
     const latitude = deliveryLocation?.latitude;
     const longitude = deliveryLocation?.longitude;
+    const recommendationItems = React.useMemo(() => cartLines.map(({ product, cartItem }) => ({
+        productId: product.id,
+        quantity: cartItem.quantity,
+        selectedOptions: evaluateConfiguration(product, cartItem.optionSelections ?? {})
+            .selected.map(({ parentProductId, product: optionProduct }) => ({
+                parentProductId,
+                optionProductId: optionProduct.id,
+            })),
+    })), [cartLines]);
 
     useEffect(() => {
         if (!url || latitude === undefined || longitude === undefined || !marketId || !UUID_PATTERN.test(marketId)) {
@@ -126,15 +155,24 @@ const Savat = () => {
         let cancelled = false;
         setPickPointsLoading(true);
         setPickPointsUnavailable(false);
-        const query = new URLSearchParams({
-            marketId,
-            latitude: String(latitude),
-            longitude: String(longitude),
-        });
-
-        fetch(`${url}/pickpoints/nearest?${query.toString()}`)
+        fetch(`${url}/pickpoints/recommendations`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                marketId,
+                latitude,
+                longitude,
+                items: recommendationItems,
+            }),
+        })
             .then(async response => {
-                if (!response.ok) throw new Error(`Pick point lookup failed: ${response.status}`);
+                if (!response.ok) {
+                    const payload: unknown = await response.json().catch(() => null);
+                    const message = payload && typeof payload === 'object' && 'message' in payload
+                        ? String(payload.message)
+                        : `Pick point lookup failed: ${response.status}`;
+                    throw new Error(message);
+                }
                 return response.json() as Promise<NearestPickPointsResponse>;
             })
             .then(response => {
@@ -169,9 +207,9 @@ const Savat = () => {
         latitude,
         longitude,
         marketId,
+        recommendationItems,
         url,
         setSelectedPickPointId,
-        url,
     ]);
     if (cartIds.length === 0) return <Empty />;
 

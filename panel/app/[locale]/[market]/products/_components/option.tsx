@@ -9,7 +9,7 @@ interface OptionProps {
     cIndex: number;
     setItemsLenght: React.Dispatch<React.SetStateAction<number>>;
     defaultTitle?: string;
-    products: { id: string; title: string }[];
+    products: { id: string; title: string; quantity: number }[];
     defaultProductIds?: string[];
     defaultIsOptional?: boolean;
     defaultSearchEnabled?: boolean;

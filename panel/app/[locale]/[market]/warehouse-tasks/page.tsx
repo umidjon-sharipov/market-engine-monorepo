@@ -2,7 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import { ClipboardList, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { Bell, ClipboardList, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { API_URL } from "@/lib/api";
 import { useTokenStore } from "@/app/_store/useTokenStore";
 
@@ -60,6 +60,14 @@ type Task = {
   optionItem: ProductOptionItem | null;
   orderId: string | null;
   reservation: { id: string; lotNumber: string; quantity: number } | null;
+};
+type WorkerNotification = {
+  id: string;
+  type: string;
+  title: string;
+  message: string;
+  readAt: string | null;
+  createdAt: string;
 };
 
 type TaskForm = {
@@ -133,6 +141,7 @@ export default function WarehouseTasksPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [notifications, setNotifications] = useState<WorkerNotification[]>([]);
 
   const headers = useMemo(
     () => (token ? { Authorization: `Bearer ${token}` } : null),
@@ -203,6 +212,50 @@ export default function WarehouseTasksPage() {
     const timeout = window.setTimeout(() => void loadData(), 0);
     return () => window.clearTimeout(timeout);
   }, [loadData]);
+
+  const loadNotifications = useCallback(async () => {
+    if (!headers) return;
+    try {
+      const response = await fetch(`${API_URL}/notifications?limit=20`, { headers });
+      if (!response.ok) {
+        throw new Error(`Bildirishnomalarni yuklab bo‘lmadi: ${response.status}`);
+      }
+      const result = (await response.json()) as { data?: WorkerNotification[] };
+      setNotifications((result.data ?? []).filter((item) => item.type === "WAREHOUSE_TASK"));
+    } catch (notificationError) {
+      console.error("Bildirishnomalarni yuklashda xatolik:", notificationError);
+    }
+  }, [headers]);
+
+  useEffect(() => {
+    void loadNotifications();
+    const timer = window.setInterval(() => void loadNotifications(), 30_000);
+    return () => window.clearInterval(timer);
+  }, [loadNotifications]);
+
+  const markNotificationRead = async (id: string) => {
+    if (!headers) return;
+    try {
+      const response = await fetch(`${API_URL}/notifications/${id}/read`, {
+        method: "PATCH",
+        headers,
+      });
+      if (!response.ok) {
+        throw new Error(`Bildirishnomani yangilab bo‘lmadi: ${response.status}`);
+      }
+      setNotifications((current) =>
+        current.map((item) =>
+          item.id === id ? { ...item, readAt: new Date().toISOString() } : item,
+        ),
+      );
+    } catch (notificationError) {
+      setError(
+        notificationError instanceof Error
+          ? notificationError.message
+          : "Bildirishnomani yangilab bo‘lmadi.",
+      );
+    }
+  };
 
   const selectedProduct = products.find((product) => product.id === form.productId);
   const productItems =
@@ -381,6 +434,39 @@ export default function WarehouseTasksPage() {
         <div className="rounded-xl border border-red-500/30 bg-red-950/40 px-4 py-3 text-sm text-red-200">
           {error}
         </div>
+      )}
+
+      {notifications.length > 0 && (
+        <section className="rounded-2xl border border-sky-400/20 bg-sky-950/20 p-5">
+          <div className="mb-3 flex items-center gap-2">
+            <Bell className="h-4 w-4 text-sky-300" />
+            <h2 className="font-medium">Warehouse notifications</h2>
+          </div>
+          <ul className="space-y-2">
+            {notifications.slice(0, 5).map((notification) => (
+              <li
+                key={notification.id}
+                className="flex items-start justify-between gap-4 rounded-xl bg-black/20 p-3"
+              >
+                <div>
+                  <p className="text-sm font-medium">{notification.title}</p>
+                  <p className="mt-1 text-sm text-neutral-300">{notification.message}</p>
+                  <time className="mt-1 block text-xs text-neutral-500">
+                    {new Date(notification.createdAt).toLocaleString()}
+                  </time>
+                </div>
+                {!notification.readAt && (
+                  <button
+                    className="shrink-0 text-xs text-sky-300 hover:text-sky-100"
+                    onClick={() => void markNotificationRead(notification.id)}
+                  >
+                    Mark read
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
 
       {formOpen && (

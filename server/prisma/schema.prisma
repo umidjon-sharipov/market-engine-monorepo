@@ -70,6 +70,11 @@ enum UnitOfMeasure {
     METER
 }
 
+enum ProductStatus {
+    ACTIVE
+    INACTIVE
+}
+
 model Market {
     id        String   @id @default(uuid()) @db.Uuid
     email     String   @db.VarChar(255)
@@ -102,6 +107,8 @@ model User {
     firstName           String?   @db.VarChar(100)
     lastName            String?   @db.VarChar(100)
     phone               String?   @db.VarChar(20)
+    latitude            Float?
+    longitude           Float?
     gender              String?   @db.VarChar(20)
     bio                 String?   @db.Text
     image               String?   @db.Text
@@ -122,8 +129,25 @@ model User {
     groupMessages       GroupMessage[]
     pinnedGroupMessages GroupPin[]
     following           Following[]
+    notifications        Notification[]
 
     @@map("Users")
+}
+
+model Notification {
+    id        String    @id @default(uuid()) @db.Uuid
+    userId    String    @db.Uuid
+    type      String    @db.VarChar(80)
+    title     String    @db.VarChar(200)
+    message   String    @db.Text
+    data      Json      @default("{}")
+    readAt    DateTime? @db.Timestamptz(6)
+    createdAt DateTime  @default(now()) @db.Timestamptz(6)
+
+    user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    @@index([userId, readAt, createdAt(sort: Desc)])
+    @@map("Notifications")
 }
 
 model UserOtp {
@@ -221,6 +245,7 @@ model Product {
     description    Json            @default("[]")
     price          Float           @default(0)
     isOptionOnly   Boolean         @default(false)
+    status         ProductStatus   @default(ACTIVE)
     uom            UnitOfMeasure   @default(PCS)
     gradient       Json            @default("[]")
     discountId     String?         @db.Uuid

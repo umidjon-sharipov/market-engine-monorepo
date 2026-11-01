@@ -250,7 +250,7 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
         const newPath = pathname.split('/')[3]
 
         if (newPath === 'dashboard') setTab(1)
-        else if (newPath === 'products' || newPath === 'warehouses') setTab(2)
+        else if (newPath === 'products' || newPath === 'warehouses' || newPath === 'pickpoints') setTab(2)
         else if (newPath === 'nimadir') setTab(3)
         else if (['categories', 'discounts', 'discountsDashboard', 'sliders'].includes(newPath)) setTab(4)
         else if (newPath === 'vacancy') setTab(5)
@@ -263,9 +263,13 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
 
     // ===============================================================
 
-    const warehouse = [
+    const warehouses = [
         { label: 'Dashboard', href: '/dashboard' },
         { label: 'Warehouses', href: '/warehouses' },
+    ]
+
+    const pickPoints = [
+        { label: "PickPoints", href: '/pickpoints'}
     ]
 
     const products = [
@@ -369,11 +373,14 @@ export default function LayoutWrapper({ children }: { children: React.ReactNode 
         if (tab === 2) {
             return (
                 <div onClick={ onItemClick } className="flex flex-col gap-3">
-                    { warehouse.length > 0 && <div className={ `backdrop-blur-2xl rounded-3xl ${dark ? "bg-neutral-900/40 border-white/10 text-white shadow-xl shadow-black/20" : "bg-white/40 border-white/60 text-neutral-900 shadow-xl shadow-black/5"}` }>
-                        <GlassMenu title="Warehouse" items={ warehouse } defaultOpen={ true } />
+                    { warehouses.length > 0 && <div className={ `backdrop-blur-2xl rounded-3xl ${dark ? "bg-neutral-900/40 border-white/10 text-white shadow-xl shadow-black/20" : "bg-white/40 border-white/60 text-neutral-900 shadow-xl shadow-black/5"}` }>
+                        <GlassMenu title="Warehouses" items={ warehouses } defaultOpen={ true } />
                     </div> }
                     { products.length > 0 && <div className={ `backdrop-blur-2xl rounded-3xl ${dark ? "bg-neutral-900/40 border-white/10 text-white shadow-xl shadow-black/20" : "bg-white/40 border-white/60 text-neutral-900 shadow-xl shadow-black/5"}` }>
                         <GlassMenu title="Products" items={ products } defaultOpen={ true } />
+                    </div> }
+                    { pickPoints.length > 0 && <div className={ `backdrop-blur-2xl rounded-3xl ${dark ? "bg-neutral-900/40 border-white/10 text-white shadow-xl shadow-black/20" : "bg-white/40 border-white/60 text-neutral-900 shadow-xl shadow-black/5"}` }>
+                        <GlassMenu title="PickPoints" items={ pickPoints } defaultOpen={ true } />
                     </div> }
                 </div>
             );

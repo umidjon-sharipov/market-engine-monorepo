@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'solito/navigation';
 import ScreenWrapper from 'app/components/layout/ScreenWrapper';
+import AddressMap from 'app/components/UI/AddressMap';
 import Empty from 'app/components/UI/Empty';
 import { fetchWithAuth } from 'app/features/app/auth/fetchWithAuth';
 import { useCartStore } from 'app/store/useCartStore';
@@ -19,24 +20,17 @@ import { useDeliveryLocationStore } from 'app/store/useDeliveryLocationStore';
 import { useTokenStore } from 'app/store/useTokenStore';
 import { useUrlStore } from 'app/store/useUrlStore';
 import { createCheckoutId } from 'app/utils/createCheckoutId';
+import {
+    evaluateConfiguration,
+    type ConfigurableProduct,
+} from 'app/features/app/product/productConfiguration';
 
-interface ProductOption {
-    id: string;
-    title: string;
-    isOptional: boolean;
-    items: {
-        id: string;
-        includedProduct?: { id: string; title: string; price: number } | null;
-    }[];
-}
-
-interface Product {
+interface Product extends ConfigurableProduct {
     id: string;
     title: string;
     price: number;
     marketId: string;
     quantity: number;
-    options: ProductOption[];
 }
 
 interface CartLine {
@@ -45,13 +39,27 @@ interface CartLine {
     optionSelections: Record<string, string>;
 }
 
+interface PickPoint {
+    id: string;
+    title: string;
+    address: string | null;
+    distanceMeters: number;
+}
+
+interface PickPointRecommendations {
+    nearest: PickPoint | null;
+    data: PickPoint[];
+}
+
 const CheckoutPage = () => {
     const url = useUrlStore((state) => state.url);
     const token = useTokenStore((state) => state.token);
     const cart = useCartStore((state) => state.cart) as CartLine[];
     const toggleCart = useCartStore((state) => state.toggleCart);
     const deliveryLocation = useDeliveryLocationStore((state) => state.location);
+    const setDeliveryLocation = useDeliveryLocationStore((state) => state.setLocation);
     const pickPointId = useDeliveryLocationStore((state) => state.pickPointId);
+    const setPickPointId = useDeliveryLocationStore((state) => state.setPickPointId);
     const router = useRouter();
     const [products, setProducts] = useState<Product[]>([]);
     const [loading, setLoading] = useState(true);
@@ -62,6 +70,9 @@ const CheckoutPage = () => {
     const [checkoutId, setCheckoutId] = useState(createCheckoutId);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
+    const [pickPoints, setPickPoints] = useState<PickPoint[]>([]);
+    const [pickPointsLoading, setPickPointsLoading] = useState(false);
+    const [pickPointsError, setPickPointsError] = useState('');
 
     useEffect(() => {
         if (!url) return;
@@ -101,35 +112,116 @@ const CheckoutPage = () => {
                     const profilePhone = profile.phone;
                     setPhone((current) => current || profilePhone);
                 }
+                if (
+                    'latitude' in profile && typeof profile.latitude === 'number' &&
+                    Number.isFinite(profile.latitude) && 'longitude' in profile &&
+                    typeof profile.longitude === 'number' && Number.isFinite(profile.longitude) &&
+                    !useDeliveryLocationStore.getState().location
+                ) {
+                    setDeliveryLocation({
+                        latitude: profile.latitude,
+                        longitude: profile.longitude,
+                    });
+                }
             })
             .catch((profileError: unknown) => {
                 console.error('Checkout profil ma’lumotlarini yuklashda xatolik:', profileError);
             });
-    }, [token, url]);
+    }, [setDeliveryLocation, token, url]);
 
     const lines = useMemo(() => cart.flatMap((cartLine) => {
         const product = products.find((item) => item.id === cartLine.id);
         if (!product) return [];
-        const selected = product.options.flatMap((group) => {
-            const itemId = cartLine.optionSelections[group.id];
-            const option = group.items.find((item) => item.id === itemId)?.includedProduct;
-            return option ? [{ group, option }] : [];
-        });
-        const unitPrice = product.price + selected.reduce((sum, item) => sum + item.option.price, 0);
+        const configuration = evaluateConfiguration(product, cartLine.optionSelections ?? {});
+        const selected = configuration.selected.map(({ group, product: option }) => ({
+            group,
+            option,
+        }));
+        const unitPrice = configuration.totalPrice;
         return [{
             cartLine,
             product,
             selected,
             unitPrice,
             total: unitPrice * cartLine.quantity,
-            missingRequired: product.options.some(
-                (group) => !group.isOptional && !cartLine.optionSelections[group.id],
-            ),
+            missingRequired: configuration.missingGroups.length > 0,
         }];
     }), [cart, products]);
     const total = lines.reduce((sum, line) => sum + line.total, 0);
     const unavailableCount = cart.length - lines.length;
     const marketsInCart = Array.from(new Set(lines.map((line) => line.product.marketId)));
+    const recommendationItems = useMemo(() => lines.map(({ cartLine, product }) => ({
+        productId: product.id,
+        quantity: cartLine.quantity,
+        selectedOptions: evaluateConfiguration(product, cartLine.optionSelections ?? {})
+            .selected.map(({ parentProductId, product: optionProduct }) => ({
+                parentProductId,
+                optionProductId: optionProduct.id,
+            })),
+    })), [lines]);
+    const marketId = marketsInCart.length === 1 ? marketsInCart[0] : null;
+
+    useEffect(() => {
+        if (!url || !deliveryLocation || !marketId) {
+            setPickPoints([]);
+            setPickPointId(null);
+            setPickPointsLoading(false);
+            setPickPointsError('');
+            return;
+        }
+        let cancelled = false;
+        setPickPointsLoading(true);
+        setPickPointsError('');
+        fetch(`${url}/pickpoints/recommendations`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                marketId,
+                latitude: deliveryLocation.latitude,
+                longitude: deliveryLocation.longitude,
+                items: recommendationItems,
+            }),
+        })
+            .then(async (response) => {
+                if (!response.ok) {
+                    const payload: unknown = await response.json().catch(() => null);
+                    const message = payload && typeof payload === 'object' && 'message' in payload
+                        ? String(payload.message)
+                        : `Topshirish punktlari olinmadi: ${response.status}`;
+                    throw new Error(message);
+                }
+                return response.json() as Promise<PickPointRecommendations>;
+            })
+            .then((result) => {
+                if (cancelled) return;
+                const points = Array.isArray(result.data) ? result.data : [];
+                setPickPoints(points);
+                const preferred = points.find((point) => point.id === useDeliveryLocationStore.getState().pickPointId)
+                    ?? (result.nearest && points.some((point) => point.id === result.nearest?.id) ? result.nearest : null)
+                    ?? points[0]
+                    ?? null;
+                setPickPointId(preferred?.id ?? null);
+            })
+            .catch((recommendationError: unknown) => {
+                if (!cancelled) {
+                    setPickPoints([]);
+                    setPickPointId(null);
+                    setPickPointsError(recommendationError instanceof Error
+                        ? recommendationError.message
+                        : 'Topshirish punktlarini yuklab bo‘lmadi.');
+                }
+            })
+            .finally(() => {
+                if (!cancelled) setPickPointsLoading(false);
+            });
+        return () => { cancelled = true; };
+    }, [
+        deliveryLocation,
+        marketId,
+        recommendationItems,
+        setPickPointId,
+        url,
+    ]);
 
     const submit = async () => {
         if (!url) {
@@ -146,6 +238,18 @@ const CheckoutPage = () => {
         }
         if (lines.some((line) => line.missingRequired)) {
             setError('Majburiy option tanlovlarini savatda to‘ldiring.');
+            return;
+        }
+        if (marketId && pickPointsLoading) {
+            setError('Yaqin topshirish punktlari yuklanishini kuting.');
+            return;
+        }
+        if (marketId && pickPoints.length > 0 && !pickPointId) {
+            setError('Buyurtma uchun topshirish punktini tanlang.');
+            return;
+        }
+        if (pickPointId && !pickPoints.some((point) => point.id === pickPointId)) {
+            setError('Tanlangan topshirish punkti endi mavjud emas. Qaytadan tanlang.');
             return;
         }
 
@@ -245,6 +349,30 @@ const CheckoutPage = () => {
                         Xarita: {deliveryLocation.latitude.toFixed(5)}, {deliveryLocation.longitude.toFixed(5)}
                     </Text>
                 ) : null}
+                <AddressMap value={deliveryLocation} onSelect={setDeliveryLocation} />
+                {marketId ? (
+                    <View style={styles.pickPoints}>
+                        <Text style={styles.pickPointsTitle}>Tavsiya etilgan topshirish punktlari</Text>
+                        {pickPointsLoading ? <ActivityIndicator color="#2563eb" /> : null}
+                        {pickPointsError ? <Text style={styles.error}>{pickPointsError}</Text> : null}
+                        {!pickPointsLoading && !pickPointsError && pickPoints.length === 0 ? (
+                            <Text style={styles.note}>Tanlangan mahsulotlar uchun mos topshirish punkti topilmadi.</Text>
+                        ) : null}
+                        {pickPoints.map((point) => (
+                            <Pressable
+                                key={point.id}
+                                accessibilityRole="radio"
+                                accessibilityState={{ selected: point.id === pickPointId }}
+                                onPress={() => setPickPointId(point.id)}
+                                style={[styles.pickPoint, point.id === pickPointId && styles.pickPointSelected]}
+                            >
+                                <Text style={styles.pickPointName}>{point.title}</Text>
+                                {point.address ? <Text style={styles.note}>{point.address}</Text> : null}
+                                <Text style={styles.note}>{(point.distanceMeters / 1000).toFixed(1)} km</Text>
+                            </Pressable>
+                        ))}
+                    </View>
+                ) : null}
                 {marketsInCart.length > 1 ? (
                     <Text style={styles.note}>Turli marketlar uchun alohida buyurtmalar yaratiladi.</Text>
                 ) : null}
@@ -276,6 +404,11 @@ const styles = StyleSheet.create({
     error: { color: '#dc2626', fontSize: 13 },
     successCard: { margin: 24, padding: 20, backgroundColor: '#fff', borderRadius: 14 },
     success: { color: '#15803d', fontSize: 16, fontWeight: '700' },
+    pickPoints: { gap: 8, paddingVertical: 8 },
+    pickPointsTitle: { color: '#0f172a', fontSize: 16, fontWeight: '700' },
+    pickPoint: { borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 10, padding: 12, backgroundColor: '#fff' },
+    pickPointSelected: { borderColor: '#2563eb', backgroundColor: '#eff6ff' },
+    pickPointName: { color: '#0f172a', fontWeight: '700' },
 });
 
 export default CheckoutPage;

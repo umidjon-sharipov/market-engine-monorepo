@@ -21,6 +21,7 @@ import { MarketAccessGuard } from '../auth/guards/market-access.guard';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   CreatePickPointDto,
+  PickPointRecommendationsDto,
   UpdatePickPointDto,
 } from './dto/pickpoint.dto';
 import { PickPointsService } from './pickpoints.service';
@@ -63,6 +64,11 @@ export class PickPointsController {
     @Query('longitude', ParseFloatPipe) longitude: number,
   ) {
     return this.pickPoints.findNearest(marketId, latitude, longitude);
+  }
+
+  @Post('recommendations')
+  recommendForProducts(@Body() body: PickPointRecommendationsDto) {
+    return this.pickPoints.recommendForProducts(body);
   }
 
   @Get(':id')

@@ -90,6 +90,28 @@ export class WarehousesController {
         return this.warehousesService.searchBinInventory(id, binId, search, page, limit);
     }
 
+    @Get('bins/search')
+    @UseGuards(JwtAuthGuard)
+    async searchBins(
+        @Req() request: AuthenticatedRequest,
+        @Query('warehouseId', ParseUUIDPipe) warehouseId: string,
+        @Query('search') search = '',
+        @Query('page', new ParseIntPipe({ optional: true })) page = 1,
+        @Query('limit', new ParseIntPipe({ optional: true })) limit = 20,
+    ) {
+        const marketId = await this.warehousesService.getWarehouseMarketId(warehouseId);
+        await this.assertAccess(request, marketId, 'get');
+        if (page < 1 || limit < 1 || search.length > 100) {
+            throw new BadRequestException('Yacheyka qidiruv parametrlari noto‘g‘ri.');
+        }
+        return this.warehousesService.searchBins(
+            warehouseId,
+            search.trim(),
+            page,
+            Math.min(limit, 100),
+        );
+    }
+
     @Get(':id/zones')
     @UseGuards(JwtAuthGuard)
     async findZones(

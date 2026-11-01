@@ -6,8 +6,12 @@ import { useCartStore } from "app/store/useCartStore";
 import { useYoqtirilganStore } from "app/store/useYoqtirilganStore";
 import { UniversalImage } from "./UniversalImage";
 import { useRouter } from 'solito/navigation';
+import {
+    evaluateConfiguration,
+    type ConfigurableProduct,
+} from 'app/features/app/product/productConfiguration';
 
-interface Product {
+interface Product extends ConfigurableProduct {
     id: string;
     title: string;
     price: number;
@@ -17,16 +21,6 @@ interface Product {
     discountId: string;
     images: string[];
     quantity: number;
-    options: {
-        id: string;
-        title: string;
-        isOptional: boolean;
-        items: {
-            id: string;
-            includeProductId: string | null;
-            includedProduct?: { id: string; title: string; price: number } | null;
-        }[];
-    }[];
 }
 
 interface CartItem {
@@ -77,21 +71,12 @@ const CardProduct = ({ product, cartItem, index = 0 }: { product: Product; cartI
 
     const optionSelections = cartItem.optionSelections ?? {};
     const quantity = cartItem.quantity;
-    const selectedOptions = product.options.flatMap(group => {
-        const option = group.items.find(item => item.id === optionSelections[group.id]);
-        return option?.includedProduct
-            ? [`${group.title}: ${option.includedProduct.title}`]
-            : [];
-    });
-    const linePrice = product.price + product.options.reduce((sum, group) => (
-        sum + (
-            group.items.find(option => option.id === optionSelections[group.id])
-                ?.includedProduct?.price ?? 0
-        )
-    ), 0);
-    const missingOptions = product.options.filter(
-        (group) => !group.isOptional && !optionSelections[group.id],
+    const configuration = evaluateConfiguration(product, optionSelections);
+    const selectedOptions = configuration.selected.map(
+        ({ group, product: option }) => `${group.title}: ${option.title}`,
     );
+    const linePrice = configuration.totalPrice;
+    const missingOptions = configuration.missingGroups;
     const oldPrice = product.price * 1.5;
 
     const scaleAnim = useRef(new Animated.Value(0)).current;
