@@ -42,7 +42,7 @@ interface SliderTypes {
 const isWeb = typeof window !== 'undefined' && window.innerWidth > 768;
 
 const HomeScreen = () => {
-    const url = process.env.BACKEND_URL || 'http://localhost:4000';
+    const url = process.env.BACKEND_URL || 'https://market-engine-monorepo-back.onrender.com';
     const token = useTokenStore(state => state.token)
     const router = useRouter()
     const notify = useNotification()

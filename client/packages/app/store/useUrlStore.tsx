@@ -7,7 +7,7 @@ interface urlState {
 
 export const useUrlStore = create<urlState>()(
     (set) => ({
-        url: 'http://localhost:4000',
+        url: 'https://market-engine-monorepo-back.onrender.com',
         setUrl: (url) => set({ url: url }),
     })
 )
