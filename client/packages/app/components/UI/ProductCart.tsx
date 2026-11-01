@@ -18,20 +18,24 @@ interface Product {
     discountId: string;
     images: string[];
     quantity: number;
-    options: any[];
+    options: {
+        id: string;
+        isOptional: boolean;
+        items: { id: string; includedProduct?: { title: string; price: number } | null }[];
+    }[];
 }
 
 interface ProductCardProps {
     product: Product;
     products: Product[];
-    index: number;
-    account: boolean
+    index?: number;
+    account?: boolean
     bg?: string
 }
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
-const ProductCard = ({ product, products, index, account, bg }: ProductCardProps) => {
+const ProductCard = ({ product, products, index = 0, bg }: ProductCardProps) => {
     const [isMounted, setIsMounted] = useState(false);
     const { cart, toggleCart } = useCartStore();
     const router = useRouter();
@@ -111,7 +115,7 @@ const ProductCard = ({ product, products, index, account, bg }: ProductCardProps
 
     const isFavorite = isMounted && yoqtirilganIds.includes(product.id);
 
-    const handleTargetIDs = (currentId: number) => {
+    const handleTargetIDs = (currentId: string) => {
         const currentIndex = products.findIndex(p => p.id === currentId);
         if (currentIndex === -1) return `${currentId}`;
         const nextProductsSlice = products.slice(currentIndex, currentIndex + 10);
@@ -120,6 +124,15 @@ const ProductCard = ({ product, products, index, account, bg }: ProductCardProps
 
     const handleCardPress = () => {
         router.push(`/product/${handleTargetIDs(product.id)}`);
+    };
+
+    const handleAddToCart = (event: GestureResponderEvent) => {
+        event.stopPropagation();
+        if (product.options.some((group) => !group.isOptional)) {
+            handleCardPress();
+            return;
+        }
+        toggleCart(product.id);
     };
 
     const scaleAnim = useRef(new Animated.Value(0)).current;
@@ -216,10 +229,7 @@ const ProductCard = ({ product, products, index, account, bg }: ProductCardProps
                 </Text>
 
                 <Pressable
-                    onPress={ (e: any) => {
-                        e.stopPropagation();
-                        toggleCart(product.id);
-                    } }
+                    onPress={ handleAddToCart }
                     style={ ({ pressed }: { pressed: boolean }) => [
                         styles.cartButtonWrapper,
                         pressed && { opacity: 0.85 },
@@ -227,7 +237,7 @@ const ProductCard = ({ product, products, index, account, bg }: ProductCardProps
                 >
                     <View style={ [styles.button, isInCart && styles.buttonInCart] }>
                         <Text numberOfLines={ 1 } style={ [styles.buttonText, isInCart && styles.buttonTextInCart] }>
-                            { isInCart ? 'Savatda ✓' : 'Savatga' }
+                            { isInCart ? 'Savatda ✓' : product.options.some((group) => !group.isOptional) ? 'Tanlash' : 'Savatga' }
                         </Text>
                     </View>
                 </Pressable>

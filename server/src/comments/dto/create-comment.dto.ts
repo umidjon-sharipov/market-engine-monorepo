@@ -1,7 +1,9 @@
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
   IsArray,
-  IsNumber,
+  IsInt,
+  MinLength,
   IsOptional,
   IsString,
   IsUUID,
@@ -15,41 +17,49 @@ export class CreateCommentDto {
   productId!: string;
 
   @IsString()
+  @MinLength(1)
   @MaxLength(400)
   comment!: string;
 
   @Type(() => Number)
-  @IsNumber()
+  @IsInt()
   @Min(1)
   @Max(5)
   rate!: number;
 
-  @IsOptional()
-  @IsString()
-  @MaxLength(400)
-  reply?: string;
 }
 
 export class UpdateCommentDto {
   @IsOptional()
   @IsString()
+  @MinLength(1)
   @MaxLength(400)
   comment?: string;
 
   @IsOptional()
   @Type(() => Number)
-  @IsNumber()
+  @IsInt()
   @Min(1)
   @Max(5)
   rate?: number;
 
   @IsOptional()
-  @IsString()
-  @MaxLength(400)
-  reply?: string;
-
-  @IsOptional()
   @IsArray()
+  @ArrayMaxSize(5)
   @IsString({ each: true })
+  @Transform(({ value }) => {
+    if (typeof value !== 'string') return value;
+    try {
+      return JSON.parse(value);
+    } catch {
+      return value;
+    }
+  })
   existingImages?: string[];
+}
+
+export class UpdateCommentReplyDto {
+  @IsString()
+  @MaxLength(1000)
+  reply!: string;
 }

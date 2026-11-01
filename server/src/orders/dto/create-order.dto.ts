@@ -1,65 +1,82 @@
 import { Type } from 'class-transformer';
-import { Prisma, OrderStatus } from '@prisma/client';
 import {
-    IsArray,
-    IsEnum,
-    IsNotEmpty,
-    IsNumber,
-    IsOptional,
-    IsString,
-    IsUUID,
-    Min,
-    ValidateNested,
+  ArrayMinSize,
+  ArrayMaxSize,
+  IsArray,
+  IsEnum,
+  IsNumber,
+  IsObject,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MaxLength,
+  Max,
+  Min,
+  MinLength,
+  ValidateNested,
 } from 'class-validator';
+import { OrderStatus } from '@prisma/client';
 
-export class OrderStockReservationDto {
-    @IsUUID()
-    productId!: string;
+export class OrderItemDto {
+  @IsUUID()
+  productId!: string;
 
-    @IsUUID()
-    warehouseId!: string;
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @Min(0.001)
+  quantity!: number;
 
-    @IsUUID()
-    binId!: string;
-
-    @Type(() => Number)
-    @IsNumber({ maxDecimalPlaces: 3 })
-    @Min(0.001)
-    quantity!: number;
+  @IsOptional()
+  @IsObject()
+  optionSelections?: Record<string, string>;
 }
 
 export class CreateOrderDto {
-    @IsNotEmpty({ message: "Ism (name) kiritilishi shart" })
-    @IsString({ message: "Ism matn shaklida bo'lishi kerak" })
-    name!: string;
+  @IsString()
+  @MinLength(2)
+  @MaxLength(255)
+  name!: string;
 
-    @IsNotEmpty({ message: "Mahsulot (product) kiritilishi shart" })
-    @IsString({ message: "Mahsulot matn shaklida bo'lishi kerak" })
-    product!: string;
+  @IsString()
+  @MinLength(7)
+  @MaxLength(50)
+  phone!: string;
 
-    @IsNotEmpty({ message: "Telefon raqam kiritilishi shart" })
-    @IsString({ message: "Telefon raqam matn shaklida bo'lishi kerak" })
-    phone!: string;
+  @IsString()
+  @MinLength(5)
+  @MaxLength(1000)
+  address!: string;
 
-    @IsNotEmpty({ message: "Manzil (address) kiritilishi shart" })
-    @IsString({ message: "Manzil matn shaklida bo'lishi kerak" })
-    address!: string;
+  @IsUUID()
+  checkoutId!: string;
 
-    @IsNotEmpty({ message: "Buyurtma elementlari (items) kiritilishi shart" })
-    items!: Prisma.InputJsonValue;
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(100)
+  @ValidateNested({ each: true })
+  @Type(() => OrderItemDto)
+  items!: OrderItemDto[];
 
-    @IsOptional()
-    @IsEnum(OrderStatus)
-    status?: OrderStatus;
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(-90)
+  @Max(90)
+  deliveryLatitude?: number;
 
-    @IsOptional()
-    @IsArray()
-    @ValidateNested({ each: true })
-    @Type(() => OrderStockReservationDto)
-    stockReservations?: OrderStockReservationDto[];
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(-180)
+  @Max(180)
+  deliveryLongitude?: number;
+
+  @IsOptional()
+  @IsUUID()
+  pickPointId?: string;
 }
 
 export class UpdateOrderStatusDto {
-    @IsEnum(OrderStatus)
-    status!: OrderStatus;
+  @IsEnum(OrderStatus)
+  status!: OrderStatus;
 }

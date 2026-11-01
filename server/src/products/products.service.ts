@@ -21,34 +21,149 @@ export class ProductsService {
     ) { }
 
     findAll(search?: string, marketId?: string) {
+        return this.findProducts({
+            ...(marketId ? { marketId } : {}),
+            ...this.searchWhere(search),
+        }, false);
+    }
+
+    findManagementProducts(marketId: string) {
+        return this.findProducts({ marketId }, true);
+    }
+
+    private searchWhere(search?: string): Prisma.ProductWhereInput {
         const terms = search
             ?.trim()
             .toLocaleLowerCase()
             .split(/\s+/)
             .filter(Boolean);
-        return this.products.findAll({
-            where: {
-                ...(marketId ? { marketId } : {}),
-                ...(terms?.length
-                    ? {
-                        OR: [
-                            { title: { contains: search, mode: 'insensitive' } },
-                            {
-                                options: {
-                                    some: {
-                                        searchEnabled: true,
-                                        searchKeys: { hasSome: terms },
+        return terms?.length
+            ? {
+                OR: [
+                    { title: { contains: search?.trim(), mode: 'insensitive' } },
+                    {
+                        options: {
+                            some: {
+                                searchEnabled: true,
+                                OR: [
+                                    { searchKeys: { hasSome: terms } },
+                                    {
+                                        items: {
+                                            some: {
+                                                includedProduct: {
+                                                    title: {
+                                                        contains: search?.trim() ?? '',
+                                                        mode: 'insensitive',
+                                                    },
+                                                },
+                                            },
+                                        },
                                     },
-                                },
+                                ],
                             },
-                        ],
+                        },
+                    },
+                ],
+            }
+            : {};
+    }
+
+    private async availableInventory(marketIds?: string[]) {
+        const marketCondition = marketIds?.length
+            ? Prisma.sql`AND product."marketId" IN (${Prisma.join(
+                marketIds.map((marketId) => Prisma.sql`${marketId}::uuid`),
+            )})`
+            : Prisma.empty;
+        return this.prisma.$queryRaw<{ productId: string; availableQuantity: number }[]>(
+            Prisma.sql`
+                SELECT inventory."productId" AS "productId",
+                       SUM(inventory.quantity - inventory."reservedQuantity")::float AS "availableQuantity"
+                FROM "WarehouseInventories" AS inventory
+                INNER JOIN "Warehouses" AS warehouse ON warehouse.id = inventory."warehouseId"
+                INNER JOIN "Products" AS product ON product.id = inventory."productId"
+                WHERE warehouse."marketId" = product."marketId"
+                  AND inventory.quantity > inventory."reservedQuantity"
+                  AND (inventory."expiresAt" IS NULL OR inventory."expiresAt" > NOW())
+                  ${marketCondition}
+                GROUP BY inventory."productId"
+                HAVING SUM(inventory.quantity - inventory."reservedQuantity") > 0
+            `,
+        );
+    }
+
+    private async findProducts(
+        where: Prisma.ProductWhereInput,
+        includeUnavailable: boolean,
+    ) {
+        const inventory = await this.availableInventory(
+            typeof where.marketId === 'string' ? [where.marketId] : undefined,
+        );
+        const available = new Map(
+            inventory.map((item) => [item.productId, item.availableQuantity]),
+        );
+        const products = await this.prisma.product.findMany({
+            where: {
+                ...where,
+                ...(!includeUnavailable
+                    ? {
+                        id: { in: inventory.map((item) => item.productId) },
+                        isOptionOnly: false,
                     }
                     : {}),
             },
             orderBy: { createdAt: 'desc' },
             include: {
-                options: { include: { items: true } },
+                market: { select: { id: true, title: true, logo: true } },
+                options: {
+                    include: {
+                        items: {
+                            include: {
+                                includedProduct: {
+                                    select: {
+                                        id: true,
+                                        title: true,
+                                        price: true,
+                                        uom: true,
+                                        images: true,
+                                        quantity: true,
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
             },
+        });
+
+        return products.flatMap((product) => {
+            const optionGroups = product.options.map((group) => ({
+                ...group,
+                items: includeUnavailable
+                    ? group.items.map((item) => ({
+                        ...item,
+                        includedProduct: item.includedProduct
+                            ? {
+                                ...item.includedProduct,
+                                quantity: available.get(item.includedProduct.id) ?? 0,
+                            }
+                            : null,
+                    }))
+                    : group.items.flatMap((item) => {
+                        const includedProduct = item.includedProduct;
+                        const quantity = includedProduct ? available.get(includedProduct.id) : undefined;
+                        return includedProduct && quantity
+                            ? [{ ...item, includedProduct: { ...includedProduct, quantity } }]
+                            : [];
+                    }),
+            }));
+            const hasUnavailableRequiredOption = !includeUnavailable &&
+                optionGroups.some((group) => !group.isOptional && group.items.length === 0);
+            if (hasUnavailableRequiredOption) return [];
+            return [{
+                ...product,
+                quantity: available.get(product.id) ?? 0,
+                options: optionGroups,
+            }];
         });
     }
 
@@ -60,28 +175,9 @@ export class ProductsService {
     ) {
         const safePage = Math.max(1, Math.floor(page));
         const safeLimit = Math.min(20, Math.max(1, Math.floor(limit)));
-        const terms = search
-            .trim()
-            .toLocaleLowerCase()
-            .split(/\s+/)
-            .filter(Boolean);
         const where: Prisma.ProductWhereInput = {
             marketId,
-            ...(terms.length
-                ? {
-                    OR: [
-                        { title: { contains: search.trim(), mode: 'insensitive' } },
-                        {
-                            options: {
-                                some: {
-                                    searchEnabled: true,
-                                    searchKeys: { hasSome: terms },
-                                },
-                            },
-                        },
-                    ],
-                }
-                : {}),
+            ...this.searchWhere(search),
         };
         const [data, total] = await this.prisma.$transaction([
             this.prisma.product.findMany({
@@ -102,9 +198,9 @@ export class ProductsService {
         };
     }
 
-    async findData(userName: string) {
-        const user = await this.prisma.user.findFirst({
-            where: { userName: userName },
+    async findData(userId: string) {
+        const user = await this.prisma.user.findUnique({
+            where: { id: userId },
             select: { id: true },
         });
 
@@ -128,23 +224,9 @@ export class ProductsService {
             })
             .map(item => item.marketId);
 
-        if (activeMarketIds.length === 0) {
-            throw new BadRequestException("Siz birorta aktiv marketga obuna bo'lmagansiz");
-        }
+        if (activeMarketIds.length === 0) return [];
 
-        return this.prisma.product.findMany({
-            where: {
-                marketId: {
-                    in: activeMarketIds,
-                },
-            },
-            orderBy: { createdAt: 'desc' },
-            include: {
-                market: {
-                    select: { id: true, title: true, logo: true }
-                }
-            },
-        });
+        return this.findProducts({ marketId: { in: activeMarketIds } }, false);
     }
 
     async createProduct(
@@ -155,6 +237,7 @@ export class ProductsService {
             body.categoryPath,
             body.marketId,
         );
+        await this.validateOptionProducts(body.options, body.marketId);
         return this.products.create(await this.toCreateInput(body, files));
     }
 
@@ -174,9 +257,13 @@ export class ProductsService {
         if (body.categoryPath !== undefined) {
             await this.validateCategorySelection(body.categoryPath, marketId);
         }
+        if (body.options !== undefined) {
+            await this.validateOptionProducts(body.options, marketId, id);
+        }
 
         const data: Prisma.ProductUpdateInput = {};
         if (body.title !== undefined) data.title = body.title;
+        if (body.isOptionOnly !== undefined) data.isOptionOnly = body.isOptionOnly;
         if (body.description !== undefined)
             data.description = this.jsonValue(body.description);
         if (body.price !== undefined) data.price = body.price;
@@ -201,10 +288,9 @@ export class ProductsService {
             data.images = this.jsonValue(imageUrls);
         }
         if (body.options !== undefined) {
-            const uploaded = await this.uploadFiles(files);
             data.options = {
                 deleteMany: {},
-                create: this.toOptionInputs(body.options, uploaded),
+                create: this.toOptionInputs(body.options),
             };
         }
         return this.products.update({ id }, data);
@@ -223,6 +309,7 @@ export class ProductsService {
         return {
             title: body.title,
             price: body.price,
+            isOptionOnly: body.isOptionOnly ?? false,
             uom: body.uom,
             quantity: 0,
             description: this.jsonValue(body.description),
@@ -233,7 +320,7 @@ export class ProductsService {
                 categoryPath: body.categoryPath,
             }),
             options: {
-                create: this.toOptionInputs(body.options, uploaded),
+                create: this.toOptionInputs(body.options ?? []),
             },
         };
     }
@@ -268,30 +355,76 @@ export class ProductsService {
 
     private toOptionInputs(
         options: ProductOptionDto[],
-        uploadedImages: Map<string, string>,
     ): Prisma.ProductOptionCreateWithoutProductInput[] {
-        return options.map((option, optionIndex) => {
+        return options.map((option) => {
             const searchable = option.searchEnabled ?? false;
-            const searchKeys = (option.searchKeys ?? []).map((key: any) => String(key));
+            const searchKeys = (option.searchKeys ?? [])
+                .map((key) => key.trim().toLocaleLowerCase())
+                .filter(Boolean);
 
             return {
                 title: option.title,
+                isOptional: option.isOptional ?? false,
                 searchEnabled: searchable,
                 searchKeys,
                 items: {
-                    create: option.items.map((item, itemIndex) => ({
-                        key: item.key,
-                        value: item.value,
-                        image:
-                            uploadedImages.get(
-                                `option-image-${optionIndex}-${itemIndex}`,
-                            ) ??
-                            item.image ??
-                            null,
+                    create: option.items.map((item) => ({
+                        includedProduct: {
+                            connect: { id: item.includeProductId },
+                        },
                     })),
                 },
             };
         });
+    }
+
+    private async validateOptionProducts(
+        options: ProductOptionDto[] | undefined,
+        marketId: string,
+        parentProductId?: string,
+    ) {
+        if (!options?.length) return;
+        if (options.some((option) => option.items.length === 0)) {
+            throw new BadRequestException(
+                'Har bir product option kamida bitta warehouse mahsulotini o‘z ichiga olishi kerak.',
+            );
+        }
+        const productIds = options.flatMap((option) =>
+            option.items.map((item) => item.includeProductId),
+        );
+        if (options.some((option) =>
+            new Set(option.items.map((item) => item.includeProductId)).size !== option.items.length
+        )) {
+            throw new BadRequestException(
+                'Bir option guruhida bir xil warehouse mahsulotini takrorlash mumkin emas.',
+            );
+        }
+        const uniqueIds = [...new Set(productIds)];
+        if (parentProductId && uniqueIds.includes(parentProductId)) {
+            throw new BadRequestException(
+                'Mahsulot o‘zini o‘z optioniga qo‘sha olmaydi.',
+            );
+        }
+        const includedProducts = await this.prisma.product.findMany({
+            where: { id: { in: uniqueIds }, marketId },
+            select: { id: true },
+        });
+        if (includedProducts.length !== uniqueIds.length) {
+            throw new BadRequestException(
+                'Option ichidagi barcha mahsulotlar shu marketga tegishli bo‘lishi kerak.',
+            );
+        }
+    }
+
+    private async ensureProductNotIncluded(productId: string) {
+        const includedInOptions = await this.prisma.productOptionItem.count({
+            where: { includeProductId: productId },
+        });
+        if (includedInOptions > 0) {
+            throw new BadRequestException(
+                'Bu mahsulot boshqa product optionlarida ishlatilgan; omborini o‘chirishdan avval ularni tahrirlang.',
+            );
+        }
     }
 
     private jsonValue(value: unknown): Prisma.InputJsonValue {
@@ -362,6 +495,7 @@ export class ProductsService {
         if (!product) {
             throw new NotFoundException('Mahsulot topilmadi.');
         }
+        await this.ensureProductNotIncluded(id);
         return this.products.delete({ id });
     }
 }

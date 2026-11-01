@@ -98,7 +98,12 @@ const taskInclude = {
   },
   product: { select: { id: true, title: true, uom: true } },
   optionItem: {
-    select: { id: true, key: true, option: { select: { title: true } } },
+    select: {
+      id: true,
+      includeProductId: true,
+      includedProduct: { select: { title: true } },
+      option: { select: { title: true } },
+    },
   },
   reservation: {
     select: { id: true, lotNumber: true, quantity: true },
@@ -214,14 +219,40 @@ export class WarehouseTasksService {
             select: {
               id: true,
               title: true,
-              items: { select: { id: true, key: true, value: true } },
+              items: {
+                select: {
+                  id: true,
+                  includeProductId: true,
+                  includedProduct: { select: { title: true } },
+                },
+              },
             },
           },
         },
         orderBy: [{ title: 'asc' }, { id: 'asc' }],
       }),
     ]);
-    return { workers, warehouses, products };
+    return {
+      workers,
+      warehouses: warehouses.map(({ zones, ...warehouse }) => ({
+        ...warehouse,
+        zones: zones.map((zone) => ({
+          title: zone.title,
+          bins: zone.aisles.flatMap((aisle) =>
+            aisle.racks.flatMap((rack) =>
+              rack.shelfs.flatMap((shelf) =>
+                shelf.bins.map((bin) => ({
+                  id: bin.id,
+                  code: bin.code,
+                  title: bin.title,
+                })),
+              ),
+            ),
+          ),
+        })),
+      })),
+      products,
+    };
   }
 
   async resolveWorkerId(email: string | undefined, marketId: string) {

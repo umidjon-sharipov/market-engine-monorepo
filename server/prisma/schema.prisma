@@ -88,6 +88,7 @@ model Market {
     warehouseTasks WarehouseTask[]
     categories     Category[]
     followers      Following[]
+    orders         Order[]
 
     @@index([email])
     @@index([title(ops: raw("gin_trgm_ops"))], type: Gin, map: "Markets_title_trgm_idx")
@@ -219,20 +220,20 @@ model Product {
     title          String          @db.VarChar(255)
     description    Json            @default("[]")
     price          Float           @default(0)
+    isOptionOnly   Boolean         @default(false)
     uom            UnitOfMeasure   @default(PCS)
     gradient       Json            @default("[]")
     discountId     String?         @db.Uuid
     options        ProductOption[]
+    includedInOptions ProductOptionItem[] @relation("IncludedProduct")
     images         Json            @default("[]")
     quantity       Float           @default(0)
     marketId       String          @db.Uuid
-    warehouseId    String?         @db.Uuid
     createdAt      DateTime        @default(now()) @db.Timestamptz(6)
     barcode        String?         @db.VarChar(100)
     categoryPath   String?         @db.VarChar(2000)
 
     market            Market                  @relation(fields: [marketId], references: [id], onDelete: Cascade)
-    warehouse         Warehouse?              @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
     discount          Discount?               @relation(fields: [discountId], references: [id], onDelete: SetNull)
     comments          Comment[]
     // category     Category?     @relation(fields: [categoryId], references: [id], onDelete: SetNull)
@@ -242,7 +243,6 @@ model Product {
     warehouseTasks    WarehouseTask[]
 
     @@index([marketId, createdAt(sort: Desc)])
-    @@index([warehouseId])
     @@index([discountId])
     @@map("Products")
 }
@@ -251,8 +251,9 @@ model ProductOption {
     id            String   @id @default(uuid()) @db.Uuid
     productId     String   @db.Uuid
     title         String   @db.VarChar(255)
-    searchKeys    String[] @default([])
+    isOptional    Boolean  @default(false)
     searchEnabled Boolean  @default(false)
+    searchKeys    String[] @default([])
     createdAt     DateTime @default(now()) @db.Timestamptz(6)
 
     product Product             @relation(fields: [productId], references: [id], onDelete: Cascade)
@@ -263,16 +264,17 @@ model ProductOption {
 }
 
 model ProductOptionItem {
-    id       String  @id @default(uuid()) @db.Uuid
-    optionId String  @db.Uuid
-    key      String  @db.VarChar(255)
-    value    Float   @default(0)
-    image    String? @db.Text
+    id               String  @id @default(uuid()) @db.Uuid
+    optionId         String  @db.Uuid
+    includeProductId String? @db.Uuid
 
-    option         ProductOption   @relation(fields: [optionId], references: [id], onDelete: Cascade)
-    warehouseTasks WarehouseTask[]
+    option          ProductOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+    includedProduct Product?      @relation("IncludedProduct", fields: [includeProductId], references: [id], onDelete: Restrict)
+    warehouseTasks  WarehouseTask[]
 
     @@index([optionId])
+    @@index([includeProductId])
+    @@unique([optionId, includeProductId])
     @@map("ProductOptionItems")
 }
 
@@ -309,17 +311,27 @@ model Discount {
 
 model Order {
     id                String                  @id @default(uuid()) @db.Uuid
+    checkoutId        String?                 @db.Uuid
+    marketId          String?                 @db.Uuid
     name              String                  @db.VarChar(255)
     product           String                  @db.Text
     phone             String                  @db.VarChar(50)
     address           String                  @db.Text
+    deliveryLatitude  Float?
+    deliveryLongitude Float?
+    pickPointId       String?                 @db.Uuid
+    total             Float                   @default(0)
     items             Json                    @default("[]")
     status            OrderStatus             @default(NEW)
     createdAt         DateTime                @default(now()) @db.Timestamptz(6)
     stockReservations OrderStockReservation[]
     warehouseTasks    WarehouseTask[]
+    market            Market?                 @relation(fields: [marketId], references: [id], onDelete: SetNull)
+    pickPoint         PickPoint?              @relation(fields: [pickPointId], references: [id], onDelete: SetNull)
 
     @@index([status, createdAt(sort: Desc)])
+    @@index([marketId, status, createdAt(sort: Desc)])
+    @@unique([checkoutId, marketId])
     @@map("Orders")
 }
 
@@ -350,6 +362,7 @@ model Comment {
 
     @@index([productId, createdAt(sort: Desc)])
     @@index([rate])
+    @@unique([productId, userId], map: "comments_product_user_unique")
     @@map("Comments")
 }
 
@@ -427,6 +440,7 @@ model PickPoint {
     updatedAt           DateTime @updatedAt @db.Timestamptz(6)
 
     warehouse Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+    orders    Order[]
 
     @@index([warehouseId])
     @@map("PickPoints")
@@ -443,7 +457,6 @@ model Warehouse {
     createdAt DateTime @default(now()) @db.Timestamptz(6)
 
     market               Market                  @relation(fields: [marketId], references: [id], onDelete: Cascade)
-    products             Product[]
     zones                WarehouseZone[]
     inventories          WarehouseInventory[]
     outgoingMovements    StockMovement[]         @relation("MovementFromWarehouse")
@@ -645,6 +658,7 @@ model OrderStockReservation {
     quantity    Float
     createdAt   DateTime  @default(now()) @db.Timestamptz(6)
     releasedAt  DateTime? @db.Timestamptz(6)
+    fulfilledAt DateTime? @db.Timestamptz(6)
 
     order         Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
     product       Product        @relation(fields: [productId], references: [id], onDelete: Restrict)

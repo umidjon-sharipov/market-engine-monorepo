@@ -26,6 +26,7 @@ import {
 } from './dto/create-product.dto';
 import { MarketAccessGuard } from '../auth/guards/market-access.guard';
 import { PrismaService } from '../prisma/prisma.service';
+import { WORKER_ROLES } from '../workers/worker-permissions';
 
 @Controller('products')
 export class ProductsController {
@@ -37,9 +38,30 @@ export class ProductsController {
     @Get()
     findAll(
         @Query('search') search?: string,
-        @Query('marketId') marketId?: string,
     ) {
-        return this.productsService.findAll(search, marketId);
+        return this.productsService.findAll(search);
+    }
+
+    @Get('market/:marketId')
+    @UseGuards(JwtAuthGuard)
+    async findManagementProducts(
+        @Req() req: any,
+        @Param('marketId', ParseUUIDPipe) marketId: string,
+    ) {
+        const GuardClass = MarketAccessGuard(
+            'product',
+            req.user?.email,
+            [...WORKER_ROLES, 'owner'],
+            marketId,
+            'get',
+        );
+        const allowed = await new GuardClass(this.prisma).canActivate({
+            switchToHttp: () => ({ getRequest: () => req }),
+        } as any);
+        if (!allowed) {
+            throw new ForbiddenException('Mahsulotlarni ko‘rish uchun ruxsat yo‘q.');
+        }
+        return this.productsService.findManagementProducts(marketId);
     }
 
     @Get('search')
@@ -72,7 +94,7 @@ export class ProductsController {
     async getProductData(
         @Req() req: any,
     ) {
-        return this.productsService.findData(req.user.userName);
+        return this.productsService.findData(req.user.userId);
     }
 
     @Post()

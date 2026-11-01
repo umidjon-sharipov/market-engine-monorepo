@@ -26,6 +26,15 @@ const sameSelections = (
         leftKeys.every((key, index) => key === rightKeys[index] && left[key] === right[key]);
 };
 
+const normalizeSelections = (value: unknown): Record<string, string> => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+    return Object.fromEntries(
+        Object.entries(value).filter(
+            (entry): entry is [string, string] => typeof entry[1] === 'string',
+        ),
+    );
+};
+
 export const useCartStore = create<CartState>()(
     persist(
         (set) => ({
@@ -85,6 +94,25 @@ export const useCartStore = create<CartState>()(
         {
             name: 'cart-storage',
             storage: createJSONStorage(getAppStorage),
+            partialize: (state) => ({ cart: state.cart }),
+            version: 1,
+            migrate: (persistedState) => {
+                const persistedCart = (persistedState as { cart?: unknown } | undefined)?.cart;
+                const cart = Array.isArray(persistedCart)
+                    ? persistedCart.flatMap((entry) => {
+                        if (!entry || typeof entry !== 'object' || !('id' in entry)) return [];
+                        const item = entry as { id: string | number; quantity?: number; optionSelections?: unknown };
+                        const quantity = Number(item.quantity);
+                        if (!Number.isFinite(quantity) || quantity <= 0) return [];
+                        return [{
+                            id: String(item.id),
+                            quantity: Math.floor(quantity),
+                            optionSelections: normalizeSelections(item.optionSelections),
+                        }];
+                    })
+                    : [];
+                return { cart };
+            },
         }
     )
 );

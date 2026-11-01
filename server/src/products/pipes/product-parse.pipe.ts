@@ -35,6 +35,13 @@ export class ProductParsePipe implements PipeTransform {
         if (title) body.title = title;
         if (body.price !== undefined)
             body.price = this.readNumber(body.price, 'price');
+        if (body.isOptionOnly !== undefined) {
+            if (body.isOptionOnly !== true && body.isOptionOnly !== false &&
+                body.isOptionOnly !== 'true' && body.isOptionOnly !== 'false') {
+                throw new BadRequestException('isOptionOnly qiymati noto‘g‘ri.');
+            }
+            body.isOptionOnly = body.isOptionOnly === true || body.isOptionOnly === 'true';
+        }
         if (body.uom === undefined && !this.partial) body.uom = 'PCS';
         if (body.searchEnabled !== undefined) {
             body.searchEnabled =
@@ -80,25 +87,33 @@ export class ProductParsePipe implements PipeTransform {
     private parseOptions(body: Record<string, unknown>): ProductOptionDto[] {
         const submittedOptions = this.parseJson(body.options, undefined);
         if (Array.isArray(submittedOptions)) {
-            return submittedOptions
-                .map((option) => this.normalizeOption(option))
-                .filter((option): option is ProductOptionDto => option !== null);
+            return submittedOptions.map((option) => this.normalizeOption(option));
+        }
+        if (submittedOptions !== undefined) {
+            throw new BadRequestException('Product options noto‘g‘ri formatda.');
         }
 
         const options = new Map<number, ProductOptionDto>();
         for (const [key, value] of Object.entries(body)) {
             const titleMatch = key.match(/^title-(\d+)$/);
-            const itemKeyMatch = key.match(/^title-(\d+)-(\d+)$/);
-            const itemValueMatch = key.match(/^value-(\d+)-(\d+)$/);
             const searchKeysMatch = key.match(/^searchKeys-(\d+)$/);
             const searchEnabledMatch = key.match(/^searchEnabled-(\d+)$/);
-            const itemImageMatch = key.match(/^option-image-url-(\d+)-(\d+)$/);
+            const optionalMatch = key.match(/^optional-(\d+)$/);
+            const flatItemProductMatch = key.match(
+                /^includeProductId-(\d+)-(\d+)$/,
+            );
+            const itemProductMatch = key.match(
+                /^options\[(\d+)\]\[products\]\[(\d+)\]$/,
+            );
 
             if (titleMatch) {
                 this.getOption(options, Number(titleMatch[1])).title =
                     this.readString(value);
             } else if (searchEnabledMatch) {
                 this.getOption(options, Number(searchEnabledMatch[1])).searchEnabled =
+                    value === true || value === 'true';
+            } else if (optionalMatch) {
+                this.getOption(options, Number(optionalMatch[1])).isOptional =
                     value === true || value === 'true';
             } else if (searchKeysMatch) {
                 const searchKeys = this.parseJson(value, []);
@@ -112,41 +127,44 @@ export class ProductParsePipe implements PipeTransform {
                             .map((searchKey) => searchKey.trim().toLocaleLowerCase())
                             .filter(Boolean);
                 }
-            } else if (itemImageMatch) {
-                this.getItem(
+            } else if (flatItemProductMatch || itemProductMatch) {
+                const includeProductId = this.readString(value);
+                if (!includeProductId) continue;
+                if (!this.isUuid(includeProductId)) {
+                    throw new BadRequestException(
+                        'Option mahsulot IDsi noto‘g‘ri formatda.',
+                    );
+                }
+                const option = this.getOption(
                     options,
-                    Number(itemImageMatch[1]),
-                    Number(itemImageMatch[2]),
-                ).image = this.readString(value);
-            } else if (itemKeyMatch) {
-                this.getItem(
-                    options,
-                    Number(itemKeyMatch[1]),
-                    Number(itemKeyMatch[2]),
-                ).key = this.readString(value);
-            } else if (itemValueMatch) {
-                this.getItem(
-                    options,
-                    Number(itemValueMatch[1]),
-                    Number(itemValueMatch[2]),
-                ).value = this.readNumber(value, 'option value');
+                    Number((flatItemProductMatch ?? itemProductMatch)?.[1]),
+                );
+                const itemIndex = Number((flatItemProductMatch ?? itemProductMatch)?.[2]);
+                option.items[itemIndex] = { includeProductId };
             }
         }
 
         return [...options.values()]
-            .filter((option) => option.title && option.items.length > 0)
-            .map((option) => ({
+            .filter((option) => option.title || option.items.length > 0)
+            .map((option) => {
+                if (!option.title || option.items.length === 0) {
+                    throw new BadRequestException(
+                        'Har bir option sarlavhasi va kamida bitta mahsuloti bo‘lishi kerak.',
+                    );
+                }
+                return {
                 ...option,
                 searchKeys: option.searchKeys
                     .map((key) => key.trim().toLocaleLowerCase())
                     .filter(Boolean),
                 searchEnabled: option.searchEnabled ?? false,
-            }));
+                };
+            });
     }
 
-    private normalizeOption(value: unknown): ProductOptionDto | null {
+    private normalizeOption(value: unknown): ProductOptionDto {
         if (!value || typeof value !== 'object' || Array.isArray(value))
-            return null;
+            throw new BadRequestException('Product option noto‘g‘ri formatda.');
         const option = value as Record<string, unknown>;
         const title = this.readString(option.title);
         const rawSearchKeys = this.parseJson(option.searchKeys, []);
@@ -160,56 +178,53 @@ export class ProductParsePipe implements PipeTransform {
             ? option.items
                 .map((item) => {
                     if (!item || typeof item !== 'object' || Array.isArray(item))
-                        return null;
+                        throw new BadRequestException(
+                            'Product option item noto‘g‘ri formatda.',
+                        );
                     const source = item as Record<string, unknown>;
-                    return {
-                        key: this.readString(source.key),
-                        value: this.readNumber(source.value ?? 0, 'option value'),
-                        image: this.readString(source.image) || undefined,
-                    };
+                    const includeProductId = this.readString(
+                        source.includeProductId,
+                    );
+                    if (!this.isUuid(includeProductId)) {
+                        throw new BadRequestException(
+                            'Option mahsulot IDsi noto‘g‘ri formatda.',
+                        );
+                    }
+                    return { includeProductId };
                 })
                 .filter(
                     (
                         item,
-                    ): item is {
-                        key: string;
-                        value: number;
-                        image: string | undefined;
-                    } => !!item?.key,
+                    ): item is { includeProductId: string } => item !== null,
                 )
             : [];
 
-        return title
-            ? {
-                title,
-                searchKeys,
-                searchEnabled:
-                    option.searchEnabled === true || option.searchEnabled === 'true',
-                items,
-            }
-            : null;
+        if (!title || items.length === 0) {
+            throw new BadRequestException(
+                'Har bir option sarlavhasi va kamida bitta mahsuloti bo‘lishi kerak.',
+            );
+        }
+        return {
+            title,
+            searchKeys,
+            searchEnabled:
+                option.searchEnabled === true || option.searchEnabled === 'true',
+            isOptional:
+                option.isOptional === true || option.isOptional === 'true',
+            items,
+        };
     }
 
     private getOption(options: Map<number, ProductOptionDto>, index: number) {
         if (!options.has(index))
             options.set(index, {
                 title: '',
+                isOptional: false,
                 searchKeys: [],
                 searchEnabled: false,
                 items: [],
             });
         return options.get(index)!;
-    }
-
-    private getItem(
-        options: Map<number, ProductOptionDto>,
-        optionIndex: number,
-        itemIndex: number,
-    ) {
-        const option = this.getOption(options, optionIndex);
-        if (!option.items[itemIndex])
-            option.items[itemIndex] = { key: '', value: 0 };
-        return option.items[itemIndex];
     }
 
     private readString(value: unknown): string {
@@ -223,7 +238,6 @@ export class ProductParsePipe implements PipeTransform {
                 `${fieldName} musbat raqam bo'lishi kerak.`,
             );
         }
-
         return parsed;
     }
 

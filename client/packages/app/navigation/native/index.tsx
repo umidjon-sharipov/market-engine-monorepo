@@ -17,11 +17,14 @@ import AuthScreen from 'app/features/app/auth/page'
 import FollowScreen from 'app/features/app/follow/page'
 import Filter from 'app/features/app/search/_components/filter/page'
 import ProductsID from 'app/features/app/product/[id]/page'
+import ProductCommentsPage from 'app/features/app/product/[id]/comments/page'
+import CheckoutPage from 'app/features/app/checkout/page'
 
 const Stack = createNativeStackNavigator<{
   home: undefined
   katalog: undefined
   savat: undefined
+  checkout: undefined
   saralangan: undefined
   profile: undefined
   savolJavob: undefined
@@ -36,6 +39,9 @@ const Stack = createNativeStackNavigator<{
   'products': {
     id: 'string'
   }
+  productComments: {
+    id: string
+  }
 }>()
 export function NativeNavigation() {
   return (
@@ -47,6 +53,7 @@ export function NativeNavigation() {
           <Stack.Screen name="home" component={HomeScreen} />
           <Stack.Screen name="katalog" component={KatalogScreen} />
           <Stack.Screen name="savat" component={SavatScreen} />
+          <Stack.Screen name="checkout" component={CheckoutPage} />
           <Stack.Screen name="saralangan" component={SaralanganScreen} />
           <Stack.Screen name="profile" component={ProfileScreen} />
           <Stack.Screen name="savolJavob" component={SavolJavobScreen} />
@@ -60,6 +67,9 @@ export function NativeNavigation() {
           }} />
           <Stack.Screen name='products' component={ProductsID} options={{
             title: 'products'
+          }} />
+          <Stack.Screen name='productComments' component={ProductCommentsPage} options={{
+            title: 'comments'
           }} />
         </Stack.Navigator>
       </View>

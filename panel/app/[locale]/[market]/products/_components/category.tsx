@@ -106,7 +106,7 @@ function CategoriesContent({ setCategoryId, categoryId }: { setCategoryId: React
         if (!isUuid(market)) {
             throw new Error('URL parametrida yaroqli market UUID topilmadi.');
         }
-        const res = await fetch(`${API_URL}/categories?marketId=${encodeURIComponent(market)}`, {
+        const res = await fetch(`${API_URL}/categories/market/${encodeURIComponent(market)}`, {
             headers: { Authorization: `Bearer ${token}` },
         });
         const req = await res.json();

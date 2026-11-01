@@ -1,6 +1,6 @@
 'use client'
 import React, { useEffect, useState, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Pressable, useWindowDimensions, Animated, Platform, GestureResponderEvent, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Pressable, TextInput, useWindowDimensions, Animated, Platform, GestureResponderEvent, TouchableOpacity, ViewStyle, Image } from 'react-native';
 import { useNativeAnimDriver } from 'app/utils/animation';
 import ScreenWrapper from 'app/components/layout/ScreenWrapper';
 import ProductCart from 'app/components/UI/ProductCart';
@@ -23,21 +23,45 @@ import accesStarPng from 'app/features/app/assets/acces-star.png'
 import starPng from 'app/features/app/assets/star.png'
 import { useModalStore } from 'app/store/useModalStore';
 import { useUrlStore } from 'app/store/useUrlStore';
+import { useTokenStore } from 'app/store/useTokenStore';
+import { fetchWithAuth } from 'app/features/app/auth/fetchWithAuth';
+import { pickCommentImages, type PickedCommentImage } from 'app/utils/pickCommentImages';
 
-interface optionItem {
+interface ProductComment {
     id: string;
-    key: string;
-    value: number;
+    comment: string;
+    reply?: string | null;
+    rate: number;
+    createdAt: string;
+    images: string[];
+    user: { id: string; userName: string | null; image: string | null };
 }
 
-interface optionGroup {
+interface EditableCommentImage extends PickedCommentImage {
+    file?: File;
+}
+
+interface OptionItem {
+    id: string;
+    includeProductId: string | null;
+    includedProduct: {
+        id: string;
+        title: string;
+        price: number;
+        images: string[];
+    } | null;
+}
+
+interface OptionGroup {
     id: string;
     title: string;
-    options: optionItem[];
+    isOptional: boolean;
+    searchEnabled: boolean;
+    items: OptionItem[];
 }
 
 interface Product {
-    id: string | number;
+    id: string;
     title: string;
     price: number;
     marketId: string;
@@ -47,16 +71,25 @@ interface Product {
     gradient: string[];
     images: string[];
     quantity: number;
-    options: optionGroup[];
+    options: OptionGroup[];
 }
 
 const ProductID = () => {
-    const theme = 'light'
+    const theme: string = 'light';
     const url = useUrlStore(state => state.url)
     const lan = useLanStorage(state => state.lan);
     const inputValue = useInputStorage(state => state.input);
     const pathname = usePathname();
     const [selectedOptions, setSelectedOptions] = useState<Record<string, Record<string, string>>>({});
+    const [selectionError, setSelectionError] = useState('');
+    const [comments, setComments] = useState<ProductComment[]>([]);
+    const [commentsLoading, setCommentsLoading] = useState(false);
+    const [commentText, setCommentText] = useState('');
+    const [commentRate, setCommentRate] = useState(5);
+    const [commentImages, setCommentImages] = useState<EditableCommentImage[]>([]);
+    const [ownCommentId, setOwnCommentId] = useState<string | null>(null);
+    const [commentSubmitting, setCommentSubmitting] = useState(false);
+    const [commentError, setCommentError] = useState('');
     const { width: windowWidth } = useWindowDimensions();
     const router = useRouter();
     const isTabletView = windowWidth < 1000 && windowWidth > 500;
@@ -77,6 +110,7 @@ const ProductID = () => {
     const [count, setCount] = useState(0)
 
     const { cart, toggleCart } = useCartStore();
+    const authToken = useTokenStore((state) => state.token);
 
     const product: Product | undefined = products.find(p => String(p.id) === String(productIdToFind));
     const currentSelections = product ? selectedOptions[String(product.id)] ?? {} : {};
@@ -109,23 +143,188 @@ const ProductID = () => {
 
         const validSelections = Object.fromEntries(product.options.flatMap(group => {
             const selectedId = parsedSelections[group.id];
-            return selectedId && group.options.some(option => option.id === selectedId)
+            return selectedId && group.items.some(option => option.id === selectedId && option.includedProduct)
                 ? [[group.id, selectedId] as [string, string]]
                 : [];
         }));
         setSelectedOptions(previous => ({ ...previous, [String(product.id)]: validSelections }));
     }, [product, optionQuery]);
 
-    const handleOptionSelect = (productId: string, groupId: string, optionId: string) => {
-        const nextSelections = {
-            ...(selectedOptions[productId] ?? {}),
-            [groupId]: optionId,
+    useEffect(() => {
+        if (!product || !url) return;
+        const controller = new AbortController();
+        const loadComments = async () => {
+            setCommentsLoading(true);
+            setCommentError('');
+            try {
+                const query = new URLSearchParams({ productId: String(product.id) });
+                const response = await fetch(`${url}/comments?${query}`, {
+                    signal: controller.signal,
+                });
+                if (!response.ok) {
+                    throw new Error(`Product sharhlarini yuklab bo‘lmadi: ${response.status}`);
+                }
+                const result: unknown = await response.json();
+                if (!result || typeof result !== 'object' || !('data' in result) || !Array.isArray(result.data)) {
+                    throw new Error('Sharhlar noto‘g‘ri formatda qaytdi.');
+                }
+                const loadedComments = result.data as ProductComment[];
+                setComments(loadedComments);
+                if (authToken) {
+                    const profileResponse = await fetchWithAuth(`${url}/auth/profile`, {
+                        signal: controller.signal,
+                    });
+                    if (profileResponse.ok) {
+                        const profile: unknown = await profileResponse.json();
+                        const userId = profile && typeof profile === 'object' && 'id' in profile &&
+                            typeof profile.id === 'string' ? profile.id : null;
+                        const mine = loadedComments.find((comment) => comment.user?.id === userId);
+                        setOwnCommentId(mine?.id ?? null);
+                        if (mine) {
+                            setCommentText(mine.comment);
+                            setCommentRate(mine.rate);
+                            setCommentImages(Array.isArray(mine.images)
+                                ? mine.images.filter((image): image is string => typeof image === 'string')
+                                    .map((uri) => ({ uri, fileName: 'review-image', type: 'image/*' }))
+                                : []);
+                        } else {
+                            setCommentText('');
+                            setCommentRate(5);
+                            setCommentImages([]);
+                        }
+                    }
+                } else {
+                    setOwnCommentId(null);
+                }
+            } catch (error) {
+                if (controller.signal.aborted) return;
+                console.error('Product sharhlarini yuklashda xatolik:', error);
+                setCommentError('Sharhlarni yuklab bo‘lmadi.');
+            } finally {
+                if (!controller.signal.aborted) setCommentsLoading(false);
+            }
         };
+        void loadComments();
+        return () => controller.abort();
+    }, [authToken, product?.id, url]);
+
+    const handleOptionSelect = (productId: string, groupId: string, optionId: string) => {
+        const group = product?.options.find((item) => item.id === groupId);
+        const currentSelection = selectedOptions[productId] ?? {};
+        const nextSelections = { ...currentSelection };
+        if (group?.isOptional && currentSelection[groupId] === optionId) {
+            delete nextSelections[groupId];
+        } else {
+            nextSelections[groupId] = optionId;
+        }
         setSelectedOptions(previous => ({ ...previous, [productId]: nextSelections }));
+        setSelectionError('');
 
         const params = new URLSearchParams(searchParams?.toString() ?? '');
-        params.set('options', JSON.stringify(nextSelections));
+        if (Object.keys(nextSelections).length > 0) {
+            params.set('options', JSON.stringify(nextSelections));
+        } else {
+            params.delete('options');
+        }
         router.replace(`${pathname ?? ''}?${params.toString()}`);
+    };
+
+    const handleAddToCart = (buyNow = false) => {
+        if (!product) return;
+        const missingOption = product.options.find(
+            (group) => !group.isOptional && !currentSelections[group.id],
+        );
+        if (missingOption) {
+            setSelectionError(`“${missingOption.title}” uchun mahsulot tanlang.`);
+            return;
+        }
+        setSelectionError('');
+        if (!isInCart) toggleCart(product.id, currentSelections);
+        if (buyNow) router.push('/checkout');
+    };
+
+    const handleSubmitComment = async () => {
+        if (!product) return;
+        const comment = commentText.trim();
+        if (!authToken) {
+            setCommentError('Sharh qoldirish uchun tizimga kiring.');
+            return;
+        }
+        if (!comment) {
+            setCommentError('Sharh matnini kiriting.');
+            return;
+        }
+        if (comment.length > 400) {
+            setCommentError('Sharh 400 belgidan oshmasligi kerak.');
+            return;
+        }
+
+        setCommentSubmitting(true);
+        setCommentError('');
+        try {
+            const formData = new FormData();
+            if (!ownCommentId) formData.append('productId', product.id);
+            formData.append('comment', comment);
+            formData.append('rate', String(commentRate));
+            if (ownCommentId) {
+                formData.append('existingImages', JSON.stringify(
+                    commentImages.filter((image) => !image.file).map((image) => image.uri),
+                ));
+            }
+            for (const image of commentImages) {
+                if (image.file) {
+                    formData.append('images', image.file);
+                } else if (image.uri.startsWith('file://')) {
+                    formData.append('images', {
+                        uri: image.uri,
+                        type: image.type,
+                        name: image.fileName,
+                    } as never);
+                }
+            }
+            const response = await fetchWithAuth(
+                `${url}/comments${ownCommentId ? `/${ownCommentId}` : ''}`,
+                { method: ownCommentId ? 'PATCH' : 'POST', body: formData },
+            );
+            if (!response.ok) {
+                const errorBody: unknown = await response.json().catch(() => null);
+                const message = errorBody && typeof errorBody === 'object' && 'message' in errorBody
+                    ? String(errorBody.message)
+                    : `Sharhni yuborib bo‘lmadi: ${response.status}`;
+                throw new Error(message);
+            }
+            const updated = await response.json() as ProductComment;
+            setOwnCommentId(updated.id);
+            setComments((previous) => [
+                updated,
+                ...previous.filter((item) => item.id !== updated.id),
+            ].slice(0, 20));
+        } catch (error) {
+            console.error('Product sharhini yuborishda xatolik:', error);
+            setCommentError(error instanceof Error ? error.message : 'Sharh yuborilmadi.');
+        } finally {
+            setCommentSubmitting(false);
+        }
+    };
+
+    const handleDeleteComment = async () => {
+        if (!ownCommentId || !url) return;
+        try {
+            const response = await fetchWithAuth(`${url}/comments/${ownCommentId}`, { method: 'DELETE' });
+            if (!response.ok) throw new Error(`Sharhni o‘chirib bo‘lmadi: ${response.status}`);
+            setComments((previous) => previous.filter((item) => item.id !== ownCommentId));
+            setOwnCommentId(null);
+            setCommentText('');
+            setCommentRate(5);
+            setCommentImages([]);
+        } catch (error) {
+            console.error('Product sharhini o‘chirishda xatolik:', error);
+            setCommentError(error instanceof Error ? error.message : 'Sharh o‘chirilmadi.');
+        }
+    };
+
+    const appendPickedImages = (picked: EditableCommentImage[]) => {
+        setCommentImages((current) => [...current, ...picked].slice(0, 5));
     };
 
     useEffect(() => {
@@ -276,8 +475,13 @@ const ProductID = () => {
     const totalPrice = product
         ? product.price + product.options.reduce((sum, group) => {
             const selectedId = currentSelections[group.id];
-            return sum + (group.options.find(option => option.id === selectedId)?.value ?? 0);
+            return sum + (
+                group.items.find(option => option.id === selectedId)?.includedProduct?.price ?? 0
+            );
         }, 0)
+        : 0;
+    const averageRating = comments.length
+        ? comments.reduce((total, comment) => total + comment.rate, 0) / comments.length
         : 0;
 
 
@@ -344,17 +548,9 @@ const ProductID = () => {
                                             pointerEvents: 'none',
                                             zIndex: 10,
                                         },
-                                        Platform.select({
-                                            web: {
-                                                position: 'sticky',
-                                                top: 0,
-                                                backgroundImage: 'linear-gradient(to bottom, rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0))',
-                                            },
-                                            default: {
-                                                position: 'absolute',
-                                                top: 0,
-                                            }
-                                        })
+                                        Platform.OS === 'web'
+                                            ? { position: 'sticky' as unknown as ViewStyle['position'], top: 0 }
+                                            : { position: 'absolute', top: 0 }
                                     ]}
                                 />
 
@@ -362,7 +558,7 @@ const ProductID = () => {
                                     <Text style={{ fontSize: 18, fontWeight: '600', textTransform: 'capitalize' }}>{product.title}</Text>
                                     <View style={{ flexDirection: 'row', gap: 4 }}>
                                         {
-                                            Array.from({ length: Math.round(4) }, (_, index) => index + 1).map((_, index) =>
+                                            Array.from({ length: Math.round(averageRating) }, (_, index) => index + 1).map((_, index) =>
                                                 <UniversalImage
                                                     key={index}
                                                     src={accesStarPng}
@@ -374,7 +570,7 @@ const ProductID = () => {
                                             )
                                         }
                                         {
-                                            Array.from({ length: Math.round(5 - 4) }, (_, index) => index + 1).map((_, index) =>
+                                            Array.from({ length: 5 - Math.round(averageRating) }, (_, index) => index + 1).map((_, index) =>
                                                 <UniversalImage
                                                     key={index}
                                                     src={starPng}
@@ -385,7 +581,7 @@ const ProductID = () => {
                                                 />
                                             )
                                         }
-                                        <Text>{4} | {13000} sharh | {product.id}+ buyrutma</Text>
+                                        <Text>{averageRating.toFixed(1)} | {comments.length} sharh</Text>
 
 
 
@@ -410,16 +606,17 @@ const ProductID = () => {
                                                             ]}
                                                         >
                                                             <Text style={[styles.groupTitle, theme === 'dark' ? styles.groupTitleDark : styles.groupTitleLight]}>
-                                                                {optGroup.title}
+                                                                {optGroup.title}{optGroup.isOptional ? ' · ixtiyoriy' : ' · tanlash majburiy'}
                                                             </Text>
                                                             <View style={styles.optionsList}>
-                                                                {optGroup.options.map((opt, valIdx) => {
+                                                                {optGroup.items.map((opt, valIdx) => {
                                                                     const isSelected = activeVal === opt.id;
 
                                                                     return (
                                                                         <TouchableOpacity
-                                                                            key={valIdx}
+                                                                            key={opt.id}
                                                                             onPress={() => handleOptionSelect(String(product.id), optGroup.id, opt.id)}
+                                                                            disabled={!opt.includedProduct}
                                                                             activeOpacity={0.7}
                                                                             style={[
                                                                                 styles.optionButton,
@@ -438,7 +635,7 @@ const ProductID = () => {
                                                                                         ? styles.textDark
                                                                                         : styles.textLight
                                                                             ]}>
-                                                                                {opt.key}
+                                                                                {opt.includedProduct?.title ?? 'Mahsulot mavjud emas'}
                                                                             </Text>
                                                                             <Text style={[
                                                                                 styles.priceText,
@@ -448,7 +645,9 @@ const ProductID = () => {
                                                                                         ? styles.priceDark
                                                                                         : styles.priceLight
                                                                             ]}>
-                                                                                +{opt.value.toLocaleString()} UZS
+                                                                                {opt.includedProduct
+                                                                                    ? `+${opt.includedProduct.price.toLocaleString()} UZS`
+                                                                                    : 'Tanlab bo‘lmaydi'}
                                                                             </Text>
                                                                         </TouchableOpacity>
                                                                     );
@@ -474,14 +673,9 @@ const ProductID = () => {
                                             marginTop: 10,
                                             zIndex: 10,
                                         },
-                                        Platform.select({
-                                            web: {
-                                                position: 'sticky',
-                                                bottom: 0,
-                                                backgroundImage: 'linear-gradient(to bottom, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.4))',
-                                            },
-                                            default: {}
-                                        })
+                                        Platform.OS === 'web'
+                                            ? { position: 'sticky' as unknown as ViewStyle['position'], bottom: 0 }
+                                            : { position: 'absolute', bottom: 0 }
                                     ]}
                                 />
 
@@ -533,6 +727,7 @@ const ProductID = () => {
                                         <Pressable
                                             onPressIn={handleButtonPressIn}
                                             onPressOut={handleButtonPressOut}
+                                            onPress={() => handleAddToCart(true)}
                                             style={{ backgroundColor: 'rgba(115, 185, 255, 0.85)', padding: 14, borderRadius: 16, justifyContent: 'center', alignItems: 'center' }}
                                         >
                                             <Text style={{ fontSize: 16, fontWeight: '700', textTransform: 'capitalize', color: '#fff' }}>1 klikda xarid qilish</Text>
@@ -551,6 +746,12 @@ const ProductID = () => {
                                     </Pressable>
                                 </View>
 
+                                {selectionError ? (
+                                    <Text accessibilityRole="alert" style={{ color: '#dc2626', fontSize: 13 }}>
+                                        {selectionError}
+                                    </Text>
+                                ) : null}
+
                                 <View style={{ flexDirection: 'row', width: '100%', gap: 16 }}>
                                     <Animated.View style={{ flex: 8, transform: [{ scale: btnScaleAnim }] }}>
                                         <Pressable
@@ -558,7 +759,7 @@ const ProductID = () => {
                                             onPressOut={handleButtonPressOut}
                                             onPress={(e: any) => {
                                                 e.stopPropagation();
-                                                toggleCart(product.id, currentSelections);
+                                                handleAddToCart();
                                             }}
                                             style={[styles.button, isInCart ? styles.buttonInCart : styles.button, { width: '100%' }]}>
                                             <Text style={[styles.buttonText, isInCart && styles.buttonTextInCart]}>{isInCart ? 'savatda ✓' : 'savatga qo\'shish'}</Text>
@@ -626,6 +827,199 @@ const ProductID = () => {
                             : product.description?.[lan as keyof typeof product.description] || product.description?.uz}
                     </Text>
 
+                    <View style={{ marginTop: 24, gap: 12 }}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+                            <Text style={{ color: '#111827', fontSize: 20, fontWeight: '800' }}>
+                                Sharhlar ({comments.length})
+                            </Text>
+                            {product ? (
+                                <Pressable onPress={() => router.push(
+                                    Platform.OS === 'web'
+                                        ? `/product/${product.id}/comments`
+                                        : `/productComments?id=${product.id}`,
+                                )}>
+                                    <Text style={{ color: '#2563eb', fontWeight: '700' }}>Barcha sharhlar</Text>
+                                </Pressable>
+                            ) : null}
+                        </View>
+                        {commentsLoading ? (
+                            <ActivityIndicator color="#2563eb" />
+                        ) : comments.length === 0 ? (
+                            <Text style={{ color: '#64748b' }}>Hozircha sharhlar yo‘q.</Text>
+                        ) : (
+                            <ScrollView
+                                horizontal
+                                showsHorizontalScrollIndicator={false}
+                                contentContainerStyle={{ gap: 12, paddingVertical: 2 }}
+                            >
+                                {comments.map((comment) => (
+                                    <View
+                                        key={comment.id}
+                                        style={{
+                                            width: Math.min(windowWidth * 0.82, 360),
+                                            gap: 8,
+                                            padding: 14,
+                                            borderRadius: 14,
+                                            borderWidth: 1,
+                                            borderColor: '#e2e8f0',
+                                            backgroundColor: 'rgba(255,255,255,0.82)',
+                                        }}
+                                    >
+                                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
+                                            <Text style={{ color: '#0f172a', fontWeight: '700' }}>
+                                                {comment.user?.userName || 'Foydalanuvchi'}
+                                            </Text>
+                                            <Text style={{ color: '#b45309' }}>
+                                                {'★'.repeat(Math.max(0, Math.min(5, comment.rate)))}
+                                            </Text>
+                                        </View>
+                                        <Text style={{ color: '#334155' }}>{comment.comment}</Text>
+                                        {comment.reply ? (
+                                            <View style={{ padding: 10, borderRadius: 10, backgroundColor: '#eff6ff' }}>
+                                                <Text style={{ color: '#1d4ed8', fontSize: 11, fontWeight: '700', marginBottom: 4 }}>
+                                                    Market javobi
+                                                </Text>
+                                                <Text style={{ color: '#1e3a8a' }}>{comment.reply}</Text>
+                                            </View>
+                                        ) : null}
+                                        {Array.isArray(comment.images) && comment.images.length > 0 ? (
+                                            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                                                {comment.images.slice(0, 5).map((image, index) => (
+                                                    <Image
+                                                        key={`${comment.id}-${index}`}
+                                                        source={{ uri: image }}
+                                                        style={{ width: 72, height: 72, borderRadius: 8 }}
+                                                        resizeMode="cover"
+                                                    />
+                                                ))}
+                                            </ScrollView>
+                                        ) : null}
+                                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <Text style={{ color: '#94a3b8', fontSize: 11 }}>
+                                                {new Date(comment.createdAt).toLocaleDateString()}
+                                            </Text>
+                                            {comment.id === ownCommentId ? (
+                                                <Pressable onPress={handleDeleteComment}>
+                                                    <Text style={{ color: '#dc2626', fontSize: 12, fontWeight: '700' }}>O‘chirish</Text>
+                                                </Pressable>
+                                            ) : null}
+                                        </View>
+                                    </View>
+                                ))}
+                            </ScrollView>
+                        )}
+                        {commentError ? (
+                            <Text accessibilityRole="alert" style={{ color: '#dc2626' }}>
+                                {commentError}
+                            </Text>
+                        ) : null}
+                        {authToken ? (
+                            <View style={{ gap: 10 }}>
+                                <Text style={{ color: '#334155', fontWeight: '700' }}>Bahoyingiz</Text>
+                                <View style={{ flexDirection: 'row', gap: 8 }}>
+                                    {[1, 2, 3, 4, 5].map((rate) => (
+                                        <Pressable key={rate} onPress={() => setCommentRate(rate)}>
+                                            <Text style={{ color: rate <= commentRate ? '#f59e0b' : '#cbd5e1', fontSize: 24 }}>★</Text>
+                                        </Pressable>
+                                    ))}
+                                </View>
+                                <TextInput
+                                    value={commentText}
+                                    onChangeText={setCommentText}
+                                    placeholder="Mahsulot haqida fikringiz..."
+                                    maxLength={400}
+                                    multiline
+                                    textAlignVertical="top"
+                                    style={{
+                                        minHeight: 90,
+                                        borderWidth: 1,
+                                        borderColor: '#cbd5e1',
+                                        borderRadius: 12,
+                                        padding: 12,
+                                        color: '#0f172a',
+                                        backgroundColor: '#fff',
+                                    }}
+                                />
+                                <View style={{ gap: 8 }}>
+                                    <Text style={{ color: '#334155', fontWeight: '700' }}>
+                                        Rasmlar ({commentImages.length}/5)
+                                    </Text>
+                                    {Platform.OS === 'web' ? (
+                                        <label style={{ alignSelf: 'flex-start', color: '#2563eb', fontWeight: '700', cursor: 'pointer' }}>
+                                            Rasm tanlash
+                                            <input
+                                                type="file"
+                                                accept="image/*"
+                                                multiple
+                                                disabled={commentImages.length >= 5}
+                                                style={{ display: 'none' }}
+                                                onChange={(event) => {
+                                                    const selected = Array.from(event.currentTarget.files ?? [])
+                                                        .slice(0, 5 - commentImages.length);
+                                                    appendPickedImages(selected.map((file) => ({
+                                                        uri: URL.createObjectURL(file),
+                                                        fileName: file.name,
+                                                        type: file.type || 'image/jpeg',
+                                                        file,
+                                                    })));
+                                                    event.currentTarget.value = '';
+                                                }}
+                                            />
+                                        </label>
+                                    ) : (
+                                        <Pressable
+                                            disabled={commentImages.length >= 5}
+                                            onPress={async () => {
+                                                try {
+                                                    appendPickedImages(await pickCommentImages(5 - commentImages.length));
+                                                } catch (error) {
+                                                    setCommentError(error instanceof Error ? error.message : 'Rasm tanlashda xatolik.');
+                                                }
+                                            }}
+                                        >
+                                            <Text style={{ color: '#2563eb', fontWeight: '700' }}>Rasm tanlash</Text>
+                                        </Pressable>
+                                    )}
+                                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                                        {commentImages.map((image, index) => (
+                                            <View key={`${image.uri}-${index}`} style={{ position: 'relative' }}>
+                                                <Image source={{ uri: image.uri }} style={{ width: 72, height: 72, borderRadius: 8 }} />
+                                                <Pressable
+                                                    accessibilityLabel="Rasmni olib tashlash"
+                                                    onPress={() => setCommentImages((current) => current.filter((_, itemIndex) => itemIndex !== index))}
+                                                    style={{ position: 'absolute', right: 2, top: 2, width: 22, height: 22, borderRadius: 11, backgroundColor: '#111827', alignItems: 'center', justifyContent: 'center' }}
+                                                >
+                                                    <Text style={{ color: '#fff', fontSize: 14 }}>×</Text>
+                                                </Pressable>
+                                            </View>
+                                        ))}
+                                    </ScrollView>
+                                </View>
+                                <Pressable
+                                    onPress={handleSubmitComment}
+                                    disabled={commentSubmitting}
+                                    style={{
+                                        alignSelf: 'flex-start',
+                                        backgroundColor: commentSubmitting ? '#94a3b8' : '#2563eb',
+                                        paddingVertical: 11,
+                                        paddingHorizontal: 18,
+                                        borderRadius: 10,
+                                    }}
+                                >
+                                    <Text style={{ color: '#fff', fontWeight: '700' }}>
+                                        {commentSubmitting ? 'Yuborilmoqda...' : ownCommentId ? 'Sharhni yangilash' : 'Sharh qoldirish'}
+                                    </Text>
+                                </Pressable>
+                            </View>
+                        ) : (
+                            <Pressable onPress={() => router.push('/auth')}>
+                                <Text style={{ color: '#2563eb', fontWeight: '700' }}>
+                                    Sharh qoldirish uchun tizimga kiring
+                                </Text>
+                            </Pressable>
+                        )}
+                    </View>
+
                     {(isTabletView || isMobileView) ? (
 
                         product.options && product.options.length > 0 && (
@@ -645,16 +1039,17 @@ const ProductID = () => {
                                                 ]}
                                             >
                                                 <Text style={[styles.groupTitle, theme === 'dark' ? styles.groupTitleDark : styles.groupTitleLight]}>
-                                                    {optGroup.title}
+                                                    {optGroup.title}{optGroup.isOptional ? ' · ixtiyoriy' : ' · tanlash majburiy'}
                                                 </Text>
                                                 <View style={styles.optionsList}>
-                                                    {optGroup.options.map((opt, valIdx) => {
+                                                    {optGroup.items.map((opt, valIdx) => {
                                                         const isSelected = activeVal === opt.id;
 
                                                         return (
                                                             <TouchableOpacity
-                                                                key={valIdx}
+                                                                key={opt.id}
                                                                 onPress={() => handleOptionSelect(String(product.id), optGroup.id, opt.id)}
+                                                                disabled={!opt.includedProduct}
                                                                 activeOpacity={0.7}
                                                                 style={[
                                                                     styles.optionButton,
@@ -673,7 +1068,7 @@ const ProductID = () => {
                                                                             ? styles.textDark
                                                                             : styles.textLight
                                                                 ]}>
-                                                                    {opt.key}
+                                                                    {opt.includedProduct?.title ?? 'Mahsulot mavjud emas'}
                                                                 </Text>
                                                                 <Text style={[
                                                                     styles.priceText,
@@ -683,7 +1078,9 @@ const ProductID = () => {
                                                                             ? styles.priceDark
                                                                             : styles.priceLight
                                                                 ]}>
-                                                                    +{opt.value.toLocaleString()} UZS
+                                                                    {opt.includedProduct
+                                                                        ? `+${opt.includedProduct.price.toLocaleString()} UZS`
+                                                                        : 'Tanlab bo‘lmaydi'}
                                                                 </Text>
                                                             </TouchableOpacity>
                                                         );
@@ -797,7 +1194,6 @@ const styles = StyleSheet.create({
         paddingVertical: 12,
         borderRadius: 12,
         borderWidth: 1,
-        transition: 'all 0.3s ease'
     },
     buttonSelected: {
         backgroundColor: 'rgba(14, 165, 233, 0.1)',

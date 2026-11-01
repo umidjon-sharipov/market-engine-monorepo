@@ -1,6 +1,7 @@
 'use client'
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
+import { useRouter } from 'solito/navigation';
 import ScreenWrapper from 'app/components/layout/ScreenWrapper';
 import { useCartStore } from 'app/store/useCartStore';
 import Card from 'app/components/UI/Cart';
@@ -47,6 +48,7 @@ interface NearestPickPointsResponse {
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const Savat = () => {
+    const router = useRouter();
     const url = useUrlStore(state => state.url)
     const [products, setProducts] = useState<Product[]>([]);
     const [loading, setLoading] = useState('loading');
@@ -76,11 +78,18 @@ const Savat = () => {
         pickPointsUnavailable: lan === 'ru' ? 'Не удалось загрузить пункты выдачи.' : lan === 'en' ? 'Could not load pickup points.' : 'Topshirish punktlarini yuklab bo‘lmadi.',
     };
 
-    const fetchCartProducts = async () => {
+    const fetchCartProducts = useCallback(async () => {
+        if (!url) {
+            setLoading('notLoad');
+            return;
+        }
         try {
             setLoading('loading')
             const response = await fetch(`${url}/products`);
-            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(`Savat mahsulotlarini yuklab bo‘lmadi: ${response.status}`);
+            }
+            const data: Product[] = await response.json();
 
             setProducts(data);
             setLoading('loaded')
@@ -88,13 +97,13 @@ const Savat = () => {
             console.error("Savat ma'lumotlarini yuklashda xatolik:", error);
             setLoading('notLoad')
         }
-    };
+    }, [url]);
 
     useEffect(() => {
         if (cartIds.length > 0) {
             fetchCartProducts();
         }
-    }, [cartIds.join(',')]);
+    }, [cartIds.join(','), fetchCartProducts]);
 
     const cartLines = cart.flatMap(cartItem => {
         const product = products.find(item => String(item.id) === String(cartItem.id));
@@ -106,7 +115,7 @@ const Savat = () => {
     const longitude = deliveryLocation?.longitude;
 
     useEffect(() => {
-        if (latitude === undefined || longitude === undefined || !marketId || !UUID_PATTERN.test(marketId)) {
+        if (!url || latitude === undefined || longitude === undefined || !marketId || !UUID_PATTERN.test(marketId)) {
             setNearbyPickPoints([]);
             setSelectedPickPointId(null);
             setPickPointsLoading(false);
@@ -160,10 +169,11 @@ const Savat = () => {
         latitude,
         longitude,
         marketId,
+        url,
         setSelectedPickPointId,
         url,
     ]);
-    if (cartIds.length === 0) return <Empty />
+    if (cartIds.length === 0) return <Empty />;
 
     if (loading === 'loading') {
         return (
@@ -214,7 +224,7 @@ const Savat = () => {
                                         style={[
                                             styles.pickPoint,
                                             selected && styles.selectedPickPoint,
-                                            !available && styles.unavailablePickPoint,
+                                            !available && { opacity: 0.55 },
                                         ]}
                                     >
                                         <Text style={[styles.pickPointText, !available && styles.unavailablePickPoint]}>
@@ -239,6 +249,18 @@ const Savat = () => {
                         />
                     ))}
                 </View>
+                {cartLines.length !== cart.length ? (
+                    <Text accessibilityRole="alert" style={{ color: '#dc2626', marginBottom: 12 }}>
+                        Omborda qolmagan mahsulot bor. Checkoutdan oldin savatni yangilang.
+                    </Text>
+                ) : null}
+                <Pressable
+                    onPress={() => router.push('/checkout')}
+                    disabled={cartLines.length !== cart.length || cartLines.length === 0}
+                    style={[styles.checkoutButton, (cartLines.length !== cart.length || !cartLines.length) && { opacity: 0.6 }]}
+                >
+                    <Text style={styles.checkoutButtonText}>Buyurtmani rasmiylashtirish</Text>
+                </Pressable>
             </ScrollView>
         </ScreenWrapper>
     );
@@ -258,7 +280,8 @@ const styles = StyleSheet.create({
     center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     headerTitle: { fontSize: 22, fontWeight: '900', color: '#111827', marginBottom: 16 },
     grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
-    emptyText: { fontSize: 18, fontWeight: '600', color: '#6b7280' }
+    checkoutButton: { backgroundColor: '#2563eb', borderRadius: 10, padding: 14, alignItems: 'center' },
+    checkoutButtonText: { color: '#fff', fontWeight: '700', textAlign: 'center' },
 });
 
 export default Savat;

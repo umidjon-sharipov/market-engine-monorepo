@@ -5,6 +5,7 @@
         "app": "*",
         "expo": "^54.0.16",
         "expo-blur": "~15.0.8",
+        "expo-dev-client": "~6.0.21",
         "expo-image": "~3.0.11",
         "expo-image-picker": "~17.0.11",
         "expo-linear-gradient": "~15.0.8",

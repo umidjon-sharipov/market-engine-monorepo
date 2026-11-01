@@ -13,6 +13,30 @@ interface ScreenWrapperProps {
     color?: string[];
 }
 
+const softenGradientColor = (color: string) => {
+    const hex = color.trim().match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i)?.[1];
+    if (hex) {
+        const normalized = hex.length === 3
+            ? hex.split('').map((part) => `${part}${part}`).join('')
+            : hex;
+        const channels = normalized.match(/.{2}/g)?.map((part) => parseInt(part, 16));
+        if (channels?.length === 3) {
+            return `rgba(${channels[0]}, ${channels[1]}, ${channels[2]}, 0.25)`;
+        }
+    }
+
+    const rgba = color.trim().match(/^rgba\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*\)$/i);
+    if (rgba) {
+        const opacity = Math.min(0.25, Math.max(0, Number(rgba[4])));
+        return `rgba(${rgba[1]}, ${rgba[2]}, ${rgba[3]}, ${opacity})`;
+    }
+
+    const rgb = color.trim().match(/^rgb\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*\)$/i);
+    if (rgb) return `rgba(${rgb[1]}, ${rgb[2]}, ${rgb[3]}, 0.25)`;
+
+    return color;
+};
+
 export default function ScreenWrapper({ children, color }: ScreenWrapperProps) {
     let insets = { bottom: 0, top: 0 }
     const tab = useTabStore(state => state.tab)
@@ -76,7 +100,7 @@ export default function ScreenWrapper({ children, color }: ScreenWrapperProps) {
         return color as [string, string, ...string[]]
     }
 
-    const gradientColors = getGradientColors()
+    const gradientColors = getGradientColors().map(softenGradientColor) as [string, string, ...string[]]
 
     return (
         <View style={styles.outerContainer}>
@@ -148,7 +172,7 @@ const styles = StyleSheet.create({
     spinningBlobContainer: {
         borderRadius: 9999,
         overflow: 'hidden',
-        opacity: 0.65,
+        opacity: 0.55,
         position: 'absolute',
     },
     scroll: {

@@ -181,7 +181,7 @@ function CategoriesContent() {
     const [optionsList, setOptionsList] = useState<CategoryOption[]>([]);
 
     const fetchData = useCallback(async () => {
-        const res = await fetch(`${API_URL}/categories?marketId=${encodeURIComponent(market)}`, {
+        const res = await fetch(`${API_URL}/categories/market/${encodeURIComponent(market)}`, {
             headers: { Authorization: `Bearer ${token}` },
         });
         const req = await res.json();

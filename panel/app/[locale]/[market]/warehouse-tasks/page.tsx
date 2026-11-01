@@ -22,7 +22,12 @@ type Worker = {
     email: string;
   };
 };
-type ProductOptionItem = { id: string; key: string; value: number };
+type ProductOptionItem = {
+  id: string;
+  includeProductId: string | null;
+  includedProduct: { title: string } | null;
+  option?: { title: string };
+};
 type Product = {
   id: string;
   title: string;
@@ -436,7 +441,7 @@ export default function WarehouseTasksPage() {
               <option value="">No option</option>
               {productItems.map((item) => (
                 <option key={item.id} value={item.id}>
-                  {item.optionTitle}: {item.key} ({item.value})
+                  {item.optionTitle}: {item.includedProduct?.title ?? 'Mahsulot topilmadi'}
                 </option>
               ))}
             </select>
@@ -605,7 +610,9 @@ export default function WarehouseTasksPage() {
                       <div className="font-medium">{task.product.title}</div>
                       <div className="mt-1 text-neutral-400">
                         {task.quantity} {task.product.uom}
-                        {task.optionItem ? ` · ${task.optionItem.key}` : ""}
+                        {task.optionItem
+                          ? ` · ${task.optionItem.includedProduct?.title ?? "Product option"}`
+                          : ""}
                       </div>
                       {task.reservation?.lotNumber && (
                         <div className="mt-1 text-xs text-neutral-400">

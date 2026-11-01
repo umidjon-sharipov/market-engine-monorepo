@@ -1,7 +1,8 @@
 import {
     Controller, Get, Post, Patch, Delete, Body, Param, UseGuards, Req,
     UploadedFile, UseInterceptors, BadRequestException,
-    NotFoundException
+    NotFoundException,
+    ParseUUIDPipe,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { SlidersService } from './sliders.service';
@@ -21,20 +22,23 @@ export class SlidersController {
         return await this.slidersService.findAll();
     }
 
-    @Get(':id')
-    @UseGuards(JwtAuthGuard)
-    async findSlidersByMarket(@Req() req: any, @Param('id') id: string) {
-        const GuardClass = MarketAccessGuard('discount', req.user.email, ['owner', 'admin'], id || '', 'get');
-        const instance = new GuardClass(this.prisma);
-        await instance.canActivate({ switchToHttp: () => ({ getRequest: () => req }) } as any);
-
-        return await this.slidersService.findByMarket(id)
-    }
-
     @Get('data')
     @UseGuards(JwtAuthGuard)
     async findData(@Req() req: any) {
-        return await this.slidersService.findData(req.user.userName);
+        return await this.slidersService.findData(req.user.userId);
+    }
+
+    @Get(':id')
+    @UseGuards(JwtAuthGuard)
+    async findSlidersByMarket(
+        @Req() req: any,
+        @Param('id', ParseUUIDPipe) id: string,
+    ) {
+        const GuardClass = MarketAccessGuard('slider', req.user.email, ['owner', 'admin'], id, 'get');
+        const instance = new GuardClass(this.prisma);
+        await instance.canActivate({ switchToHttp: () => ({ getRequest: () => req }) } as any);
+
+        return await this.slidersService.findByMarket(id);
     }
 
     @Post()

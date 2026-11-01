@@ -1,18 +1,14 @@
 'use client'
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, useWindowDimensions } from 'react-native';
+import { View, Text, StyleSheet, useWindowDimensions } from 'react-native';
 import ScreenWrapper from 'app/components/layout/ScreenWrapper';
 import ProductCard from 'app/components/UI/ProductCart';
 import LoaderProductCard from 'app/components/UI/LoaderProductCart';
 import Slider from 'app/components/UI/Slider';
 import SliderLoader from 'app/components/UI/SliderLoader';
 import NotLoad from 'app/components/UI/NotLoad';
-import Empty from 'app/components/UI/Empty';
-import { useRouter } from 'solito/navigation';
 import { useUrlStore } from 'app/store/useUrlStore'
 import { useTokenStore } from 'app/store/useTokenStore';
-import { fetchWithAuth } from 'app/features/app/auth/fetchWithAuth'
-import { NotificationProvider, useNotification } from '../../components/UI/Notification'
 
 interface Product {
     id: string;
@@ -25,12 +21,8 @@ interface Product {
     images: string[];
     quantity: number;
     options: any[];
+    gradient?: string[];
 }
-
-interface FollowedMarket {
-    marketId: string
-}
-
 
 interface SliderTypes {
     id: string
@@ -41,17 +33,38 @@ interface SliderTypes {
 
 const isWeb = typeof window !== 'undefined' && window.innerWidth > 768;
 
+const getGradientTint = (colors?: string[]) => {
+    const color = colors?.[0]?.trim();
+    if (!color) return 'rgba(248, 250, 252, 0.96)';
+
+    const hex = color.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i)?.[1];
+    if (hex) {
+        const normalized = hex.length === 3
+            ? hex.split('').map((part) => `${part}${part}`).join('')
+            : hex;
+        const channels = normalized.match(/.{2}/g)?.map((part) => parseInt(part, 16));
+        if (channels?.length === 3) {
+            return `rgba(${channels[0]}, ${channels[1]}, ${channels[2]}, 0.08)`;
+        }
+    }
+
+    const rgb = color.match(/^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)/i);
+    if (rgb) {
+        return `rgba(${rgb[1]}, ${rgb[2]}, ${rgb[3]}, 0.08)`;
+    }
+
+    return 'rgba(59, 130, 246, 0.06)';
+};
+
 const HomeScreen = () => {
-    const url = process.env.BACKEND_URL || 'https://market-engine-monorepo-back.onrender.com';
+    const url = useUrlStore(state => state.url);
     const token = useTokenStore(state => state.token)
-    const router = useRouter()
-    const notify = useNotification()
     const [products, setProducts] = useState<Product[]>([]);
     const [sliders, setSliders] = useState<SliderTypes[]>([])
     const [loading, setLoading] = useState('loading');
     const { width: screenWidth } = useWindowDimensions();
     const [count, setCount] = useState(0)
-    const [account, setAccount] = useState(false)
+    const account = false
 
     const fetchProducts = async () => {
         try {
@@ -64,16 +77,9 @@ const HomeScreen = () => {
             });
 
             const data = await response.json();
-            if (response.ok) {
-                notify.show('success', 'success', 'light')
-                notify.show('success', 'success', 'light')
-                notify.show('success', 'success', 'light')
-                notify.show('success', 'success', 'light')
-                notify.show('success', 'success', 'light')
-                setProducts(data);
-            } else {
-                console.log(data)
-            }
+            if (!response.ok) throw new Error(`Mahsulotlarni yuklab bo‘lmadi: ${response.status}`);
+            if (!Array.isArray(data)) throw new Error('Mahsulotlar noto‘g‘ri formatda qaytdi.');
+            setProducts(data as Product[]);
 
             setLoading('loaded')
         } catch (error) {
@@ -92,11 +98,9 @@ const HomeScreen = () => {
             });
 
             const data = await response.json();
-            if (response.ok) {
-                setSliders(data);
-            } else {
-                console.log(data)
-            }
+            if (!response.ok) throw new Error(`Sliderlarni yuklab bo‘lmadi: ${response.status}`);
+            if (!Array.isArray(data)) throw new Error('Sliderlar noto‘g‘ri formatda qaytdi.');
+            setSliders(data as SliderTypes[]);
         } catch (error) {
             console.error("Sliders ma'lumotini yuklashda xatolik:", error);
         }
@@ -105,12 +109,12 @@ const HomeScreen = () => {
     useEffect(() => {
         fetchProducts()
         fetchSliders()
-    }, [token]);
+    }, [token, url]);
 
     if (loading === 'loading') {
         return (
             <ScreenWrapper>
-                <View contentContainerStyle={ styles.container }>
+                <View style={ styles.container }>
 
                     <View style={ { padding: 24 } }>
                         <SliderLoader />
@@ -134,18 +138,27 @@ const HomeScreen = () => {
         )
     }
 
-    if (products.length === 0) return <Empty />
-
     return (
         <ScreenWrapper>
-            <View contentContainerStyle={ styles.container }>
+            <View style={ styles.container }>
                 <View style={ { padding: screenWidth > 900 ? 12 : 0 } }>
                     <Slider sliders={ sliders } link={ true } count={ count } setCount={ setCount } />
                 </View>
 
                 <View style={ styles.grid }>
-                    { products.map((product: Product, index: number) => (
-                        <ProductCard key={ product.id } product={ product } products={ products } index={ index } account={ account } />
+                    {products.length === 0 ? (
+                        <Text style={{ width: '100%', color: '#64748b', textAlign: 'center', padding: 28 }}>
+                            Hozircha ko‘rsatish uchun mahsulot yo‘q.
+                        </Text>
+                    ) : products.map((product: Product, index: number) => (
+                        <ProductCard
+                            key={ product.id }
+                            product={ product }
+                            products={ products }
+                            index={ index }
+                            account={ account }
+                            bg={ getGradientTint(product.gradient) }
+                        />
                     )) }
                 </View>
             </View>

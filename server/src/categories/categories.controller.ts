@@ -28,6 +28,7 @@ import {
     UpdateCategoryDto,
 } from './dto/create-category.dto';
 import { PrismaService } from '../prisma/prisma.service';
+import { WORKER_ROLES } from '../workers/worker-permissions';
 
 @Controller('categories')
 export class CategoriesController {
@@ -43,23 +44,36 @@ export class CategoriesController {
         return this.categories.findAll(marketId);
     }
 
+    @Get('catalog')
+    @UseGuards(JwtAuthGuard)
+    findCatalog(@Req() req: any) {
+        return this.categories.findCatalog(req.user.userId);
+    }
+
+    @Get('market/:marketId')
+    @UseGuards(JwtAuthGuard)
+    async findManagementCategories(
+        @Req() req: any,
+        @Param('marketId', ParseUUIDPipe) marketId: string,
+    ) {
+        await this.authorize(req, marketId, 'get');
+        return this.categories.findAll(marketId, true);
+    }
+
     @Get(':id')
     @UseGuards(JwtAuthGuard)
     async findOne(
         @Req() req: any,
         @Param('id', ParseUUIDPipe) id: string,
     ) {
-        const GuardClass = MarketAccessGuard('discount', req.user.email, ['owner', 'admin'], id || '', 'get');
-        const instance = new GuardClass(this.prisma);
-        await instance.canActivate({ switchToHttp: () => ({ getRequest: () => req }) } as any);
-
         const category = await this.prisma.category.findUnique({
             where: { id },
             select: { marketId: true },
         });
         if (!category) throw new NotFoundException('Category topilmadi');
+        await this.authorize(req, category.marketId, 'get');
 
-        return this.categories.findOne(id);
+        return this.categories.findOne(id, true);
     }
 
     @Post()
@@ -70,6 +84,7 @@ export class CategoriesController {
         @Body(new CategoryParsePipe()) body: CreateCategoryDto,
         @UploadedFiles() files: Array<Express.Multer.File>,
     ) {
+        await this.authorize(req, body.marketId, 'create');
         return this.categories.create(body, files ?? []);
     }
 
@@ -82,10 +97,6 @@ export class CategoriesController {
         @Body(new CategoryParsePipe()) body: UpdateCategoryDto,
         @UploadedFiles() files: Array<Express.Multer.File>,
     ) {
-        const GuardClass = MarketAccessGuard('discount', req.user.email, ['owner', 'admin'], id || '', 'get');
-        const instance = new GuardClass(this.prisma);
-        await instance.canActivate({ switchToHttp: () => ({ getRequest: () => req }) } as any);
-
         const category = await this.prisma.category.findUnique({
             where: { id },
             select: { marketId: true },
@@ -94,6 +105,7 @@ export class CategoriesController {
         if (!category) {
             throw new NotFoundException('Category topilmadi');
         }
+        await this.authorize(req, category.marketId, 'update');
 
         return this.categories.update(id, body, files ?? []);
     }
@@ -104,10 +116,6 @@ export class CategoriesController {
         @Param('id', ParseUUIDPipe) id: string,
         @Req() req: any,
     ) {
-        const GuardClass = MarketAccessGuard('discount', req.user.email, ['owner', 'admin'], id || '', 'get');
-        const instance = new GuardClass(this.prisma);
-        await instance.canActivate({ switchToHttp: () => ({ getRequest: () => req }) } as any);
-
         const category = await this.prisma.category.findUnique({
             where: { id },
             select: { marketId: true },
@@ -116,7 +124,28 @@ export class CategoriesController {
         if (!category) {
             throw new NotFoundException('Category topilmadi');
         }
+        await this.authorize(req, category.marketId, 'delete');
 
         return this.categories.delete(id);
+    }
+
+    private async authorize(
+        req: any,
+        marketId: string,
+        action: 'get' | 'create' | 'update' | 'delete',
+    ) {
+        const GuardClass = MarketAccessGuard(
+            'category',
+            req.user?.email,
+            [...WORKER_ROLES, 'owner'],
+            marketId,
+            action,
+        );
+        const allowed = await new GuardClass(this.prisma).canActivate(
+            new ExecutionContextHost([req]),
+        );
+        if (!allowed) {
+            throw new ForbiddenException(`Kategoriya uchun ${action} ruxsati yo‘q.`);
+        }
     }
 }

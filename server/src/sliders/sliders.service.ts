@@ -16,12 +16,11 @@ export class SlidersService {
         });
     }
 
-    async findData(userName: string) {
-        const user = await this.prisma.user.findFirst({
-            where: { userName: userName },
-            select: { id: true },
+    async findData(userId: string) {
+        const user = await this.prisma.user.findUnique({
+            where: { id: userId },
+            select: { id: true, email: true },
         });
-
         if (!user) {
             throw new BadRequestException("Foydalanuvchi topilmadi");
         }
@@ -41,15 +40,21 @@ export class SlidersService {
                 return isFollowing && !isBlocked;
             })
             .map(item => item.marketId);
+        const ownedMarkets = await this.prisma.market.findMany({
+            where: { email: user.email },
+            select: { id: true },
+        });
+        const visibleMarketIds = [...new Set([
+            ...activeMarketIds,
+            ...ownedMarkets.map((market) => market.id),
+        ])];
 
-        if (activeMarketIds.length === 0) {
-            throw new BadRequestException("Siz birorta aktiv marketga obuna bo'lmagansiz");
-        }
+        if (visibleMarketIds.length === 0) return [];
 
         return this.sliders.findAll({
             where: {
                 marketId: {
-                    in: activeMarketIds,
+                    in: visibleMarketIds,
                 },
             },
             orderBy: { createdAt: 'desc' },

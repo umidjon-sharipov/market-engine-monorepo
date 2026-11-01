@@ -16,17 +16,8 @@ import {
 } from 'class-validator';
 
 export class ProductOptionItemDto {
-  @IsString()
-  @MaxLength(255)
-  key!: string;
-
-  @Type(() => Number)
-  @IsNumber({ maxDecimalPlaces: 3 })
-  value!: number;
-
-  @IsOptional()
-  @IsString()
-  image?: string;
+  @IsUUID()
+  includeProductId!: string;
 }
 
 export class ProductOptionDto {
@@ -37,6 +28,10 @@ export class ProductOptionDto {
   @IsOptional()
   @IsBoolean()
   searchEnabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  isOptional?: boolean;
 
   @Transform(({ value }: TransformFnParams) => {
     const input: unknown = value;
@@ -52,6 +47,7 @@ export class ProductOptionDto {
       return input;
     }
   })
+  @IsOptional()
   @IsArray()
   @IsString({ each: true })
   searchKeys: string[] = [];
@@ -75,6 +71,10 @@ export class CreateProductDto {
   @IsNumber()
   @Min(0)
   price!: number;
+
+  @IsOptional()
+  @IsBoolean()
+  isOptionOnly?: boolean;
 
   @IsUUID()
   marketId!: string;

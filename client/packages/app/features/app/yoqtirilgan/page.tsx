@@ -33,7 +33,8 @@ const Yoqtirilgan = () => {
         try {
             setLoading('loading')
             const response = await fetch(`${url}/products`);
-            const data = await response.json();
+            if (!response.ok) throw new Error(`Mahsulotlarni yuklab bo‘lmadi: ${response.status}`);
+            const data: Product[] = await response.json();
             setProducts(data);
             setLoading('loaded')
         } catch (error) {
@@ -48,7 +49,11 @@ const Yoqtirilgan = () => {
         }
     }, [yoqtirilganIds]);
 
-    const yoqtirilganProducts = products.filter((product: Product) => yoqtirilganIds.includes(product.id));
+    const yoqtirilganProducts = products.filter((product: Product) =>
+        yoqtirilganIds.includes(String(product.id))
+    );
+
+    if (loading === 'loaded' && yoqtirilganProducts.length === 0) return <Empty />;
 
     if (yoqtirilganIds.length === 0) return <Empty />
     

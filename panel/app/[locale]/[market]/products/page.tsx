@@ -9,7 +9,7 @@ import GlassModal from "@/components/admin/GlassModal";
 import { useNotification } from "@/components/Notification";
 import { useTokenStore } from "@/app/_store/useTokenStore";
 import { Trash2, Edit3 } from "lucide-react";
-import Item from "./_components/item";
+import Option from "./_components/option";
 import ImageUpload from "./_components/image";
 import { useParams } from "next/navigation";
 import GradientColor from "./_components/gradientColor";
@@ -20,17 +20,17 @@ import ProductImageSlider from "./_components/ProductImageSlider";
 
 interface ProductOption {
     id: string;
-    key: string;
-    value: number;
-    image?: string | null;
+    includeProductId: string | null;
+    includedProduct?: { id: string; title: string; price: number } | null;
 }
 
 interface ProductOptionGroup {
     id: string;
     title: string;
+    isOptional: boolean;
     searchKeys?: string[];
     searchEnabled?: boolean;
-    options: ProductOption[];
+    items: ProductOption[];
 }
 
 interface Product {
@@ -43,6 +43,8 @@ interface Product {
     };
     price?: number;
     marketId: string;
+    quantity: number;
+    isOptionOnly: boolean;
     categoryPath: string;
     uom: 'PCS' | 'KG' | 'LITRE' | 'METER';
     gradient: string[];
@@ -140,7 +142,7 @@ const ProductsGet = () => {
     const [deleteModal, setDeleteModal] = useState<string | null>(null);
 
     const [activeImageIndices, setActiveImageIndices] = useState<Record<string, number>>({});
-    const [selectedOptions, setSelectedOptions] = useState<Record<string, Record<string, number>>>({});
+    const [selectedOptions, setSelectedOptions] = useState<Record<string, Record<string, string>>>({});
 
     const [imagesLength, setImagesLength] = useState(1)
     const [descr, setDescr] = useState('uz');
@@ -155,6 +157,7 @@ const ProductsGet = () => {
     const [descriptionEn, setDescriptionEn] = useState('')
     const [descriptionRu, setDescriptionRu] = useState('')
     const [price, setPrice] = useState('')
+    const [isOptionOnly, setIsOptionOnly] = useState(false)
     const [uom, setUom] = useState<Product['uom']>('PCS')
     const [existingImages, setExistingImages] = useState<string[]>([])
 
@@ -185,8 +188,10 @@ const ProductsGet = () => {
                 throw new Error('URL parametrida yaroqli market UUID topilmadi.');
             }
             const [productsRes, categoriesRes] = await Promise.all([
-                fetch(`${API_URL}/products?marketId=${encodeURIComponent(market)}`),
-                fetch(`${API_URL}/categories?marketId=${encodeURIComponent(market)}`, {
+                fetch(`${API_URL}/products/market/${encodeURIComponent(market)}`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                }),
+                fetch(`${API_URL}/categories/market/${encodeURIComponent(market)}`, {
                     headers: { Authorization: `Bearer ${token}` },
                 }),
             ]);
@@ -200,6 +205,7 @@ const ProductsGet = () => {
 
             const categoriesReq: CategoryData[] = await categoriesRes.json();
             setCategories(categoriesReq.filter(item => (item.marketId || item.marketid) === market));
+
         } catch (error) {
             console.error('Xatolik:', error);
             setLoadError(error instanceof Error ? error.message : 'Mahsulot ma’lumotlarini yuklab bo‘lmadi.');
@@ -214,7 +220,7 @@ const ProductsGet = () => {
         }
     }, [fetchData, market]);
 
-    const handleOptionSelect = (productId: string, groupName: string, value: number) => {
+    const handleOptionSelect = (productId: string, groupName: string, value: string) => {
         setSelectedOptions(prev => ({
             ...prev,
             [productId]: {
@@ -242,8 +248,11 @@ const ProductsGet = () => {
         const productSelections = selectedOptions[product.id] || {};
         let optionsSum = product.price || 0;
 
-        Object.values(productSelections).forEach(value => {
-            optionsSum += value;
+        Object.entries(productSelections).forEach(([groupId, itemId]) => {
+            const selectedItem = product.options
+                .find(group => group.id === groupId)?.items
+                .find(optionItem => optionItem.id === itemId);
+            optionsSum += selectedItem?.includedProduct?.price ?? 0;
         });
 
         return optionsSum;
@@ -256,6 +265,7 @@ const ProductsGet = () => {
         setDescriptionEn('');
         setDescriptionRu('');
         setPrice('');
+        setIsOptionOnly(false);
         setCategoryId('NULL');
         setUom('PCS');
         setExistingImages([]);
@@ -286,6 +296,7 @@ const ProductsGet = () => {
             formData.set('descriptionEn', descriptionEn);
             formData.set('descriptionRu', descriptionRu);
             formData.set('price', price);
+            formData.set('isOptionOnly', String(isOptionOnly));
             formData.set('uom', uom);
             formData.set('images', JSON.stringify(existingImages));
             formData.append('gradient', JSON.stringify(colors));
@@ -353,6 +364,7 @@ const ProductsGet = () => {
         setDescriptionEn(product.description?.en || '');
         setDescriptionRu(product.description?.ru || '');
         setPrice(product.price?.toString() || '');
+        setIsOptionOnly(Boolean(product.isOptionOnly));
         setUom(product.uom ?? 'PCS');
         const itemSelection = categories
             .flatMap((category) => category.options.flatMap((option) => {
@@ -499,7 +511,10 @@ const ProductsGet = () => {
                                             <p className={ `text-sm mt-1 ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-600'}` }>
                                                 Kategoriya: <span className={ `font-medium ${theme === 'dark' ? 'text-sky-400' : 'text-sky-600'}` }>{ categoryLabel }</span>
                                             </p>
-                                            <h2 className={ `text-xl sm:text-2xl font-bold mt-1 mb-3 tracking-tight ${theme === 'dark' ? 'text-white' : 'text-zinc-900'}` }>{ item.title }</h2>
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <h2 className={ `text-xl sm:text-2xl font-bold mt-1 mb-3 tracking-tight ${theme === 'dark' ? 'text-white' : 'text-zinc-900'}` }>{ item.title }</h2>
+                                                {item.isOptionOnly && <span className="mb-2 rounded-full bg-amber-500/10 px-2.5 py-1 text-xs font-semibold text-amber-500">Faqat option tarkibida</span>}
+                                            </div>
 
                                             <div className={ `mb-4 p-4 rounded-2xl border ${theme === 'dark' ? 'bg-sky-400/10 border-zinc-800/50' : 'bg-sky-50 border-sky-100'}` }>
                                                 <span className={ `text-xs block mb-1 ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}` }>Tanlangan Konfiguratsiya Narxi:</span>
@@ -520,20 +535,20 @@ const ProductsGet = () => {
                                                 <h3 className={ `text-xs font-semibold uppercase tracking-wider ${theme === 'dark' ? 'text-zinc-300' : 'text-zinc-700'}` }>Konfiguratsiyani o&apos;zgartirish:</h3>
                                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                                     { item.options.map((optGroup, optIdx) => {
-                                                        const activeVal = selectedOptions[item.id]?.[optGroup.title];
+                                                        const activeVal = selectedOptions[item.id]?.[optGroup.id];
                                                         return (
                                                             <div key={ optIdx } className={ `p-4 rounded-xl border ${theme === 'dark' ? 'bg-zinc-900/40 border-zinc-800' : 'bg-gray-50 border-zinc-200'}` }>
                                                                 <span className={ `text-xs font-semibold block capitalize mb-3 tracking-wider ${theme === 'dark' ? 'text-zinc-400' : 'text-zinc-600'}` }>
-                                                                    { optGroup.title }
+                                                                    { optGroup.title }{optGroup.isOptional ? ' · ixtiyoriy' : ' · majburiy'}
                                                                 </span>
                                                                 <div className="flex flex-col gap-2">
-                                                                    { optGroup.options.map((opt, valIdx) => {
-                                                                        const isSelected = activeVal === opt.value;
+                                                                    { optGroup.items.map((opt, valIdx) => {
+                                                                        const isSelected = activeVal === opt.id;
 
                                                                         return (
                                                                             <button
                                                                                 key={ valIdx }
-                                                                                onClick={ () => handleOptionSelect(item.id, optGroup.title, opt.value) }
+                                                                                onClick={ () => handleOptionSelect(item.id, optGroup.id, opt.id) }
                                                                                 className={ `flex justify-between items-center text-xs font-medium px-4 py-3 rounded-lg border transition-all duration-200 ${isSelected
                                                                                     ? "bg-sky-500/10 text-sky-500 border-sky-500/50 shadow-[0_0_12px_rgba(14,165,233,0.1)]"
                                                                                     : theme === 'dark'
@@ -541,9 +556,9 @@ const ProductsGet = () => {
                                                                                         : "bg-white text-zinc-700 border-zinc-200 hover:bg-zinc-100 hover:border-zinc-300"
                                                                                     }` }
                                                                             >
-                                                                                <span className="capitalize">{ opt.key }</span>
+                                                                                <span className="capitalize">{ opt.includedProduct?.title ?? 'Ombor mahsuloti topilmadi' }</span>
                                                                                 <span className={ `font-semibold ${isSelected ? "text-sky-500" : theme === 'dark' ? "text-zinc-500" : "text-zinc-400"}` }>
-                                                                                    +{ opt.value.toLocaleString() } UZS
+                                                                                    +{ (opt.includedProduct?.price ?? 0).toLocaleString() } UZS
                                                                                 </span>
                                                                             </button>
                                                                         );
@@ -590,6 +605,16 @@ const ProductsGet = () => {
 
                             <div className="flex flex-col gap-3 h-full overflow-auto flex-1">
                                 <GlassInput label='price' name='price' placeholder="price..." value={ price } onChange={ (e) => setPrice(e.target.value) } />
+                                <label className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm">
+                                    <span>Faqat boshqa mahsulot optioni sifatida sotiladi</span>
+                                    <input
+                                        type="checkbox"
+                                        name="isOptionOnly"
+                                        checked={isOptionOnly}
+                                        onChange={(event) => setIsOptionOnly(event.target.checked)}
+                                        className="h-4 w-4 accent-sky-500"
+                                    />
+                                </label>
                                 <label className="flex flex-col gap-2 text-sm">
                                     <span>O&apos;lchov birligi</span>
                                     <select
@@ -641,13 +666,18 @@ const ProductsGet = () => {
 
                             <div className="flex flex-col gap-3">
                                 { Array.from({ length: itemsLenght }).map((_, index) => (
-                                    <Item
+                                    <Option
                                         key={ `${editId ?? 'new'}-opt-${index}` }
                                         cIndex={ index }
+                                        products={data.filter((product) => product.id !== editId)}
                                         setItemsLenght={ setItemsLenght }
                                         defaultTitle={ editOptions[index]?.title ?? '' }
-                                        defaultItems={ editOptions[index]?.options?.map(o => ({ key: o.key, value: o.value, image: o.image })) ?? [] }
+                                        defaultIsOptional={ editOptions[index]?.isOptional ?? false }
                                         defaultSearchEnabled={ editOptions[index]?.searchEnabled ?? false }
+                                        defaultSearchKeys={ editOptions[index]?.searchKeys ?? [] }
+                                        defaultProductIds={ editOptions[index]?.items.flatMap((item) =>
+                                            item.includeProductId ? [item.includeProductId] : []
+                                        ) ?? []}
                                     />
                                 )) }
                             </div>

@@ -20,23 +20,78 @@ export class CategoriesService {
         private readonly prisma: PrismaService,
     ) { }
 
-    async findAll(marketId: string) {
+    async findAll(marketId: string, includeHidden = false) {
         const categories = await this.prisma.category.findMany({
-            where: { marketId },
+            where: { marketId, ...(!includeHidden ? { hidden: false } : {}) },
             orderBy: { createdAt: 'desc' },
-            include: { options: true },
+            include: {
+                options: includeHidden ? true : { where: { hidden: false } },
+            },
         });
-        return this.withItemTrees(categories);
+        return this.withItemTrees(categories, includeHidden);
     }
 
-    async findOne(id: string) {
+    async findCatalog(userId: string) {
+        const user = await this.prisma.user.findUnique({
+            where: { id: userId },
+            select: { id: true, email: true },
+        });
+        if (!user) throw new NotFoundException('Foydalanuvchi topilmadi.');
+
+        const [followings, ownedMarkets, categoryWorkers] = await this.prisma.$transaction([
+            this.prisma.following.findMany({
+                where: { userId },
+                select: { marketId: true, follow: true, block: true },
+            }),
+            this.prisma.market.findMany({
+                where: { email: user.email },
+                select: { id: true, title: true, logo: true },
+            }),
+            this.prisma.worker.findMany({
+                where: { userId, permissions: { has: 'category:get' } },
+                select: { marketId: true },
+            }),
+        ]);
+        const subscribedMarketIds = followings
+            .filter((following) =>
+                Array.isArray(following.follow) &&
+                following.follow.length % 2 === 1 &&
+                (!Array.isArray(following.block) || following.block.length % 2 === 0),
+            )
+            .map((following) => following.marketId);
+        const visibleMarketIds = new Set([
+            ...subscribedMarketIds,
+            ...ownedMarkets.map((market) => market.id),
+            ...categoryWorkers.map((worker) => worker.marketId),
+        ]);
+        if (!visibleMarketIds.size) return [];
+
+        const markets = await this.prisma.market.findMany({
+            where: { id: { in: [...visibleMarketIds] } },
+            select: { id: true, title: true, logo: true },
+            orderBy: { title: 'asc' },
+        });
+        const hiddenMarketIds = new Set([
+            ...ownedMarkets.map((market) => market.id),
+            ...categoryWorkers.map((worker) => worker.marketId),
+        ]);
+
+        return Promise.all(markets.map(async (market) => ({
+            ...market,
+            categories: await this.findAll(market.id, hiddenMarketIds.has(market.id)),
+        })));
+    }
+
+    async findOne(id: string, includeHidden = false) {
         const category = await this.prisma.category.findUnique({
             where: { id },
-            include: { options: true },
+            include: {
+                options: includeHidden ? true : { where: { hidden: false } },
+            },
         });
         if (!category)
             throw new NotFoundException('Requested resource was not found');
-        return (await this.withItemTrees([category]))[0];
+        return (await this.withItemTrees([category], includeHidden))[0];
     }
 
     async create(body: CreateCategoryDto, files: Array<Express.Multer.File>) {
@@ -156,6 +211,7 @@ export class CategoriesService {
 
     private async withItemTrees<T extends { options: Array<{ id: string }> }>(
         categories: T[],
+        includeHidden: boolean,
     ) {
         const optionIds = categories.flatMap((category) =>
             category.options.map((option) => option.id),
@@ -163,14 +219,21 @@ export class CategoriesService {
         const items: CategoryOptionItem[] = [];
         let frontier: CategoryOptionItem[] = optionIds.length
             ? await this.prisma.categoryOptionItem.findMany({
-                where: { optionId: { in: optionIds }, parentId: null },
+                where: {
+                    optionId: { in: optionIds },
+                    parentId: null,
+                    ...(!includeHidden ? { hidden: false } : {}),
+                },
             })
             : [];
 
         while (frontier.length) {
             items.push(...frontier);
             frontier = await this.prisma.categoryOptionItem.findMany({
-                where: { parentId: { in: frontier.map((item) => item.id) } },
+                where: {
+                    parentId: { in: frontier.map((item) => item.id) },
+                    ...(!includeHidden ? { hidden: false } : {}),
+                },
             });
         }
 

@@ -13,11 +13,12 @@ export function NavigationProvider({
         () => ({
           prefixes: [Linking.createURL('/')],
           config: {
-            initialRouteName: 'home',
+            initialRouteName: 'home' as const,
             screens: {
               home: '',
               katalog: 'katalog',
               savat: 'savat',
+              checkout: 'checkout',
               saralangan: 'yoqtirilgan',
               profile: 'profile',
               savolJavob: 'savolJavob',
@@ -27,7 +28,8 @@ export function NavigationProvider({
               auth: 'auth',
               follow: 'follow',
               'filter': 'search/:id',
-              'products': 'product/:id'
+              'products': 'product/:id',
+              productComments: 'productComments',
             },
           },
         }),

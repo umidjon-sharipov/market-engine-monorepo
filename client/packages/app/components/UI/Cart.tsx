@@ -5,6 +5,7 @@ import { useNativeAnimDriver } from 'app/utils/animation'
 import { useCartStore } from "app/store/useCartStore";
 import { useYoqtirilganStore } from "app/store/useYoqtirilganStore";
 import { UniversalImage } from "./UniversalImage";
+import { useRouter } from 'solito/navigation';
 
 interface Product {
     id: string;
@@ -16,7 +17,16 @@ interface Product {
     discountId: string;
     images: string[];
     quantity: number;
-    options: { id: string; title: string; options: { id: string; key: string; value: number }[] }[];
+    options: {
+        id: string;
+        title: string;
+        isOptional: boolean;
+        items: {
+            id: string;
+            includeProductId: string | null;
+            includedProduct?: { id: string; title: string; price: number } | null;
+        }[];
+    }[];
 }
 
 interface CartItem {
@@ -27,6 +37,7 @@ interface CartItem {
 
 const CardProduct = ({ product, cartItem, index = 0 }: { product: Product; cartItem: CartItem; index?: number }) => {
     const { width: windowWidth } = useWindowDimensions();
+    const router = useRouter();
     const [isMounted, setIsMounted] = useState(false);
 
     const toggleCart = useCartStore(state => state.toggleCart);
@@ -67,12 +78,20 @@ const CardProduct = ({ product, cartItem, index = 0 }: { product: Product; cartI
     const optionSelections = cartItem.optionSelections ?? {};
     const quantity = cartItem.quantity;
     const selectedOptions = product.options.flatMap(group => {
-        const option = group.options.find(item => item.id === optionSelections[group.id]);
-        return option ? [`${group.title}: ${option.key}`] : [];
+        const option = group.items.find(item => item.id === optionSelections[group.id]);
+        return option?.includedProduct
+            ? [`${group.title}: ${option.includedProduct.title}`]
+            : [];
     });
     const linePrice = product.price + product.options.reduce((sum, group) => (
-        sum + (group.options.find(option => option.id === optionSelections[group.id])?.value ?? 0)
+        sum + (
+            group.items.find(option => option.id === optionSelections[group.id])
+                ?.includedProduct?.price ?? 0
+        )
     ), 0);
+    const missingOptions = product.options.filter(
+        (group) => !group.isOptional && !optionSelections[group.id],
+    );
     const oldPrice = product.price * 1.5;
 
     const scaleAnim = useRef(new Animated.Value(0)).current;
@@ -155,6 +174,16 @@ const CardProduct = ({ product, cartItem, index = 0 }: { product: Product; cartI
                         {selectedOptions.map(option => (
                             <Text key={option} style={styles.metaText}>{option}</Text>
                         ))}
+                        {missingOptions.length > 0 && (
+                            <Pressable
+                                onPress={() => router.push(`/product/${product.id}`)}
+                                style={styles.configurationWarning}
+                            >
+                                <Text style={styles.configurationWarningText}>
+                                    {missingOptions.map((group) => group.title).join(', ')} tanlanishi kerak · sozlash
+                                </Text>
+                            </Pressable>
+                        )}
                     </View>
 
                     <View style={[styles.footerRow, isSmall && styles.footerRowSmall]}>
@@ -277,6 +306,17 @@ const styles = StyleSheet.create({
     },
     metaValue: {
         color: '#4b5563',
+    },
+    configurationWarning: {
+        marginTop: 4,
+        padding: 8,
+        borderRadius: 8,
+        backgroundColor: '#fef2f2',
+    },
+    configurationWarningText: {
+        color: '#b91c1c',
+        fontSize: 12,
+        fontWeight: '700',
     },
     footerRow: {
         flexDirection: 'row',
