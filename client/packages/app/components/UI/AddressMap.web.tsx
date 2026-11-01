@@ -14,6 +14,7 @@ interface LeafletMapModules {
     TileLayer: React.ComponentType<any>;
     CircleMarker: React.ComponentType<any>;
     useMapEvents: (events: { click: (event: { latlng: { lat: number; lng: number } }) => void }) => unknown;
+    useMap: () => { setView: (center: [number, number], zoom: number) => void; getZoom: () => number };
 }
 
 const defaultCenter: AddressCoordinates = { latitude: 41.3111, longitude: 69.2797 };
@@ -31,6 +32,20 @@ const AddressMapClickHandler = ({
     return null;
 };
 
+const AddressMapCenter = ({
+    useMap,
+    center,
+}: {
+    useMap: LeafletMapModules['useMap'];
+    center: AddressCoordinates;
+}) => {
+    const map = useMap();
+    useEffect(() => {
+        map.setView([center.latitude, center.longitude], map.getZoom());
+    }, [center.latitude, center.longitude, map]);
+    return null;
+};
+
 const AddressMap = ({ value, onSelect }: AddressMapProps) => {
     const [mapModules, setMapModules] = useState<LeafletMapModules | null>(null);
 
@@ -41,6 +56,7 @@ const AddressMap = ({ value, onSelect }: AddressMapProps) => {
                 TileLayer: modules.TileLayer,
                 CircleMarker: modules.CircleMarker,
                 useMapEvents: modules.useMapEvents as unknown as LeafletMapModules['useMapEvents'],
+                useMap: modules.useMap as unknown as LeafletMapModules['useMap'],
             });
         });
     }, []);
@@ -49,7 +65,7 @@ const AddressMap = ({ value, onSelect }: AddressMapProps) => {
         return <div style={{ height: 300, borderRadius: 12, backgroundColor: '#eef2f7' }} />;
     }
 
-    const { MapContainer, TileLayer, CircleMarker, useMapEvents } = mapModules;
+    const { MapContainer, TileLayer, CircleMarker, useMapEvents, useMap } = mapModules;
     const center = value ?? defaultCenter;
 
     return (
@@ -60,6 +76,7 @@ const AddressMap = ({ value, onSelect }: AddressMapProps) => {
                 scrollWheelZoom
                 style={{ height: '100%', width: '100%' }}
             >
+                <AddressMapCenter useMap={useMap} center={center} />
                 <TileLayer
                     attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                     url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"

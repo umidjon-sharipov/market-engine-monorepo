@@ -60,6 +60,7 @@ const Savat = () => {
     const cartIds = React.useMemo(() => cart.map(item => item.id), [cart]);
     const lan = useLanStorage(state => state.lan)
     const deliveryLocation = useDeliveryLocationStore(state => state.location);
+    const locationOwnerUserId = useDeliveryLocationStore(state => state.ownerUserId);
     const setDeliveryLocation = useDeliveryLocationStore(state => state.setLocation);
     const selectedPickPointId = useDeliveryLocationStore(state => state.pickPointId);
     const setSelectedPickPointId = useDeliveryLocationStore(state => state.setPickPointId);
@@ -87,16 +88,25 @@ const Savat = () => {
             .then(async response => {
                 if (!response.ok) return;
                 const profile: unknown = await response.json();
-                if (!profile || typeof profile !== 'object' || !('latitude' in profile) || !('longitude' in profile)) return;
-                const { latitude, longitude } = profile;
-                if (typeof latitude === 'number' && Number.isFinite(latitude) &&
-                    typeof longitude === 'number' && Number.isFinite(longitude) &&
-                    !useDeliveryLocationStore.getState().location) {
-                    setDeliveryLocation({ latitude, longitude });
+                if (!profile || typeof profile !== 'object' || !('id' in profile) || typeof profile.id !== 'string') return;
+                const latitude = 'latitude' in profile && typeof profile.latitude === 'number' &&
+                    Number.isFinite(profile.latitude) ? profile.latitude : null;
+                const longitude = 'longitude' in profile && typeof profile.longitude === 'number' &&
+                    Number.isFinite(profile.longitude) ? profile.longitude : null;
+                const profileLocation = latitude !== null && longitude !== null
+                    ? { latitude, longitude }
+                    : null;
+                const current = useDeliveryLocationStore.getState();
+                if (current.ownerUserId && current.ownerUserId !== profile.id) {
+                    setDeliveryLocation(profileLocation, profile.id);
+                } else if (!current.ownerUserId) {
+                    setDeliveryLocation(profileLocation ?? current.location, profile.id);
+                } else if (profileLocation && !current.location) {
+                    setDeliveryLocation(profileLocation, profile.id);
                 }
             })
             .catch(error => console.error('Profil lokatsiyasini yuklashda xatolik:', error));
-    }, [deliveryLocation, setDeliveryLocation, token, url]);
+    }, [deliveryLocation, locationOwnerUserId, setDeliveryLocation, token, url]);
 
     const fetchCartProducts = useCallback(async () => {
         if (!url) {

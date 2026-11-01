@@ -419,6 +419,7 @@ model Worker {
     createdWarehouseTasks     WarehouseTask[] @relation("WarehouseTaskCreatorWorker")
     pickedWarehouseTasks      WarehouseTask[] @relation("WarehouseTaskPickerWorker")
     transportedWarehouseTasks WarehouseTask[] @relation("WarehouseTaskTransporterWorker")
+    assignedPickPoints        PickPoint[]    @relation("PickPointAssignedSeller")
 
     @@unique([marketId, userId, role])
     @@index([userId])
@@ -455,6 +456,7 @@ model Vacancy {
 model PickPoint {
     id                  String   @id @default(uuid()) @db.Uuid
     warehouseId         String   @db.Uuid
+    assignedSellerId    String?  @db.Uuid
     title               String   @db.VarChar(255)
     address             String?  @db.Text
     latitude            Float
@@ -465,9 +467,11 @@ model PickPoint {
     updatedAt           DateTime @updatedAt @db.Timestamptz(6)
 
     warehouse Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+    assignedSeller Worker? @relation("PickPointAssignedSeller", fields: [assignedSellerId], references: [id], onDelete: SetNull)
     orders    Order[]
 
     @@index([warehouseId])
+    @@index([assignedSellerId])
     @@map("PickPoints")
 }
 

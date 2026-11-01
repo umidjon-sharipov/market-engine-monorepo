@@ -57,6 +57,16 @@ export class PickPointsController {
     return this.pickPoints.getMetrics(marketId);
   }
 
+  @Get('sellers')
+  @UseGuards(JwtAuthGuard)
+  async findSellers(
+    @Req() request: AuthenticatedRequest,
+    @Query('marketId', ParseUUIDPipe) marketId: string,
+  ) {
+    await this.assertAccess(request, marketId, 'get');
+    return this.pickPoints.findSellers(marketId);
+  }
+
   @Get('nearest')
   findNearest(
     @Query('marketId', ParseUUIDPipe) marketId: string,

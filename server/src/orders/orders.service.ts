@@ -251,6 +251,7 @@ export class OrdersService {
           const createdOrders = [];
           for (const [marketId, marketOrder] of ordersByMarket) {
             let fulfillmentWarehouseId: string | undefined;
+            let assignedSellerUserId: string | null = null;
             if (createOrderDto.pickPointId) {
               const pickPoint = await tx.pickPoint.findFirst({
                 where: {
@@ -264,6 +265,7 @@ export class OrdersService {
                   latitude: true,
                   longitude: true,
                   serviceRadiusMeters: true,
+                  assignedSeller: { select: { userId: true } },
                 },
               });
               if (!pickPoint) {
@@ -297,6 +299,8 @@ export class OrdersService {
                 );
               }
               fulfillmentWarehouseId = pickPoint.warehouseId;
+              assignedSellerUserId =
+                pickPoint.assignedSeller?.userId ?? null;
             }
             const order = await tx.order.create({
               data: {
@@ -315,6 +319,22 @@ export class OrdersService {
               },
               select: { id: true, marketId: true, status: true, total: true },
             });
+            if (assignedSellerUserId) {
+              await tx.notification.create({
+                data: {
+                  userId: assignedSellerUserId,
+                  type: 'PICKPOINT_ORDER',
+                  title: 'Yangi topshirish punkti buyurtmasi',
+                  message: `${name} tomonidan topshirish punkti uchun yangi buyurtma qabul qilindi.`,
+                  data: {
+                    orderId: order.id,
+                    marketId,
+                    pickPointId: createOrderDto.pickPointId,
+                    total: order.total,
+                  },
+                },
+              });
+            }
             for (const [productId, quantity] of marketOrder.demand) {
               await this.reserveDemand(
                 tx,
@@ -678,4 +698,4 @@ export class OrdersService {
       throw new BadRequestException('Omborda buyurtma uchun yetarli qoldiq yo‘q.');
     }
   }
-}
+}

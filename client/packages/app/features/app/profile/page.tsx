@@ -168,6 +168,7 @@ const Profile = () => {
     const [focus, setFocus] = useState(0)
     const [genderOpen, setGenderOpen] = useState(false)
     const [deliveryCoordinates, setDeliveryCoordinates] = useState<AddressCoordinates | null>(null)
+    const [profileUserId, setProfileUserId] = useState<string | null>(null)
     const [profileError, setProfileError] = useState('')
     const setSavedDeliveryLocation = useDeliveryLocationStore(state => state.setLocation)
     const router = useRouter()
@@ -214,11 +215,12 @@ const Profile = () => {
             setGender(req.gender)
             setBio(req.bio)
             setImage(req.image)
+            setProfileUserId(typeof req.id === 'string' ? req.id : null)
             const profileCoordinates = Number.isFinite(req.latitude) && Number.isFinite(req.longitude)
                 ? { latitude: req.latitude, longitude: req.longitude }
                 : null
             setDeliveryCoordinates(profileCoordinates)
-            if (profileCoordinates) setSavedDeliveryLocation(profileCoordinates)
+            if (typeof req.id === 'string') setSavedDeliveryLocation(profileCoordinates, req.id)
         } catch (err) {
             console.log(err)
         }
@@ -268,7 +270,7 @@ const Profile = () => {
 
             if (response.ok) {
                 await renderToken(useTokenStore.getState().token)
-                if (deliveryCoordinates) setSavedDeliveryLocation(deliveryCoordinates)
+                if (deliveryCoordinates) setSavedDeliveryLocation(deliveryCoordinates, profileUserId)
                 return true
             }
             const result: unknown = await response.json().catch(() => null)
@@ -1440,4 +1442,4 @@ const styles = StyleSheet.create({
         fontWeight: '700',
         fontSize: 16,
     }
-})
+})

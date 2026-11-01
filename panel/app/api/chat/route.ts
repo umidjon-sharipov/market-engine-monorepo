@@ -13,7 +13,7 @@ function errorResponse(message: string, status: number) {
 }
 
 function getBackendUrl() {
-    const configuredBase = API_URL;
+    const configuredBase = process.env.NEST_API_URL || API_URL;
     if (!configuredBase) {
         throw new Error('NEST_API_URL server environment variable is not configured.');
     }
@@ -23,14 +23,20 @@ function getBackendUrl() {
         throw new Error('NEST_API_URL must use HTTP or HTTPS.');
     }
 
-    // This is the existing NestJS AIController endpoint. If your controller
-    // prefix changes, override NEST_AI_CHAT_PATH on the Next.js server.
-    const configuredPath = `${API_URL}/ai/chat`;
-    if (!configuredPath.startsWith('/') || configuredPath.startsWith('//') || configuredPath.includes('..')) {
+    // Keep an API base path (if configured) while allowing deployments to
+    // override the Nest route without exposing provider credentials to clients.
+    const defaultPath = `${baseUrl.pathname.replace(/\/+$/, '')}/ai/chat`;
+    const configuredPath = process.env.NEST_AI_CHAT_PATH || defaultPath;
+    if (
+        !configuredPath.startsWith('/')
+        || configuredPath.startsWith('//')
+        || configuredPath.split('/').includes('..')
+        || configuredPath.includes('\\')
+    ) {
         throw new Error('NEST_AI_CHAT_PATH must be an absolute path such as /ai/chat.');
     }
 
-    return new URL(configuredPath, baseUrl).toString();
+    return new URL(configuredPath, baseUrl.origin).toString();
 }
 
 type ChatMessage = {

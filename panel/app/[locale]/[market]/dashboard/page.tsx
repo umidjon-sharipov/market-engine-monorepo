@@ -1,299 +1,304 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
-import UltimateGlassDiagram from '@/components/admin/GlassDiagram';
-import { TrendingUp, Users, DollarSign, Activity, Server, ShieldCheck, ArrowUpRight, ArrowDownRight } from 'lucide-react';
-import { useTokenStore } from '@/app/_store/useTokenStore';
-import { API_URL } from '@/lib/api';
-import { useNotification } from '@/components/Notification';
-import { useThemeStore } from '@/app/_store/useThemeStore';
+import React, { useCallback, useEffect, useState } from "react";
+import { Activity, Bell, Boxes, CircleDollarSign, ClipboardList, Package, RefreshCw, ShoppingBag, Users } from "lucide-react";
+import UltimateGlassDiagram from "@/components/admin/GlassDiagram";
+import { useTokenStore } from "@/app/_store/useTokenStore";
+import { API_URL } from "@/lib/api";
 
-const financialData = [
-    { date: 'Yan', revenue: 320000, expenses: 150000, profit: 170000 },
-    { date: 'Fev', revenue: 540000, expenses: 220000, profit: 320000 },
-    { date: 'Mar', revenue: 480000, expenses: 200000, profit: 280000 },
-    { date: 'Apr', revenue: 890000, expenses: 350000, profit: 540000 },
-    { date: 'May', revenue: 1250000, expenses: 480000, profit: 770000 },
-    { date: 'Iyun', revenue: 1600000, expenses: 600000, profit: 1000000 },
-];
+interface DashboardAnalytics {
+  generatedAt: string;
+  summary: {
+    orderCount: number;
+    pendingOrderCount: number;
+    completedRevenue: number;
+    activeProductCount: number;
+    customerCount: number;
+    availableInventoryUnits: number;
+    openWarehouseTaskCount: number;
+  };
+  monthly: Array<{ month: string; orders: number; revenue: number }>;
+}
 
-const serverLoadData = [
-    { time: '00:00', cpu: 25, memory: 45 },
-    { time: '04:00', cpu: 18, memory: 42 },
-    { time: '08:00', cpu: 65, memory: 78 },
-    { time: '12:00', cpu: 92, memory: 88 },
-    { time: '16:00', cpu: 75, memory: 80 },
-    { time: '20:00', cpu: 40, memory: 55 },
-];
-
-interface UserProfile {
-    id: string;
-    userId?: string;
-    following?: Array<{
-        id: string;
-        following: string[];
-        isBlocked?: string[];
-    }>;
-    [key: string]: unknown;
+interface DashboardNotification {
+  id: string;
+  type: string;
+  title: string;
+  message: string;
+  data: Record<string, unknown>;
+  readAt: string | null;
+  createdAt: string;
 }
 
 interface DashboardProps {
-    params: Promise<{
-        locale: string;
-        market: string;
-    }>;
+  params: Promise<{ locale: string; market: string }>;
+}
+
+function messageFrom(payload: unknown, fallback: string) {
+  if (payload && typeof payload === "object" && "message" in payload) {
+    const message = payload.message;
+    if (Array.isArray(message)) return message.join(", ");
+    if (typeof message === "string") return message;
+  }
+  return fallback;
 }
 
 export default function Dashboard({ params }: DashboardProps) {
-    const resolvedParams = React.use(params);
-    const { locale, market } = resolvedParams;
+  const { locale, market } = React.use(params);
+  const token = useTokenStore((state) => state.getActiveToken());
+  const [analytics, setAnalytics] = useState<DashboardAnalytics | null>(null);
+  const [notifications, setNotifications] = useState<DashboardNotification[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
-    const [users, setUsers] = useState<UserProfile[]>([]);
-    const [loading, setLoading] = useState<boolean>(true);
+  const loadDashboard = useCallback(async () => {
+    if (!market || !token) {
+      setLoading(false);
+      setError(token ? "Market identifikatori topilmadi." : "Tizimga qayta kiring.");
+      return;
+    }
 
-    const token = useTokenStore(state => state.getActiveToken());
-    const notify = useNotification();
-    const dark = useThemeStore(state => state.theme) === 'dark';
+    setLoading(true);
+    setError("");
+    const headers = { Authorization: `Bearer ${token}` };
+    try {
+      const [analyticsResponse, notificationsResponse] = await Promise.all([
+        fetch(`${API_URL}/dashboard/market/${encodeURIComponent(market)}`, { headers }),
+        fetch(`${API_URL}/notifications?limit=10`, { headers }),
+      ]);
+      const analyticsPayload: unknown = await analyticsResponse.json();
+      if (!analyticsResponse.ok) {
+        throw new Error(messageFrom(analyticsPayload, "Dashboard ma’lumotlari olinmadi."));
+      }
+      setAnalytics(analyticsPayload as DashboardAnalytics);
+      setLastUpdated(new Date());
 
-    const currentMarket = market;
-
-    useEffect(() => {
-        const getUsers = async () => {
-            if (!currentMarket) return;
-            try {
-                const res = await fetch(`${API_URL}/dashboard/users/${currentMarket}`, {
-                    method: 'GET',
-                    headers: {
-                        'Authorization': `Bearer ${token}`
-                    }
-                });
-                const data = await res.json();
-
-                if (res.ok) {
-                    const formatted = Array.isArray(data) ? data.map((item: any) => item.user || item) : [];
-                    console.log(data)
-                    setUsers(formatted);
-                } else {
-                    notify.show(data.message || 'Xatolik yuz berdi', "error", dark ? 'dark' : 'light');
-                }
-            } catch (err) {
-                notify.show("So'rov yuborilmadi", "error", dark ? 'dark' : 'light');
-                console.log(err);
-            } finally {
-                setLoading(false);
-            }
+      if (notificationsResponse.ok) {
+        const notificationPayload = (await notificationsResponse.json()) as {
+          data?: DashboardNotification[];
         };
+        setNotifications(notificationPayload.data ?? []);
+      } else {
+        console.error(
+          "Dashboard bildirishnomalarini yuklab bo‘lmadi:",
+          notificationsResponse.status,
+        );
+      }
+    } catch (loadError) {
+      setError(
+        loadError instanceof Error
+          ? loadError.message
+          : "Dashboard ma’lumotlarini yuklab bo‘lmadi.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [market, token]);
 
-        getUsers();
-    }, [currentMarket, token]);
+  useEffect(() => {
+    void loadDashboard();
+    const timer = window.setInterval(() => void loadDashboard(), 60_000);
+    return () => window.clearInterval(timer);
+  }, [loadDashboard]);
 
-    const calculateUserActivity = () => {
-        const daysMap: { [key: string]: { activeUsers: Set<string>; newRegistrations: number } } = {
-            'Dush': { activeUsers: new Set(), newRegistrations: 0 },
-            'Sesh': { activeUsers: new Set(), newRegistrations: 0 },
-            'Chor': { activeUsers: new Set(), newRegistrations: 0 },
-            'Pay': { activeUsers: new Set(), newRegistrations: 0 },
-            'Jum': { activeUsers: new Set(), newRegistrations: 0 },
-            'Shan': { activeUsers: new Set(), newRegistrations: 0 },
-            'Yak': { activeUsers: new Set(), newRegistrations: 0 },
-        };
+  const markRead = async (id: string) => {
+    if (!token) return;
+    try {
+      const response = await fetch(`${API_URL}/notifications/${id}/read`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) {
+        const payload: unknown = await response.json().catch(() => null);
+        throw new Error(messageFrom(payload, "Bildirishnoma o‘qilgan deb belgilanmadi."));
+      }
+      setNotifications((current) =>
+        current.map((item) =>
+          item.id === id ? { ...item, readAt: new Date().toISOString() } : item,
+        ),
+      );
+    } catch (markError) {
+      setError(markError instanceof Error ? markError.message : "Xatolik yuz berdi.");
+    }
+  };
 
-        const dayNames = ['Yak', 'Dush', 'Sesh', 'Chor', 'Pay', 'Jum', 'Shan'];
+  const summary = analytics?.summary;
+  const metrics = [
+    {
+      label: "Yakunlangan buyurtmalar tushumi",
+      value: `${(summary?.completedRevenue ?? 0).toLocaleString()} so‘m`,
+      icon: CircleDollarSign,
+      color: "text-emerald-500",
+    },
+    {
+      label: "Jami buyurtmalar",
+      value: (summary?.orderCount ?? 0).toLocaleString(),
+      icon: ShoppingBag,
+      color: "text-sky-500",
+    },
+    {
+      label: "Ko‘rib chiqilayotgan buyurtmalar",
+      value: (summary?.pendingOrderCount ?? 0).toLocaleString(),
+      icon: ClipboardList,
+      color: "text-amber-500",
+    },
+    {
+      label: "Sotuvdagi mahsulotlar",
+      value: (summary?.activeProductCount ?? 0).toLocaleString(),
+      icon: Package,
+      color: "text-violet-500",
+    },
+    {
+      label: "Obunachi mijozlar",
+      value: (summary?.customerCount ?? 0).toLocaleString(),
+      icon: Users,
+      color: "text-indigo-500",
+    },
+    {
+      label: "Sotuvga yaroqli ombor qoldig‘i",
+      value: (summary?.availableInventoryUnits ?? 0).toLocaleString(),
+      icon: Boxes,
+      color: "text-cyan-500",
+    },
+  ];
 
-        users.forEach((userItem: any) => {
-            const followList = userItem.following || [];
+  return (
+    <main className="space-y-7 pb-16">
+      <header className="flex flex-wrap items-end justify-between gap-4 rounded-[28px] border border-sky-500/10 bg-white/60 p-6 shadow-xl backdrop-blur-2xl dark:border-white/10 dark:bg-neutral-900/50 sm:p-8">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-widest text-sky-500">
+            {locale.toUpperCase()} · Market {market}
+          </p>
+          <h1 className="mt-2 text-3xl font-black text-neutral-900 dark:text-white">
+            Market ko‘rsatkichlari
+          </h1>
+          <p className="mt-2 text-sm text-neutral-500 dark:text-neutral-400">
+            Buyurtma, tushum, mahsulot va ombor ma’lumotlari bazadan olinadi.
+            {lastUpdated ? ` Yangilandi: ${lastUpdated.toLocaleTimeString(locale)}.` : ""}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => void loadDashboard()}
+          disabled={loading}
+          className="inline-flex items-center gap-2 rounded-xl border border-sky-500/20 bg-sky-500/10 px-4 py-2.5 text-sm font-semibold text-sky-600 transition hover:bg-sky-500/15 disabled:opacity-50 dark:text-sky-300"
+        >
+          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+          Yangilash
+        </button>
+      </header>
 
-            if (Array.isArray(followList)) {
-                followList.forEach((marketObj: any) => {
-                    if (marketObj?.id === currentMarket || marketObj?.id) {
-                        const timeStamps = marketObj?.following || [];
-                        
-                        if (Array.isArray(timeStamps)) {
-                            timeStamps.forEach((dateString: string) => {
-                                const date = new Date(dateString);
-                                if (!isNaN(date.getTime())) {
-                                    const dayIndex = date.getDay();
-                                    const dayName = dayNames[dayIndex];
+      {error && (
+        <div role="alert" className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-500">
+          {error}
+        </div>
+      )}
 
-                                    if (daysMap[dayName]) {
-                                        daysMap[dayName].newRegistrations += 1;
-                                        daysMap[dayName].activeUsers.add(userItem.userId || userItem.id);
-                                    }
-                                }
-                            });
-                        }
-                    }
-                });
-            }
-        });
+      {loading && !analytics ? (
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-8 text-center text-sm text-neutral-500">
+          Dashboard ma’lumotlari yuklanmoqda...
+        </div>
+      ) : (
+        <>
+          <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {metrics.map((metric) => {
+              const Icon = metric.icon;
+              return (
+                <article
+                  key={metric.label}
+                  className="rounded-[24px] border border-sky-500/10 bg-white/60 p-5 shadow-lg backdrop-blur-xl dark:border-white/10 dark:bg-neutral-900/50"
+                >
+                  <div className="mb-4 flex items-center justify-between">
+                    <span className={`rounded-xl bg-current/10 p-3 ${metric.color}`}>
+                      <Icon className="h-5 w-5" />
+                    </span>
+                  </div>
+                  <p className="text-sm text-neutral-500 dark:text-neutral-400">{metric.label}</p>
+                  <p className="mt-1 text-2xl font-black text-neutral-900 dark:text-white">
+                    {metric.value}
+                  </p>
+                </article>
+              );
+            })}
+          </section>
 
-        return Object.keys(daysMap).map(day => ({
-            day,
-            activeUsers: daysMap[day].activeUsers.size,
-            newRegistrations: daysMap[day].newRegistrations
-        }));
-    };
-
-    let dynamicUserActivityData = calculateUserActivity();
-
-    useEffect(() => {
-        dynamicUserActivityData = calculateUserActivity()
-    }, [users])
-
-    return (
-        <div className="space-y-8 pb-16">
-            
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 bg-white/60 dark:bg-neutral-900/50 border border-sky-500/10 dark:border-white/10 p-6 sm:p-8 rounded-[32px] backdrop-blur-2xl shadow-xl relative overflow-hidden">
-                <div className="absolute -right-20 -top-20 w-80 h-80 bg-sky-500/10 rounded-full blur-3xl pointer-events-none" />
-                
-                <div className="space-y-2 relative z-10">
-                    <div className="flex items-center gap-2 flex-wrap">
-                        <span className="px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider bg-sky-500/10 text-sky-500 border border-sky-500/25">
-                            Bozor (Market): {currentMarket?.toUpperCase()}
-                        </span>
-                        <span className="px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider bg-indigo-500/10 text-indigo-500 border border-indigo-500/25">
-                            Til: {locale}
-                        </span>
-                        <span className="flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-emerald-500/10 text-emerald-500 border border-emerald-500/25">
-                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                            Tizim barqaror
-                        </span>
-                    </div>
-                    <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-neutral-900 dark:text-white">
-                        Eksklyuziv Analitika Markazi
-                    </h1>
-                    <p className="text-sm text-neutral-500 dark:text-neutral-400 max-w-2xl">
-                        Moliyaviy oqimlar, server quvvatlari va mijozlar faolligini real vaqt rejimida boshqarish paneli.
-                    </p>
-                </div>
-
-                <div className="flex items-center gap-3 relative z-10">
-                    <div className="p-4 rounded-2xl bg-white/40 dark:bg-white/5 border border-sky-500/10 dark:border-white/10 backdrop-blur-md shadow-sm">
-                        <p className="text-[10px] text-neutral-400 font-medium">Jami Foydalanuvchilar</p>
-                        <p className="text-lg font-black text-emerald-500">{users.length} ta</p>
-                    </div>
-                </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="p-6 rounded-[28px] bg-white/60 dark:bg-neutral-900/50 border border-sky-500/10 dark:border-white/10 backdrop-blur-xl shadow-lg relative overflow-hidden group hover:border-sky-500/40 transition-all">
-                    <div className="flex items-center justify-between mb-4">
-                        <div className="p-3 rounded-2xl bg-sky-500/10 text-sky-500"><DollarSign className="w-5 h-5" /></div>
-                        <span className="flex items-center text-xs font-bold text-emerald-500 bg-emerald-500/10 px-2.5 py-1 rounded-full">
-                            <ArrowUpRight className="w-3.5 h-3.5 mr-0.5" /> +14.2%
-                        </span>
-                    </div>
-                    <p className="text-xs text-neutral-500 dark:text-neutral-400 font-medium">Umumiy Tushum</p>
-                    <p className="text-2xl font-black text-neutral-900 dark:text-white mt-1">$4,820,000</p>
-                </div>
-
-                <div className="p-6 rounded-[28px] bg-white/60 dark:bg-neutral-900/50 border border-sky-500/10 dark:border-white/10 backdrop-blur-xl shadow-lg relative overflow-hidden group hover:border-indigo-500/40 transition-all">
-                    <div className="flex items-center justify-between mb-4">
-                        <div className="p-3 rounded-2xl bg-indigo-500/10 text-indigo-500"><Users className="w-5 h-5" /></div>
-                        <span className="flex items-center text-xs font-bold text-emerald-500 bg-emerald-500/10 px-2.5 py-1 rounded-full">
-                            <ArrowUpRight className="w-3.5 h-3.5 mr-0.5" /> +8.1%
-                        </span>
-                    </div>
-                    <p className="text-xs text-neutral-500 dark:text-neutral-400 font-medium">Faol Mijozlar</p>
-                    <p className="text-2xl font-black text-neutral-900 dark:text-white mt-1">{users.length} ta</p>
-                </div>
-
-                <div className="p-6 rounded-[28px] bg-white/60 dark:bg-neutral-900/50 border border-sky-500/10 dark:border-white/10 backdrop-blur-xl shadow-lg relative overflow-hidden group hover:border-amber-500/40 transition-all">
-                    <div className="flex items-center justify-between mb-4">
-                        <div className="p-3 rounded-2xl bg-amber-500/10 text-amber-500"><Activity className="w-5 h-5" /></div>
-                        <span className="flex items-center text-xs font-bold text-rose-500 bg-rose-500/10 px-2.5 py-1 rounded-full">
-                            <ArrowDownRight className="w-3.5 h-3.5 mr-0.5" /> -2.4%
-                        </span>
-                    </div>
-                    <p className="text-xs text-neutral-500 dark:text-neutral-400 font-medium">Server Kechikishi (Latency)</p>
-                    <p className="text-2xl font-black text-neutral-900 dark:text-white mt-1">24 ms</p>
-                </div>
-
-                <div className="p-6 rounded-[28px] bg-white/60 dark:bg-neutral-900/50 border border-sky-500/10 dark:border-white/10 backdrop-blur-xl shadow-lg relative overflow-hidden group hover:border-emerald-500/40 transition-all">
-                    <div className="flex items-center justify-between mb-4">
-                        <div className="p-3 rounded-2xl bg-emerald-500/10 text-emerald-500"><ShieldCheck className="w-5 h-5" /></div>
-                        <span className="flex items-center text-xs font-bold text-emerald-500 bg-emerald-500/10 px-2.5 py-1 rounded-full">
-                            99.9%
-                        </span>
-                    </div>
-                    <p className="text-xs text-neutral-500 dark:text-neutral-400 font-medium">Xavfsizlik & Uptime</p>
-                    <p className="text-2xl font-black text-neutral-900 dark:text-white mt-1">Mukammal</p>
-                </div>
-            </div>
-
+          <section className="grid gap-6 xl:grid-cols-[minmax(0,1.6fr)_minmax(320px,1fr)]">
             <UltimateGlassDiagram
-                title="Yarim yillik Moliya, Xarajat va Sof Foyda Tahlili"
-                description="Daromad hajmi va qilingan xarajatlar solishtirig'ining chuqur dinamikasi"
-                data={financialData}
-                xAxisKey="date"
-                height={420}
-                snapToCursor={true}
-                series={[
-                    { key: 'revenue', label: 'Daromad ($)', color: '#6366f1' },
-                    { key: 'expenses', label: 'Xarajatlar ($)', color: '#f43f5e' },
-                    { key: 'profit', label: 'Sof Foyda ($)', color: '#34d399' }
-                ]}
-                defaultChartType="area"
-                allowedChartTypes={['area', 'bar', 'line']}
-                customThemes={[
-                    { name: 'Indigo Brand', primary: '#6366f1', secondary: '#4f46e5', glowClass: 'bg-indigo-500' },
-                    { name: 'Emerald Growth', primary: '#34d399', secondary: '#059669', glowClass: 'bg-emerald-500' },
-                    { name: 'Amber Pro', primary: '#fbbf24', secondary: '#d97706', glowClass: 'bg-amber-500' }
-                ]}
-                showCopyButton={true}
-                showDownloadButton={true}
+              title="So‘nggi 6 oydagi buyurtmalar va tushum"
+              description="Buyurtma sanasi va yakunlangan buyurtmalar summasi bo‘yicha real DB agregatsiyasi"
+              data={(analytics?.monthly ?? []).map((item) => ({
+                ...item,
+                month: new Intl.DateTimeFormat(locale, {
+                  month: "short",
+                  year: "2-digit",
+                }).format(new Date(`${item.month}-01T00:00:00`)),
+              }))}
+              xAxisKey="month"
+              height={360}
+              series={[
+                { key: "revenue", label: "Yakunlangan tushum (so‘m)", color: "#34d399" },
+                { key: "orders", label: "Buyurtmalar", color: "#38bdf8" },
+              ]}
+              defaultChartType="bar"
+              allowedChartTypes={["bar", "line", "area"]}
+              showTimeRangeFilter={false}
+              showRefreshButton={false}
             />
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                
-                <UltimateGlassDiagram
-                    title="Real vaqtda Server CPU va RAM Yuklanishi"
-                    description="Soatlik o'rtacha quvvat sarfi va tarmoq tarangligi"
-                    data={serverLoadData}
-                    xAxisKey="time"
-                    height={340}
-                    series={[
-                        { key: 'cpu', label: 'CPU (%)', color: '#f59e0b' },
-                        { key: 'memory', label: 'RAM (%)', color: '#06b6d4' }
-                    ]}
-                    defaultChartType="line"
-                    allowedChartTypes={['line', 'bar']}
-                    showThemeSelector={false}
-                    showTimeRangeFilter={false}
-                    showRefreshButton={true}
-                    showCopyButton={false}
-                    snapToCursor={true}
-                    showDownloadButton={false}
-                    enableZoomBrush={false}
-                />
-
-                <UltimateGlassDiagram
-                    title="Haftalik Haqiqiy Foydalanuvchilar va Registratsiyalar"
-                    description="Bazadagi real obuna (following) vaqtlari asosida kunlik dinamika"
-                    data={dynamicUserActivityData}
-                    xAxisKey="day"
-                    height={340}
-                    series={[
-                        { key: 'activeUsers', label: 'Faol Mijozlar (Real)', color: '#8b5cf6' },
-                        { key: 'newRegistrations', label: 'Yangi Registratsiya (Real)', color: '#ec4899' }
-                    ]}
-                    defaultChartType="bar"
-                    allowedChartTypes={['bar', 'area']}
-                    customThemes={[
-                        { name: 'Violet Neon', primary: '#8b5cf6', secondary: '#7c3aed', glowClass: 'bg-violet-500' },
-                        { name: 'Pink Rose', primary: '#ec4899', secondary: '#db2777', glowClass: 'bg-pink-500' }
-                    ]}
-                    showThemeSelector={true}
-                    showTimeRangeFilter={false}
-                    showRefreshButton={false}
-                    showCopyButton={true}
-                    snapToCursor={true}
-                    showDownloadButton={true}
-                    enableZoomBrush={false}
-                />
-
-            </div>
-
-        </div>
-    );
+            <section className="rounded-[24px] border border-sky-500/10 bg-white/60 p-5 shadow-lg backdrop-blur-xl dark:border-white/10 dark:bg-neutral-900/50">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-widest text-neutral-400">Live</p>
+                  <h2 className="mt-1 text-lg font-bold text-neutral-900 dark:text-white">Bildirishnomalar</h2>
+                </div>
+                <Bell className="h-5 w-5 text-sky-500" />
+              </div>
+              <p className="mt-2 text-xs text-neutral-500">
+                {summary?.openWarehouseTaskCount ?? 0} ta ochiq ombor topshirig‘i
+              </p>
+              <div className="mt-5 space-y-3">
+                {notifications.length ? notifications.map((notification) => (
+                  <article
+                    key={notification.id}
+                    className={`rounded-xl border p-3 ${
+                      notification.readAt
+                        ? "border-white/5 bg-black/[0.02] dark:bg-white/[0.02]"
+                        : "border-sky-500/20 bg-sky-500/5"
+                    }`}
+                  >
+                    <div className="flex items-start gap-2">
+                      <Activity className="mt-0.5 h-4 w-4 shrink-0 text-sky-500" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-neutral-800 dark:text-neutral-100">
+                          {notification.title}
+                        </p>
+                        <p className="mt-1 text-xs text-neutral-500">{notification.message}</p>
+                        <time className="mt-2 block text-[11px] text-neutral-400">
+                          {new Date(notification.createdAt).toLocaleString(locale)}
+                        </time>
+                      </div>
+                      {!notification.readAt && (
+                        <button
+                          type="button"
+                          onClick={() => void markRead(notification.id)}
+                          className="shrink-0 text-xs font-semibold text-sky-500 hover:text-sky-400"
+                        >
+                          O‘qildi
+                        </button>
+                      )}
+                    </div>
+                  </article>
+                )) : (
+                  <p className="rounded-xl border border-dashed border-white/10 p-5 text-center text-sm text-neutral-500">
+                    Hozircha bildirishnomalar yo‘q.
+                  </p>
+                )}
+              </div>
+            </section>
+          </section>
+        </>
+      )}
+    </main>
+  );
 }

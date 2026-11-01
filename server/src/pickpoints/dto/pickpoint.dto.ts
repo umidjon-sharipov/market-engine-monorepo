@@ -23,6 +23,10 @@ export class CreatePickPointDto {
   @IsUUID('4')
   warehouseId!: string;
 
+  @IsOptional()
+  @IsUUID('4')
+  assignedSellerId?: string | null;
+
   @IsString()
   @IsNotEmpty()
   @MaxLength(255)

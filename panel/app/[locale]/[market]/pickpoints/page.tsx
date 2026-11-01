@@ -2,9 +2,14 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { Edit3, MapPin, Plus, Trash2 } from "lucide-react";
+import dynamic from "next/dynamic";
+import { Edit3, MapPin, Plus, Search, Trash2 } from "lucide-react";
 import { API_URL } from "@/lib/api";
 import { useTokenStore } from "@/app/_store/useTokenStore";
+import GlassModal from "@/components/admin/GlassModal";
+import GlassTable from "@/components/admin/GlassTable";
+
+const Map = dynamic(() => import("@/app/_components/Map"), { ssr: false });
 
 interface Warehouse {
   id: string;
@@ -23,6 +28,17 @@ interface PickPoint {
   isActive: boolean;
   createdAt: string;
   warehouse: Warehouse;
+  assignedSeller: Seller | null;
+}
+
+interface Seller {
+  id: string;
+  role: string;
+  user: {
+    firstName: string | null;
+    lastName: string | null;
+    email: string;
+  };
 }
 
 interface Metrics {
@@ -34,6 +50,7 @@ interface Metrics {
 
 interface PickPointForm {
   warehouseId: string;
+  assignedSellerId: string;
   title: string;
   address: string;
   latitude: string;
@@ -44,6 +61,7 @@ interface PickPointForm {
 
 const emptyForm: PickPointForm = {
   warehouseId: "",
+  assignedSellerId: "",
   title: "",
   address: "",
   latitude: "",
@@ -74,6 +92,7 @@ export default function PickPointsPage() {
   );
   const [pickPoints, setPickPoints] = useState<PickPoint[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+  const [sellers, setSellers] = useState<Seller[]>([]);
   const [metrics, setMetrics] = useState<Metrics>({
     total: 0,
     active: 0,
@@ -86,6 +105,14 @@ export default function PickPointsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [mapSearch, setMapSearch] = useState("");
+  const [mapSearchResults, setMapSearchResults] = useState<
+    Array<{ label: string; latitude: number; longitude: number }>
+  >([]);
+  const [mapSearchLoading, setMapSearchLoading] = useState(false);
+  const [mapSearchError, setMapSearchError] = useState("");
+  const [locationCenter, setLocationCenter] = useState({ lat: 41.311081, lng: 69.240562 });
+  const [tableSearch, setTableSearch] = useState("");
 
   const loadData = useCallback(async () => {
     if (!marketId || !token) {
@@ -96,7 +123,7 @@ export default function PickPointsPage() {
     setError("");
     try {
       const headers = { Authorization: `Bearer ${token}` };
-      const [pointsResponse, metricsResponse, warehousesResponse] =
+      const [pointsResponse, metricsResponse, warehousesResponse, sellersResponse] =
         await Promise.all([
           fetch(
             `${API_URL}/pickpoints?marketId=${encodeURIComponent(marketId)}`,
@@ -110,18 +137,24 @@ export default function PickPointsPage() {
             `${API_URL}/warehouses?marketId=${encodeURIComponent(marketId)}`,
             { headers },
           ),
+          fetch(
+            `${API_URL}/pickpoints/sellers?marketId=${encodeURIComponent(marketId)}`,
+            { headers },
+          ),
         ]);
 
-      const [pointsPayload, metricsPayload, warehousesPayload] =
+      const [pointsPayload, metricsPayload, warehousesPayload, sellersPayload] =
         await Promise.all([
           pointsResponse.json(),
           metricsResponse.json(),
           warehousesResponse.json(),
+          sellersResponse.json(),
         ]);
       const failedResponse = [
         [pointsResponse, pointsPayload],
         [metricsResponse, metricsPayload],
         [warehousesResponse, warehousesPayload],
+        [sellersResponse, sellersPayload],
       ].find(([response]) => !(response as Response).ok);
       if (failedResponse) {
         const [response, payload] = failedResponse as [Response, unknown];
@@ -133,6 +166,7 @@ export default function PickPointsPage() {
       setPickPoints(pointsPayload as PickPoint[]);
       setMetrics(metricsPayload as Metrics);
       setWarehouses(warehousesPayload as Warehouse[]);
+      setSellers(sellersPayload as Seller[]);
     } catch (loadError) {
       setError(
         loadError instanceof Error
@@ -154,6 +188,9 @@ export default function PickPointsPage() {
       ...emptyForm,
       warehouseId: warehouses[0]?.id ?? "",
     });
+    setLocationCenter({ lat: 41.311081, lng: 69.240562 });
+    setMapSearch("");
+    setMapSearchResults([]);
     setError("");
     setFormOpen(true);
   };
@@ -162,6 +199,7 @@ export default function PickPointsPage() {
     setEditingId(point.id);
     setForm({
       warehouseId: point.warehouseId,
+      assignedSellerId: point.assignedSeller?.id ?? "",
       title: point.title,
       address: point.address ?? "",
       latitude: String(point.latitude),
@@ -169,6 +207,9 @@ export default function PickPointsPage() {
       serviceRadiusMeters: String(point.serviceRadiusMeters),
       isActive: point.isActive,
     });
+    setLocationCenter({ lat: point.latitude, lng: point.longitude });
+    setMapSearch("");
+    setMapSearchResults([]);
     setError("");
     setFormOpen(true);
   };
@@ -183,6 +224,7 @@ export default function PickPointsPage() {
     setError("");
     const payload = {
       warehouseId: form.warehouseId,
+      assignedSellerId: form.assignedSellerId || null,
       title: form.title.trim(),
       address: form.address.trim() || null,
       latitude: Number(form.latitude),
@@ -254,6 +296,94 @@ export default function PickPointsPage() {
     value: PickPointForm[K],
   ) => setForm((current) => ({ ...current, [field]: value }));
 
+  const searchMapLocation = async () => {
+    const query = mapSearch.trim();
+    if (query.length < 3) {
+      setMapSearchError("Qidiruv uchun kamida 3 ta belgi kiriting.");
+      setMapSearchResults([]);
+      return;
+    }
+    setMapSearchLoading(true);
+    setMapSearchError("");
+    try {
+      const params = new URLSearchParams({
+        format: "jsonv2",
+        limit: "5",
+        q: query,
+      });
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?${params}`,
+        { headers: { "Accept-Language": "uz,en" } },
+      );
+      if (!response.ok) {
+        throw new Error(`Manzil qidiruvi amalga oshmadi (${response.status}).`);
+      }
+      const results = (await response.json()) as Array<{
+        display_name: string;
+        lat: string;
+        lon: string;
+      }>;
+      const places = results.flatMap((result) => {
+        const latitude = Number(result.lat);
+        const longitude = Number(result.lon);
+        return Number.isFinite(latitude) && Number.isFinite(longitude)
+          ? [{ label: result.display_name, latitude, longitude }]
+          : [];
+      });
+      setMapSearchResults(places);
+      if (!places.length) setMapSearchError("Manzil topilmadi.");
+    } catch (searchError) {
+      setMapSearchError(
+        searchError instanceof Error
+          ? searchError.message
+          : "Manzil qidiruvida xatolik yuz berdi.",
+      );
+      setMapSearchResults([]);
+    } finally {
+      setMapSearchLoading(false);
+    }
+  };
+
+  const selectMapLocation = (latitude: number, longitude: number) => {
+    updateForm("latitude", String(latitude));
+    updateForm("longitude", String(longitude));
+    setLocationCenter({ lat: latitude, lng: longitude });
+  };
+
+  const selectedPosition =
+    Number.isFinite(Number(form.latitude)) &&
+    Number.isFinite(Number(form.longitude)) &&
+    form.latitude !== "" &&
+    form.longitude !== ""
+      ? { lat: Number(form.latitude), lng: Number(form.longitude) }
+      : null;
+  const filteredPickPoints = pickPoints.filter((point) =>
+    [
+      point.title,
+      point.address ?? "",
+      point.warehouse.title,
+      point.assignedSeller?.user.email ?? "",
+      point.assignedSeller?.user.firstName ?? "",
+      point.assignedSeller?.user.lastName ?? "",
+    ]
+      .join(" ")
+      .toLocaleLowerCase()
+      .includes(tableSearch.trim().toLocaleLowerCase()),
+  );
+  const tableRows = filteredPickPoints.map((point) => ({
+    id: point.id,
+    name: `${point.title}${point.address ? ` · ${point.address}` : ""}`,
+    warehouse: point.warehouse.title,
+    seller: point.assignedSeller
+      ? `${[point.assignedSeller.user.firstName, point.assignedSeller.user.lastName]
+          .filter(Boolean)
+          .join(" ")} (${point.assignedSeller.user.email})`
+      : "Biriktirilmagan",
+    coordinates: `${point.latitude.toFixed(5)}, ${point.longitude.toFixed(5)}`,
+    radius: `${point.serviceRadiusMeters.toLocaleString()} m`,
+    status: point.isActive ? "Faol" : "Nofaol",
+  }));
+
   return (
     <main className="mx-auto w-full max-w-[1500px] space-y-8 p-6 md:p-8">
       <header className="flex flex-wrap items-center justify-between gap-4 border-l-4 border-sky-500 pl-5">
@@ -306,14 +436,44 @@ export default function PickPointsPage() {
         ))}
       </section>
 
-      {formOpen && (
+      <section className="overflow-hidden rounded-[24px] border border-sky-500/15 bg-white/5 p-4 shadow-xl backdrop-blur-xl">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 px-1">
+          <div>
+            <h2 className="font-semibold text-gray-800 dark:text-white">
+              Pick-point xaritasi
+            </h2>
+            <p className="mt-1 text-xs text-neutral-500">
+              {pickPoints.length} ta punkt · marker bosib joylashuvni ko‘ring
+            </p>
+          </div>
+        </div>
+        <Map
+          height={340}
+          markers={pickPoints.map((point) => ({
+            id: point.id,
+            lat: point.latitude,
+            lng: point.longitude,
+            title: `${point.title} · ${point.warehouse.title}`,
+          }))}
+          center={pickPoints[0]
+            ? { lat: pickPoints[0].latitude, lng: pickPoints[0].longitude }
+            : { lat: 41.311081, lng: 69.240562 }}
+        />
+      </section>
+
+      <GlassModal
+        open={formOpen}
+        onClose={() => {
+          if (!saving) setFormOpen(false);
+        }}
+        title={editingId ? "Pick pointni tahrirlash" : "Yangi pick point"}
+        size="3xl"
+        overflow="auto"
+      >
         <form
           onSubmit={savePoint}
-          className="space-y-5 rounded-2xl border border-sky-500/20 bg-white/5 p-5"
+          className="space-y-5"
         >
-          <h2 className="text-lg font-semibold text-gray-800 dark:text-white">
-            {editingId ? "Pick pointni tahrirlash" : "Yangi pick point"}
-          </h2>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <label className="space-y-1.5 text-sm text-neutral-400">
               Ombor
@@ -352,6 +512,94 @@ export default function PickPointsPage() {
                 placeholder="Ixtiyoriy manzil"
               />
             </label>
+            <label className="space-y-1.5 text-sm text-neutral-400">
+              Mas’ul sotuvchi
+              <select
+                value={form.assignedSellerId}
+                onChange={(event) => updateForm("assignedSellerId", event.target.value)}
+                className={inputClass}
+              >
+                <option value="">Sotuvchini biriktirmaslik</option>
+                {sellers.map((seller) => (
+                  <option key={seller.id} value={seller.id}>
+                    {[seller.user.firstName, seller.user.lastName]
+                      .filter(Boolean)
+                      .join(" ") || seller.user.email}
+                    {seller.user.firstName || seller.user.lastName
+                      ? ` (${seller.user.email})`
+                      : ""}
+                  </option>
+                ))}
+              </select>
+              {!sellers.length && (
+                <span className="block text-xs text-amber-500">
+                  Bu marketda seller roli bilan xodim topilmadi.
+                </span>
+              )}
+            </label>
+            <div className="space-y-2 sm:col-span-2 lg:col-span-3">
+              <label className="block space-y-1.5 text-sm text-neutral-400">
+                Xarita orqali manzil qidirish
+                <div className="flex gap-2">
+                  <input
+                    value={mapSearch}
+                    onChange={(event) => setMapSearch(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        void searchMapLocation();
+                      }
+                    }}
+                    className={inputClass}
+                    placeholder="Shahar, tuman yoki manzil"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void searchMapLocation()}
+                    disabled={mapSearchLoading}
+                    className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-sky-600 px-4 text-sm font-medium text-white hover:bg-sky-500 disabled:opacity-50"
+                  >
+                    <Search className="h-4 w-4" />
+                    {mapSearchLoading ? "Qidirilmoqda..." : "Qidirish"}
+                  </button>
+                </div>
+              </label>
+              {mapSearchError && (
+                <p role="status" className="text-sm text-rose-400">{mapSearchError}</p>
+              )}
+              {mapSearchResults.length > 0 && (
+                <div className="space-y-1 rounded-xl border border-white/10 bg-black/10 p-2">
+                  {mapSearchResults.map((place) => (
+                    <button
+                      key={`${place.latitude}:${place.longitude}`}
+                      type="button"
+                      onClick={() => {
+                        selectMapLocation(place.latitude, place.longitude);
+                        setMapSearchResults([]);
+                      }}
+                      className="block w-full rounded-lg px-3 py-2 text-left text-sm text-neutral-300 hover:bg-sky-500/10"
+                    >
+                      {place.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <Map
+                height={360}
+                center={locationCenter}
+                selectedPosition={selectedPosition}
+                onLocationSelect={selectMapLocation}
+                markers={pickPoints.map((point) => ({
+                  id: point.id,
+                  lat: point.latitude,
+                  lng: point.longitude,
+                  title: point.title,
+                }))}
+              />
+              <p className="text-xs text-neutral-500">
+                Xarita ustiga bosing yoki qidiruv natijasini tanlang. OpenStreetMap ma’lumotlari.
+              </p>
+            </div>
             <label className="space-y-1.5 text-sm text-neutral-400">
               Kenglik (latitude)
               <input
@@ -402,7 +650,7 @@ export default function PickPointsPage() {
             />
             Faol
           </label>
-          <div className="flex gap-3">
+          <div className="flex justify-end gap-3">
             <button
               type="submit"
               disabled={saving || warehouses.length === 0}
@@ -419,13 +667,20 @@ export default function PickPointsPage() {
             </button>
           </div>
         </form>
-      )}
+      </GlassModal>
 
       <section className="overflow-hidden rounded-2xl border border-white/10 bg-white/5">
-        <div className="border-b border-white/10 px-5 py-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-5 py-4">
           <h2 className="font-semibold text-gray-800 dark:text-white">
             Pick pointlar
           </h2>
+          <input
+            value={tableSearch}
+            onChange={(event) => setTableSearch(event.target.value)}
+            className={`${inputClass} max-w-sm`}
+            placeholder="Nomi, manzil, ombor yoki sotuvchini qidirish"
+            aria-label="Pick pointlarni qidirish"
+          />
         </div>
         {loading ? (
           <p className="p-8 text-center text-sm text-neutral-400">
@@ -439,72 +694,47 @@ export default function PickPointsPage() {
               : "Avval ushbu market uchun ombor yarating."}
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[900px] text-left text-sm">
-              <thead className="bg-white/[0.03] text-xs uppercase text-neutral-400">
-                <tr>
-                  <th className="px-5 py-3 font-medium">Nomi / manzili</th>
-                  <th className="px-5 py-3 font-medium">Ombor</th>
-                  <th className="px-5 py-3 font-medium">Koordinatalar</th>
-                  <th className="px-5 py-3 font-medium">Radius</th>
-                  <th className="px-5 py-3 font-medium">Holat</th>
-                  <th className="px-5 py-3 text-right font-medium">Amallar</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-white/10 text-neutral-300">
-                {pickPoints.map((point) => (
-                  <tr key={point.id} className="hover:bg-white/[0.03]">
-                    <td className="px-5 py-4">
-                      <p className="font-medium text-gray-800 dark:text-white">
-                        {point.title}
-                      </p>
-                      <p className="mt-1 text-xs text-neutral-500">
-                        {point.address || "Manzil ko'rsatilmagan"}
-                      </p>
-                    </td>
-                    <td className="px-5 py-4">{point.warehouse.title}</td>
-                    <td className="px-5 py-4 tabular-nums">
-                      {point.latitude.toFixed(5)}, {point.longitude.toFixed(5)}
-                    </td>
-                    <td className="px-5 py-4">
-                      {point.serviceRadiusMeters.toLocaleString()} m
-                    </td>
-                    <td className="px-5 py-4">
-                      <span
-                        className={`rounded-full px-2.5 py-1 text-xs ${
-                          point.isActive
-                            ? "bg-emerald-500/10 text-emerald-400"
-                            : "bg-neutral-500/10 text-neutral-400"
-                        }`}
-                      >
-                        {point.isActive ? "Faol" : "Nofaol"}
-                      </span>
-                    </td>
-                    <td className="px-5 py-4">
-                      <div className="flex justify-end gap-2">
-                        <button
-                          type="button"
-                          onClick={() => openEdit(point)}
-                          aria-label={`${point.title} ni tahrirlash`}
-                          className="rounded-lg bg-sky-500/10 p-2 text-sky-400 hover:bg-sky-500/20"
-                        >
-                          <Edit3 className="h-4 w-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void deletePoint(point)}
-                          aria-label={`${point.title} ni o'chirish`}
-                          className="rounded-lg bg-rose-500/10 p-2 text-rose-400 hover:bg-rose-500/20"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          filteredPickPoints.length === 0 ? (
+            <p className="p-8 text-center text-sm text-neutral-400">
+              Qidiruv bo‘yicha pick point topilmadi.
+            </p>
+          ) : (
+            <GlassTable
+              columns={[
+                { key: "name", label: "Nomi / manzili" },
+                { key: "warehouse", label: "Ombor" },
+                { key: "seller", label: "Mas’ul sotuvchi" },
+                { key: "coordinates", label: "Koordinatalar" },
+                { key: "radius", label: "Radius" },
+                { key: "status", label: "Holat" },
+              ]}
+              data={tableRows}
+              actions={(row) => {
+                const point = pickPoints.find((item) => item.id === row.id);
+                if (!point) return null;
+                return (
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => openEdit(point)}
+                      aria-label={`${point.title} ni tahrirlash`}
+                      className="rounded-lg bg-sky-500/10 p-2 text-sky-400 hover:bg-sky-500/20"
+                    >
+                      <Edit3 className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void deletePoint(point)}
+                      aria-label={`${point.title} ni o'chirish`}
+                      className="rounded-lg bg-rose-500/10 p-2 text-rose-400 hover:bg-rose-500/20"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                );
+              }}
+            />
+          )
         )}
       </section>
     </main>

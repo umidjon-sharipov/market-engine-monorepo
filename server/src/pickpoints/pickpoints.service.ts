@@ -20,8 +20,32 @@ export class PickPointsService {
       where: { warehouse: { marketId } },
       include: {
         warehouse: { select: { id: true, title: true, code: true } },
+        assignedSeller: {
+          select: {
+            id: true,
+            role: true,
+            user: { select: { firstName: true, lastName: true, email: true } },
+          },
+        },
       },
       orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  findSellers(marketId: string) {
+    return this.prisma.worker.findMany({
+      where: {
+        marketId,
+        role: { equals: 'seller', mode: 'insensitive' },
+      },
+      select: {
+        id: true,
+        role: true,
+        user: {
+          select: { firstName: true, lastName: true, email: true },
+        },
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
     });
   }
 
@@ -303,9 +327,13 @@ export class PickPointsService {
 
   async create(body: CreatePickPointDto) {
     await this.assertWarehouseInMarket(body.warehouseId, body.marketId);
+    if (body.assignedSellerId) {
+      await this.assertSellerInMarket(body.assignedSellerId, body.marketId);
+    }
     return this.prisma.pickPoint.create({
       data: {
         warehouseId: body.warehouseId,
+        assignedSellerId: body.assignedSellerId ?? null,
         title: body.title.trim(),
         address: body.address?.trim() || null,
         latitude: body.latitude,
@@ -315,6 +343,13 @@ export class PickPointsService {
       },
       include: {
         warehouse: { select: { id: true, title: true, code: true } },
+        assignedSeller: {
+          select: {
+            id: true,
+            role: true,
+            user: { select: { firstName: true, lastName: true, email: true } },
+          },
+        },
       },
     });
   }
@@ -322,17 +357,25 @@ export class PickPointsService {
   async update(id: string, marketId: string, body: UpdatePickPointDto) {
     const current = await this.prisma.pickPoint.findFirst({
       where: { id, warehouse: { marketId } },
-      select: { id: true, warehouseId: true },
+      select: { id: true, warehouseId: true, assignedSellerId: true },
     });
     if (!current) throw new NotFoundException('Pick point topilmadi.');
 
     const warehouseId = body.warehouseId ?? current.warehouseId;
     await this.assertWarehouseInMarket(warehouseId, marketId);
+    const assignedSellerId =
+      body.assignedSellerId === undefined
+        ? current.assignedSellerId
+        : body.assignedSellerId;
+    if (assignedSellerId) {
+      await this.assertSellerInMarket(assignedSellerId, marketId);
+    }
 
     return this.prisma.pickPoint.update({
       where: { id },
       data: {
         ...(body.warehouseId !== undefined && { warehouseId }),
+        ...(body.assignedSellerId !== undefined && { assignedSellerId }),
         ...(body.title !== undefined && { title: body.title.trim() }),
         ...(body.address !== undefined && {
           address: body.address.trim() || null,
@@ -346,6 +389,13 @@ export class PickPointsService {
       },
       include: {
         warehouse: { select: { id: true, title: true, code: true } },
+        assignedSeller: {
+          select: {
+            id: true,
+            role: true,
+            user: { select: { firstName: true, lastName: true, email: true } },
+          },
+        },
       },
     });
   }
@@ -367,6 +417,22 @@ export class PickPointsService {
     if (!warehouse) {
       throw new BadRequestException(
         'Tanlangan ombor ushbu marketga tegishli emas.',
+      );
+    }
+  }
+
+  private async assertSellerInMarket(workerId: string, marketId: string) {
+    const worker = await this.prisma.worker.findFirst({
+      where: {
+        id: workerId,
+        marketId,
+        role: { equals: 'seller', mode: 'insensitive' },
+      },
+      select: { id: true },
+    });
+    if (!worker) {
+      throw new BadRequestException(
+        'Tanlangan sotuvchi shu marketning sotuvchi xodimi bo‘lishi kerak.',
       );
     }
   }

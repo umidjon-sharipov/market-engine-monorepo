@@ -17,4 +17,13 @@ export class DashboardController {
     async usersAll(@Req() req: any, @Param('market', ParseUUIDPipe) market: string) {
         return await this.dashboardService.usersAll(req.user.userId, market)
     }
-}
+
+    @Get('market/:marketId')
+    @UseGuards(JwtAuthGuard)
+    marketAnalytics(
+        @Req() req: any,
+        @Param('marketId', ParseUUIDPipe) marketId: string,
+    ) {
+        return this.dashboardService.marketAnalytics(req.user.userId, marketId);
+    }
+}

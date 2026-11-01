@@ -57,6 +57,7 @@ const CheckoutPage = () => {
     const cart = useCartStore((state) => state.cart) as CartLine[];
     const toggleCart = useCartStore((state) => state.toggleCart);
     const deliveryLocation = useDeliveryLocationStore((state) => state.location);
+    const locationOwnerUserId = useDeliveryLocationStore((state) => state.ownerUserId);
     const setDeliveryLocation = useDeliveryLocationStore((state) => state.setLocation);
     const pickPointId = useDeliveryLocationStore((state) => state.pickPointId);
     const setPickPointId = useDeliveryLocationStore((state) => state.setPickPointId);
@@ -112,22 +113,32 @@ const CheckoutPage = () => {
                     const profilePhone = profile.phone;
                     setPhone((current) => current || profilePhone);
                 }
-                if (
-                    'latitude' in profile && typeof profile.latitude === 'number' &&
-                    Number.isFinite(profile.latitude) && 'longitude' in profile &&
-                    typeof profile.longitude === 'number' && Number.isFinite(profile.longitude) &&
-                    !useDeliveryLocationStore.getState().location
-                ) {
-                    setDeliveryLocation({
-                        latitude: profile.latitude,
-                        longitude: profile.longitude,
-                    });
+                if ('id' in profile && typeof profile.id === 'string') {
+                    const profileLatitude = 'latitude' in profile &&
+                        typeof profile.latitude === 'number' && Number.isFinite(profile.latitude)
+                        ? profile.latitude
+                        : null;
+                    const profileLongitude = 'longitude' in profile &&
+                        typeof profile.longitude === 'number' && Number.isFinite(profile.longitude)
+                        ? profile.longitude
+                        : null;
+                    const profileLocation = profileLatitude !== null && profileLongitude !== null
+                        ? { latitude: profileLatitude, longitude: profileLongitude }
+                        : null;
+                    const current = useDeliveryLocationStore.getState();
+                    if (current.ownerUserId && current.ownerUserId !== profile.id) {
+                        setDeliveryLocation(profileLocation, profile.id);
+                    } else if (!current.ownerUserId) {
+                        setDeliveryLocation(profileLocation ?? current.location, profile.id);
+                    } else if (profileLocation && !current.location) {
+                        setDeliveryLocation(profileLocation, profile.id);
+                    }
                 }
             })
             .catch((profileError: unknown) => {
                 console.error('Checkout profil ma’lumotlarini yuklashda xatolik:', profileError);
             });
-    }, [setDeliveryLocation, token, url]);
+    }, [locationOwnerUserId, setDeliveryLocation, token, url]);
 
     const lines = useMemo(() => cart.flatMap((cartLine) => {
         const product = products.find((item) => item.id === cartLine.id);
@@ -240,6 +251,14 @@ const CheckoutPage = () => {
             setError('Majburiy option tanlovlarini savatda to‘ldiring.');
             return;
         }
+        if (!deliveryLocation) {
+            setError('Xaritani bosib joriy joylashuvingizni belgilang.');
+            return;
+        }
+        if (marketId && pickPointsError) {
+            setError('Topshirish punktlari olinmadi. Aloqani tekshirib, qayta urinib ko‘ring.');
+            return;
+        }
         if (marketId && pickPointsLoading) {
             setError('Yaqin topshirish punktlari yuklanishini kuting.');
             return;
@@ -346,9 +365,9 @@ const CheckoutPage = () => {
                 <TextInput value={address} onChangeText={setAddress} placeholder="Yetkazib berish manzili" multiline style={[styles.input, styles.address]} />
                 {deliveryLocation ? (
                     <Text style={styles.note}>
-                        Xarita: {deliveryLocation.latitude.toFixed(5)}, {deliveryLocation.longitude.toFixed(5)}
+                        Tanlangan joylashuv: {deliveryLocation.latitude.toFixed(5)}, {deliveryLocation.longitude.toFixed(5)}
                     </Text>
-                ) : null}
+                ) : <Text style={styles.locationPrompt}>Xaritani bosib buyurtma uchun joylashuvingizni tanlang.</Text>}
                 <AddressMap value={deliveryLocation} onSelect={setDeliveryLocation} />
                 {marketId ? (
                     <View style={styles.pickPoints}>
@@ -392,6 +411,7 @@ const styles = StyleSheet.create({
     heading: { color: '#111827', fontSize: 24, fontWeight: '800' },
     back: { color: '#2563eb', fontWeight: '700' },
     note: { color: '#64748b', fontSize: 14 },
+    locationPrompt: { color: '#b45309', fontSize: 14, fontWeight: '600' },
     line: { padding: 14, gap: 4, borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 12, backgroundColor: '#fff' },
     lineTitle: { color: '#0f172a', fontWeight: '700' },
     optionText: { color: '#475569', fontSize: 13 },
