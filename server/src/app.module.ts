@@ -1,0 +1,89 @@
+import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
+import { ServeStaticModule } from '@nestjs/serve-static';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { join } from 'path';
+import * as fs from 'fs';
+import { UsersModule } from './users/users.module';
+import { MarketsModule } from './markets/markets.module';
+import { ProductsModule } from './products/products.module';
+import { CommentsModule } from './comments/comments.module';
+import { OrdersModule } from './orders/orders.module';
+import { ReactionsModule } from './reactions/reactions.module';
+import { DiscountsModule } from './discounts/discounts.module';
+import { SlidersModule } from './sliders/sliders.module';
+import { FeatureRequestsModule } from './feature-requests/feature-requests.module';
+import { AuthModule } from './auth/auth.module';
+import { FollowingsModule } from './followings/followings.module';
+import { AppController } from './app.controller';
+import { AppService } from './app.service';
+import { VacanciesModule } from './vacancies/vacancies.module';
+import { WorkersModule } from './workers/workers.module';
+import { WarehousesModule } from './warehouses/warehouses.module';
+import { CategoriesModule } from './categories/categories.module';
+import { GroupsModule } from './groups/groups.module';
+import { MessagesModule } from './messages/messages.module';
+import { DashboardModule } from './dashboard/dashboard.module';
+import { PrismaModule } from './prisma/prisma.module';
+import { StockMovementsModule } from './stock-movements/stock-movements.module';
+import { PickPointsModule } from './pickpoints/pickpoints.module';
+import { WarehouseTasksModule } from './warehouse-tasks/warehouse-tasks.module';
+import { AIModule } from './ai/ai.module';
+import { NotificationsModule } from './notifications/notifications.module';
+
+const getPublicPath = () => {
+  const paths = [
+    join(process.cwd(), 'public'),
+    join(process.cwd(), 'dist', 'public'),
+    join(__dirname, '..', 'public'),
+    join(__dirname, '..', '..', 'public'),
+  ];
+
+  for (const p of paths) {
+    if (fs.existsSync(p)) {
+      return p;
+    }
+  }
+  return join(process.cwd(), 'public');
+};
+
+@Module({
+  imports: [
+    ConfigModule.forRoot({ isGlobal: true }),
+    ServeStaticModule.forRoot({
+      rootPath: getPublicPath(),
+      exclude: ['/api*'],
+    }),
+    PrismaModule,
+    ThrottlerModule.forRoot({
+      throttlers: [{ ttl: 60_000, limit: 100 }],
+    }),
+    UsersModule,
+    MarketsModule,
+    ProductsModule,
+    CommentsModule,
+    OrdersModule,
+    ReactionsModule,
+    DiscountsModule,
+    SlidersModule,
+    FeatureRequestsModule,
+    AuthModule,
+    FollowingsModule,
+    VacanciesModule,
+    WorkersModule,
+    WarehousesModule,
+    CategoriesModule,
+    GroupsModule,
+    MessagesModule,
+    DashboardModule,
+    StockMovementsModule,
+    PickPointsModule,
+    WarehouseTasksModule,
+    AIModule,
+    NotificationsModule,
+  ],
+  controllers: [AppController],
+  providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],
+})
+export class AppModule {}

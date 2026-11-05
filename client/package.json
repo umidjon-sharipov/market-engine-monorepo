@@ -1,0 +1,36 @@
+{
+  "name": "solito-blank",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "devDependencies": {
+    "@next/swc-linux-x64-gnu": "^16.2.10",
+    "@next/swc-linux-x64-musl": "^16.2.10",
+    "@types/react": "~19.1.10",
+    "eslint": "^8.21.0",
+    "turbo": "^2.4.4",
+    "typescript": "^5.2.2"
+  },
+  "scripts": {
+    "native": "cd apps/expo && yarn start",
+    "web": "cd apps/next && yarn next"
+  },
+  "eslintConfig": {
+    "extends": "next",
+    "settings": {
+      "next": {
+        "rootDir": "apps/next/"
+      }
+    },
+    "root": true
+  },
+  "prettier": {
+    "semi": false,
+    "useTabs": false,
+    "tabWidth": 2,
+    "singleQuote": true
+  },
+  "packageManager": "yarn@4.7.0"
+}

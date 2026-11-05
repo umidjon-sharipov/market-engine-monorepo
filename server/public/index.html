@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="uz">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Online Market Startup</title>
+    <link rel="icon" type="image/png" href="https://i.ibb.co/tMfcYhFc/cart.png">
+
+    <meta property="og:title" content="Online Market Startup">
+    <meta property="og:description"
+        content="A comprehensive e-commerce backend system built with Nest.js, featuring live real-time database endpoints for multiple stores and user tracking.">
+    <meta property="og:image" content="https://i.ibb.co/tMfcYhFc/cart.png">
+    <meta property="og:url" content="https://internet-magazin-nest-server.onrender.com/">
+    <meta property="og:type" content="website">
+
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Online Market Startup">
+    <meta name="twitter:description"
+        content="A comprehensive e-commerce backend system built with Nest.js, featuring live real-time database endpoints for multiple stores and user tracking.">
+    <meta name="twitter:image" content="https://i.ibb.co/tMfcYhFc/cart.png">
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        h1,
+        p {
+            cursor: default;
+        }
+
+        body {
+            background-color: #000000;
+            color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 20px;
+            overflow: hidden;
+        }
+
+        .container {
+            text-align: center;
+            padding: 30px 20px;
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 24px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.8);
+            max-width: 800px;
+            width: 100%;
+            display: flex;
+            gap: 10px;
+            flex-direction: column;
+            transition: all 0.2s ease;
+        }
+
+        h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #ffffff 0%, #a1a1aa 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+
+            &::selection {
+                background: rgba(255, 255, 255, 0.1);
+            }
+        }
+
+        p {
+            color: #88888b;
+            font-size: 0.8rem;
+            margin-bottom: 20px;
+
+            &::selection {
+                background: rgba(255, 255, 255, 0.1);
+            }
+        }
+
+        .links-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 12px;
+            max-height: 60vh;
+            overflow-y: auto;
+            padding-right: 4px;
+        }
+
+        .links-grid::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .links-grid::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 10px;
+        }
+
+        .links-grid::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 10px;
+        }
+
+        .links-grid::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        a {
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 14px 20px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            color: #ffffff;
+            text-decoration: none;
+            font-weight: 500;
+            font-size: 0.95rem;
+            transition: all 0.25s ease;
+            user-select: none;
+
+            div {
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 10px;
+                height: 10px;
+                background: radial-gradient(rgba(255, 250, 250, 0.498), rgba(255, 250, 250, 0.243));
+                border-radius: 50%;
+                transform: scale(0);
+                transition: all 0.2s ease;
+            }
+        }
+
+        a:hover {
+            background: rgba(255, 255, 255, 0.12);
+            border-color: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(255, 255, 255, 0.05);
+        }
+
+        .project {
+            display: inline-block;
+            padding: 12px 24px;
+            background: #0070f3;
+            color: #ffffff;
+            text-decoration: none;
+            border-radius: 12px;
+            font-weight: bold;
+            font-family: sans-serif;
+            transition: all 0.3s ease;
+
+            &:hover {
+                border-color: rgba(255, 255, 255, 0.3);
+                transform: translateY(-2px);
+                box-shadow: 0 8px 20px rgba(255, 255, 255, 0.05);
+                background: linear-gradient(135deg, #0070f3, #0073ffc6);
+            }
+        }
+
+        .shadow-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            pointer-events: none;
+            z-index: 1000000;
+        }
+
+        .shadow-cursor {
+            width: 200px;
+            height: 200px;
+            border-radius: 50%;
+            background: radial-gradient(rgb(255, 255, 255, 0.08), rgba(255, 255, 255, 0));
+            transition: all 0.1s ease;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="shadow-container">
+        <div class="shadow-cursor"></div>
+    </div>
+    <div class="container">
+        <h1><svg xmlns="http://www.w3.org/2000/svg" width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-grape"><path stroke="none" d="M0 0h24v24H0z" fill="none" /><path d="M13 3a14.5 14.5 0 0 0 -1 6" /><path d="M12 8.9s-2.77 .52 -4.1 -.8s-.8 -4 -.8 -4s2.57 -.53 3.88 .8s1.02 4 1.02 4" /><path d="M14 19a2 2 0 1 0 -4 0a2 2 0 0 0 4 0" /><path d="M14 17a2 2 0 1 1 0 -4a2 2 0 0 1 0 4" /><path d="M10 17a2 2 0 1 1 0 -4a2 2 0 0 1 0 4" /><path d="M12 13a2 2 0 1 1 0 -4a2 2 0 0 1 0 4" /><path d="M16 13a2 2 0 1 1 0 -4a2 2 0 0 1 0 4" /><path d="M8 13a2 2 0 1 1 0 -4a2 2 0 0 1 0 4" /></svg> Online Market Startup</h1>
+        <p>All live real-time database API endpoints</p>
+        <div class="links-grid">
+            <a href="/users" class="api">
+                Users API
+                <div></div>
+            </a>
+            <a href="/markets" class="api">
+                Markets API
+                <div></div>
+            </a>
+            <a href="/products" class="api">
+                Products API
+                <div></div>
+            </a>
+            <a href="/followings" class="api">
+                Followers API
+                <div></div>
+            </a>
+            <a href="/comments" class="api">
+                Comments API
+                <div></div>
+            </a>
+            <a href="/reactions" class="api">
+                Reactions API
+                <div></div>
+            </a>
+            <a href="/orders" class="api">
+                Orders API
+                <div></div>
+            </a>
+            <a href="/discounts" class="api">
+                Discounts API
+                <div></div>
+            </a>
+            <a href="/sliders" class="api">
+                Sliders API
+                <div></div>
+            </a>
+            <a href="/feature-requests" class="api">
+                Feature Requests API
+                <div></div>
+            </a>
+            <a href="/vacancies" class="api">
+                Vacancies API
+                <div></div>
+            </a>
+            <a href="/workers" class="api">
+                Workers API
+                <div></div>
+            </a>
+            <a href="/warehouses" class="api">
+                Warehouses API
+                <div></div>
+            </a>
+            <a href="/salers" class="api">
+                Salers API
+                <div></div>
+            </a>
+            <a href="/categories" class="api">
+                Categories API
+                <div></div>
+            </a>
+            <a href="/groups" class="api">
+                Groups API
+                <div></div>
+            </a>
+            <a href="/messages" class="api">
+                Messages API
+                <div></div>
+            </a>
+        </div>
+        <a href="https://internet-magazin-uzum.vercel.app/" class="project api"
+            style="display: inline-flex; align-items: center; gap: 8px;">
+            View Startup
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="5"
+                stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 6l6 6-6 6"></path>
+            </svg>
+            <div></div>
+        </a>
+    </div>
+
+    <script>
+        const shadowContainer = document.querySelector('.shadow-container')
+        const shadowCursor = document.querySelector('.shadow-cursor')
+
+        window.addEventListener('pointermove', e => {
+            const x = e.clientX
+            const y = e.clientY
+            console.log(x, y)
+
+            shadowCursor.style.transform = `translate(${x - 100}px, ${y - 100}px) scale(3)`
+        })
+
+        const apiBtns = document.querySelectorAll('.api')
+        apiBtns.forEach(item => {
+            item.addEventListener('pointerdown', e => {
+                e.preventDefault()
+
+                const rect = item.getBoundingClientRect()
+                const x = e.clientX - rect.left
+                const y = e.clientY - rect.top
+                console.log(x, y)
+
+                const innerDiv = item.querySelector('div')
+
+                innerDiv.style.transition = 'none'
+                innerDiv.style.transform = `translate(${x - 5}px, ${y - 5}px) scale(0)`
+
+                let scale = 0
+                const render = () => {
+                    innerDiv.style.transform = `translate(${x - 5}px, ${y - 5}px) scale(${scale})`
+                }
+
+                const interval = setInterval(() => {
+                    scale = scale + 7
+
+                    render()
+                }, 40);
+                setTimeout(() => {
+                    clearInterval(interval)
+                    scale = 0
+                    innerDiv.style.transition = 'all 0s ease'
+                    render()
+                }, 400);
+            })
+            item.addEventListener('click', e => {
+                e.preventDefault()
+                const targetUrl = item.getAttribute('href')
+                setTimeout(() => {
+                    window.location.href = targetUrl
+                }, 400);
+            })
+        })
+
+        const card = document.querySelector('.container');
+
+        window.addEventListener('pointermove', (e) => {
+            const { clientX, clientY } = e;
+            let x = (clientX / window.innerWidth - 0.5) * 10;
+            let y = (clientY / window.innerHeight - 0.5) * 10;
+
+            if (!card.contains(e.target)) {
+                x = (clientX / window.innerWidth - 0.5) * 34;
+                y = (clientY / window.innerHeight - 0.5) * 34;
+            }
+
+            card.style.transform = `perspective(1000px) rotateY(${x}deg) rotateX(${-y}deg)`;
+
+            if (typeof apiBtns !== 'undefined') {
+                apiBtns.forEach(btn => {
+                    btn.style.transform = `perspective(1000px) rotateY(${x - (x / 1.2)}deg) rotateX(${-y - (x / 1.2)}deg)`;
+                });
+            }
+        });
+    </script>
+</body>
+
+</html>

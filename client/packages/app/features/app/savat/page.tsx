@@ -1,0 +1,335 @@
+'use client'
+import React, { useCallback, useEffect, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
+import { useRouter } from 'solito/navigation';
+import ScreenWrapper from 'app/components/layout/ScreenWrapper';
+import { useCartStore } from 'app/store/useCartStore';
+import Card from 'app/components/UI/Cart';
+import { useLanStorage } from 'app/store/useLanStore';
+import LoaderCart from 'app/components/UI/LoaderCart';
+import NotLoad from 'app/components/UI/NotLoad';
+import Empty from 'app/components/UI/Empty';
+import { useUrlStore } from 'app/store/useUrlStore';
+import AddressMap from 'app/components/UI/AddressMap';
+import { useDeliveryLocationStore } from 'app/store/useDeliveryLocationStore';
+import { useTokenStore } from 'app/store/useTokenStore';
+import { fetchWithAuth } from 'app/features/app/auth/fetchWithAuth';
+import { evaluateConfiguration, type ConfigurableProduct } from 'app/features/app/product/productConfiguration';
+
+interface Product extends ConfigurableProduct {
+    id: string;
+    title: string;
+    price: number;
+    marketId: string;
+    description: { uz: string, ru: string, en: string };
+    categoryId: string;
+    discountId: string;
+    images: string[];
+    quantity: number;
+}
+
+interface CartItem {
+    id: string;
+    quantity: number;
+    optionSelections: Record<string, string>;
+}
+
+interface PickPoint {
+    id: string;
+    title: string;
+    address: string | null;
+    distanceMeters: number;
+    withinServiceRadius: boolean;
+}
+
+interface NearestPickPointsResponse {
+    nearest: PickPoint | null;
+    data: PickPoint[];
+}
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const Savat = () => {
+    const router = useRouter();
+    const url = useUrlStore(state => state.url)
+    const token = useTokenStore(state => state.token)
+    const [products, setProducts] = useState<Product[]>([]);
+    const [loading, setLoading] = useState('loading');
+
+    const cart = useCartStore(state => state.cart) as CartItem[];
+    const cartIds = React.useMemo(() => cart.map(item => item.id), [cart]);
+    const lan = useLanStorage(state => state.lan)
+    const deliveryLocation = useDeliveryLocationStore(state => state.location);
+    const locationOwnerUserId = useDeliveryLocationStore(state => state.ownerUserId);
+    const setDeliveryLocation = useDeliveryLocationStore(state => state.setLocation);
+    const selectedPickPointId = useDeliveryLocationStore(state => state.pickPointId);
+    const setSelectedPickPointId = useDeliveryLocationStore(state => state.setPickPointId);
+    const [nearbyPickPoints, setNearbyPickPoints] = useState<PickPoint[]>([]);
+    const [pickPointsLoading, setPickPointsLoading] = useState(false);
+    const [pickPointsUnavailable, setPickPointsUnavailable] = useState(false);
+    const deliveryCopy = {
+        title: lan === 'ru' ? 'Место доставки' : lan === 'en' ? 'Delivery location' : 'Yetkazib berish manzili',
+        instructions: lan === 'ru'
+            ? 'Нажмите на карту, чтобы выбрать место доставки.'
+            : lan === 'en'
+                ? 'Tap the map to select a delivery location.'
+                : 'Yetkazib berish joyini tanlash uchun xaritani bosing.',
+        selected: lan === 'ru' ? 'Выбраны координаты' : lan === 'en' ? 'Selected coordinates' : 'Tanlangan koordinatalar',
+        pickPoints: lan === 'ru' ? 'Ближайшие пункты выдачи' : lan === 'en' ? 'Nearby pickup points' : 'Yaqin topshirish punktlari',
+        noPickPoints: lan === 'ru' ? 'Пункты выдачи поблизости не найдены.' : lan === 'en' ? 'No nearby pickup points found.' : 'Yaqin atrofda topshirish punktlari topilmadi.',
+        outsideRadius: lan === 'ru' ? 'Вне зоны обслуживания' : lan === 'en' ? 'Outside service area' : 'Xizmat hududidan tashqarida',
+        loadingPickPoints: lan === 'ru' ? 'Загружаем пункты выдачи…' : lan === 'en' ? 'Loading pickup points…' : 'Topshirish punktlari yuklanmoqda…',
+        pickPointsUnavailable: lan === 'ru' ? 'Не удалось загрузить пункты выдачи.' : lan === 'en' ? 'Could not load pickup points.' : 'Topshirish punktlarini yuklab bo‘lmadi.',
+    };
+
+    useEffect(() => {
+        if (!token || !url || deliveryLocation) return;
+        fetchWithAuth(`${url}/auth/profile`)
+            .then(async response => {
+                if (!response.ok) return;
+                const profile: unknown = await response.json();
+                if (!profile || typeof profile !== 'object' || !('id' in profile) || typeof profile.id !== 'string') return;
+                const latitude = 'latitude' in profile && typeof profile.latitude === 'number' &&
+                    Number.isFinite(profile.latitude) ? profile.latitude : null;
+                const longitude = 'longitude' in profile && typeof profile.longitude === 'number' &&
+                    Number.isFinite(profile.longitude) ? profile.longitude : null;
+                const profileLocation = latitude !== null && longitude !== null
+                    ? { latitude, longitude }
+                    : null;
+                const current = useDeliveryLocationStore.getState();
+                if (current.ownerUserId && current.ownerUserId !== profile.id) {
+                    setDeliveryLocation(profileLocation, profile.id);
+                } else if (!current.ownerUserId) {
+                    setDeliveryLocation(profileLocation ?? current.location, profile.id);
+                } else if (profileLocation && !current.location) {
+                    setDeliveryLocation(profileLocation, profile.id);
+                }
+            })
+            .catch(error => console.error('Profil lokatsiyasini yuklashda xatolik:', error));
+    }, [deliveryLocation, locationOwnerUserId, setDeliveryLocation, token, url]);
+
+    const fetchCartProducts = useCallback(async () => {
+        if (!url) {
+            setLoading('notLoad');
+            return;
+        }
+        try {
+            setLoading('loading')
+            const response = await fetch(`${url}/products`);
+            if (!response.ok) {
+                throw new Error(`Savat mahsulotlarini yuklab bo‘lmadi: ${response.status}`);
+            }
+            const data: Product[] = await response.json();
+
+            setProducts(data);
+            setLoading('loaded')
+        } catch (error) {
+            console.error("Savat ma'lumotlarini yuklashda xatolik:", error);
+            setLoading('notLoad')
+        }
+    }, [url]);
+
+    useEffect(() => {
+        if (cartIds.length > 0) {
+            fetchCartProducts();
+        }
+    }, [cartIds.join(','), fetchCartProducts]);
+
+    const cartLines = React.useMemo(() => cart.flatMap(cartItem => {
+        const product = products.find(item => String(item.id) === String(cartItem.id));
+        return product ? [{ product, cartItem }] : [];
+    }), [cart, products]);
+    const marketIds = Array.from(new Set(cartLines.map(line => line.product.marketId).filter(Boolean)));
+    const marketId = marketIds.length === 1 ? marketIds[0] : undefined;
+    const latitude = deliveryLocation?.latitude;
+    const longitude = deliveryLocation?.longitude;
+    const recommendationItems = React.useMemo(() => cartLines.map(({ product, cartItem }) => ({
+        productId: product.id,
+        quantity: cartItem.quantity,
+        selectedOptions: evaluateConfiguration(product, cartItem.optionSelections ?? {})
+            .selected.map(({ parentProductId, product: optionProduct }) => ({
+                parentProductId,
+                optionProductId: optionProduct.id,
+            })),
+    })), [cartLines]);
+
+    useEffect(() => {
+        if (!url || latitude === undefined || longitude === undefined || !marketId || !UUID_PATTERN.test(marketId)) {
+            setNearbyPickPoints([]);
+            setSelectedPickPointId(null);
+            setPickPointsLoading(false);
+            setPickPointsUnavailable(false);
+            return;
+        }
+
+        let cancelled = false;
+        setPickPointsLoading(true);
+        setPickPointsUnavailable(false);
+        fetch(`${url}/pickpoints/recommendations`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                marketId,
+                latitude,
+                longitude,
+                items: recommendationItems,
+            }),
+        })
+            .then(async response => {
+                if (!response.ok) {
+                    const payload: unknown = await response.json().catch(() => null);
+                    const message = payload && typeof payload === 'object' && 'message' in payload
+                        ? String(payload.message)
+                        : `Pick point lookup failed: ${response.status}`;
+                    throw new Error(message);
+                }
+                return response.json() as Promise<NearestPickPointsResponse>;
+            })
+            .then(response => {
+                if (cancelled) return;
+                const points = Array.isArray(response.data) ? [...response.data] : [];
+                if (response.nearest && !points.some(point => point.id === response.nearest?.id)) {
+                    points.unshift(response.nearest);
+                }
+                setNearbyPickPoints(points);
+                const currentPickPointId = useDeliveryLocationStore.getState().pickPointId;
+                const preferredPoint = points.find(point => point.id === currentPickPointId && point.withinServiceRadius)
+                    ?? (response.nearest?.withinServiceRadius ? response.nearest : null)
+                    ?? points.find(point => point.withinServiceRadius)
+                    ?? null;
+                setSelectedPickPointId(preferredPoint?.id ?? null);
+            })
+            .catch(() => {
+                if (!cancelled) {
+                    setNearbyPickPoints([]);
+                    setSelectedPickPointId(null);
+                    setPickPointsUnavailable(true);
+                }
+            })
+            .finally(() => {
+                if (!cancelled) setPickPointsLoading(false);
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [
+        latitude,
+        longitude,
+        marketId,
+        recommendationItems,
+        url,
+        setSelectedPickPointId,
+    ]);
+    if (cartIds.length === 0) return <Empty />;
+
+    if (loading === 'loading') {
+        return (
+            <ScreenWrapper>
+                <View style={[styles.grid, {padding: 12}]}>
+                    <LoaderCart />
+                    <LoaderCart />
+                    <LoaderCart />
+                    <LoaderCart />
+                </View>
+            </ScreenWrapper>
+        );
+    }
+
+    else if (loading === 'notLoad') {
+        return <NotLoad renderToken={fetchCartProducts} />
+    }
+
+    return (
+        <ScreenWrapper>
+            <ScrollView contentContainerStyle={styles.container}>
+                <View style={styles.deliveryLocation}>
+                    <Text style={styles.headerTitle}>{deliveryCopy.title}</Text>
+                    <Text style={styles.instructions}>{deliveryCopy.instructions}</Text>
+                    <AddressMap value={deliveryLocation} onSelect={setDeliveryLocation} />
+                    {deliveryLocation && (
+                        <Text style={styles.locationLabel}>
+                            {deliveryCopy.selected}: {deliveryLocation.latitude.toFixed(5)}, {deliveryLocation.longitude.toFixed(5)}
+                        </Text>
+                    )}
+                    {deliveryLocation && marketId && UUID_PATTERN.test(marketId) && (
+                        <View style={styles.pickPointList}>
+                            <Text style={styles.pickPointHeading}>{deliveryCopy.pickPoints}</Text>
+                            {pickPointsLoading ? (
+                                <Text style={styles.instructions}>{deliveryCopy.loadingPickPoints}</Text>
+                            ) : pickPointsUnavailable ? (
+                                <Text style={styles.instructions}>{deliveryCopy.pickPointsUnavailable}</Text>
+                            ) : nearbyPickPoints.length === 0 ? (
+                                <Text style={styles.instructions}>{deliveryCopy.noPickPoints}</Text>
+                            ) : nearbyPickPoints.map(point => {
+                                const available = point.withinServiceRadius;
+                                const selected = point.id === selectedPickPointId;
+                                return (
+                                    <Pressable
+                                        key={point.id}
+                                        onPress={() => available && setSelectedPickPointId(point.id)}
+                                        disabled={!available}
+                                        style={[
+                                            styles.pickPoint,
+                                            selected && styles.selectedPickPoint,
+                                            !available && { opacity: 0.55 },
+                                        ]}
+                                    >
+                                        <Text style={[styles.pickPointText, !available && styles.unavailablePickPoint]}>
+                                            {selected ? '✓ ' : ''}{point.title}
+                                            {point.address ? ` · ${point.address}` : ''}
+                                            {` · ${(point.distanceMeters / 1000).toFixed(1)} km`}
+                                            {!available ? ` · ${deliveryCopy.outsideRadius}` : ''}
+                                        </Text>
+                                    </Pressable>
+                                );
+                            })}
+                        </View>
+                    )}
+                </View>
+                <View style={styles.grid}>
+                    {cartLines.map(({ product, cartItem }, index) => (
+                        <Card
+                            key={`${product.id}-${JSON.stringify(cartItem.optionSelections ?? {})}`}
+                            product={product}
+                            cartItem={cartItem}
+                            index={index}
+                        />
+                    ))}
+                </View>
+                {cartLines.length !== cart.length ? (
+                    <Text accessibilityRole="alert" style={{ color: '#dc2626', marginBottom: 12 }}>
+                        Omborda qolmagan mahsulot bor. Checkoutdan oldin savatni yangilang.
+                    </Text>
+                ) : null}
+                <Pressable
+                    onPress={() => router.push('/checkout')}
+                    disabled={cartLines.length !== cart.length || cartLines.length === 0}
+                    style={[styles.checkoutButton, (cartLines.length !== cart.length || !cartLines.length) && { opacity: 0.6 }]}
+                >
+                    <Text style={styles.checkoutButtonText}>Buyurtmani rasmiylashtirish</Text>
+                </Pressable>
+            </ScrollView>
+        </ScreenWrapper>
+    );
+};
+
+const styles = StyleSheet.create({
+    container: { padding: 16 },
+    deliveryLocation: { marginBottom: 24, gap: 10 },
+    instructions: { color: '#64748b', fontSize: 14, marginBottom: 4 },
+    locationLabel: { color: '#334155', fontSize: 14, fontWeight: '600' },
+    pickPointList: { gap: 8 },
+    pickPointHeading: { color: '#111827', fontSize: 16, fontWeight: '700' },
+    pickPoint: { padding: 12, borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 10 },
+    pickPointText: { color: '#334155' },
+    selectedPickPoint: { borderColor: '#2563eb', backgroundColor: '#eff6ff' },
+    unavailablePickPoint: { color: '#94a3b8' },
+    center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+    headerTitle: { fontSize: 22, fontWeight: '900', color: '#111827', marginBottom: 16 },
+    grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
+    checkoutButton: { backgroundColor: '#2563eb', borderRadius: 10, padding: 14, alignItems: 'center' },
+    checkoutButtonText: { color: '#fff', fontWeight: '700', textAlign: 'center' },
+});
+
+export default Savat;

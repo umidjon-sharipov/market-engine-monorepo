@@ -1,0 +1,1460 @@
+'use client'
+
+import { Text, View, StyleSheet, ScrollView, Pressable, Animated, TextInput, useWindowDimensions, Platform, Modal } from 'react-native'
+import { UniversalImage } from 'app/components/UI/UniversalImage'
+import { useRouter } from 'solito/navigation'
+import React, { useState, useEffect, useRef } from 'react'
+import { LinearGradient } from 'expo-linear-gradient'
+import { useLanStorage } from 'app/store/useLanStore'
+import UserPng from 'app/features/app/assets/user.png'
+import ProfileImageUpload from './_components/ProfileImageUpload'
+import { useTokenStore } from 'app/store/useTokenStore'
+import { useLocationOpenStore } from 'app/store/useLocationOpenStore'
+import { useUrlStore } from 'app/store/useUrlStore'
+import { fetchWithAuth } from 'app/features/app/auth/fetchWithAuth'
+import AddressMap from 'app/components/UI/AddressMap'
+import type { AddressCoordinates } from 'app/components/UI/AddressMap.types'
+import { useDeliveryLocationStore } from 'app/store/useDeliveryLocationStore'
+import DesignSettingsModal from './_components/DesignSettingsModal'
+
+const translations = {
+    uz: {
+        myProfile: 'Mening Profilim',
+        editProfile: 'Profilni tahrirlash',
+        favourites: 'Sevimlilar',
+        cart: 'Savat',
+        language: 'Til',
+        location: 'Joylashuv',
+        mapInstructions: 'Xaritani bosib manzilingizni belgilang.',
+        saveFailed: 'Profilni saqlab bo‘lmadi. Qayta urinib ko‘ring.',
+        orders: 'Buyurtmalar',
+        feedPreference: 'Ekran sozlamalari',
+        subscription: 'Kuzatish',
+        clearCache: 'Keshni tozalash',
+        deleteAkk: 'Hisobni O\'chirib tashlash',
+        logout: 'Chiqib ketish',
+        addAccount: 'Boshqa akkaunt qo‘shish',
+        switchAccount: 'Akkauntni almashtirish',
+        activeAccount: 'Faol',
+        accounts: 'Akkauntlar',
+        accountCount: 'ta akkaunt',
+        close: 'Yopish',
+        appVersion: 'Ilova versiyasi',
+        yourInformation: 'Sizning Ma\'lumotlaringiz',
+        firstName: 'Ism',
+        lastName: 'Familiya',
+        phone: 'Telefon raqam',
+        emailId: 'Elektron pochta',
+        gender: 'Jinsi',
+        save: 'Saqlash',
+        back: 'Orqaga',
+        male: 'Erkak',
+        female: 'Ayol',
+        desktopWelcome: 'Xush kelibsiz! Bu yerda profilingiz va barcha sozlamalaringizni bir joyda boshqarishingiz mumkin.',
+        quickStats: 'Tezkor Statistikalar',
+        activeOrders: 'Faol Buyurtmalar',
+        savedItems: 'Saqlanganlar',
+        accountSettings: 'Hisob sozlamalari',
+        generalSettings: 'Umumiy sozlamalar',
+        systemData: 'Tizim va ma\'lumotlar',
+    },
+
+    en: {
+        myProfile: 'My Profile',
+        editProfile: 'Edit Profile',
+        favourites: 'Favourites',
+        cart: 'Cart',
+        language: 'Language',
+        location: 'Location',
+        mapInstructions: 'Select your location by tapping the map.',
+        saveFailed: 'Could not save your profile. Please try again.',
+        orders: 'Orders',
+        feedPreference: 'Display settings',
+        subscription: 'Follow',
+        clearCache: 'Clear Cache',
+        deleteAkk: 'Delete Account',
+        logout: 'Log Out',
+        addAccount: 'Add another account',
+        switchAccount: 'Switch account',
+        activeAccount: 'Active',
+        accounts: 'Accounts',
+        accountCount: 'accounts',
+        close: 'Close',
+        appVersion: 'App Version',
+        yourInformation: 'Your Information',
+        firstName: 'First Name',
+        lastName: 'Last Name',
+        phone: 'Phone Number',
+        emailId: 'Email',
+        gender: 'Gender',
+        save: 'Save',
+        back: 'Back',
+        male: 'Male',
+        female: 'Female',
+        desktopWelcome: 'Welcome! Here you can manage your profile and all your settings in one place.',
+        quickStats: 'Quick Stats',
+        activeOrders: 'Active Orders',
+        savedItems: 'Saved Items',
+        accountSettings: 'Account Settings',
+        generalSettings: 'General Settings',
+        systemData: 'System & Data',
+    },
+    ru: {
+        myProfile: 'Мой профиль',
+        editProfile: 'Редактировать профиль',
+        favourites: 'Избранное',
+        cart: 'Корзина',
+        language: 'Язык',
+        location: 'Местоположение',
+        mapInstructions: 'Выберите местоположение, нажав на карту.',
+        saveFailed: 'Не удалось сохранить профиль. Попробуйте ещё раз.',
+        orders: 'Заказы',
+        feedPreference: 'Параметры экрана',
+        subscription: 'Подписаться',
+        clearCache: 'Очистить кэш',
+        deleteAkk: 'Удалить аккаунт',
+        logout: 'Выйти',
+        addAccount: 'Добавить аккаунт',
+        switchAccount: 'Сменить аккаунт',
+        activeAccount: 'Активный',
+        accounts: 'Аккаунты',
+        accountCount: 'аккаунта',
+        close: 'Закрыть',
+        appVersion: 'Версия приложения',
+        yourInformation: 'Ваша информация',
+        firstName: 'Имя',
+        lastName: 'Фамилия',
+        phone: 'Номер телефона',
+        emailId: 'Эл. почта',
+        gender: 'Пол',
+        save: 'Сохранить',
+        back: 'Назад',
+        male: 'Мужской',
+        female: 'Женский',
+        desktopWelcome: 'Добро пожаловать! Здесь вы можете управлять своим профилем и всеми настройками в одном месте.',
+        quickStats: 'Быстрые статистические данные',
+        activeOrders: 'Активные заказы',
+        savedItems: 'Сохраненные',
+        accountSettings: 'Настройки аккаунта',
+        generalSettings: 'Общие настройки',
+        systemData: 'Система и данные',
+    }
+}
+
+const Profile = () => {
+    const url = useUrlStore(state => state.url)
+    const token = useTokenStore(state => state.token)
+    const hasHydrated = useTokenStore(state => state.hasHydrated)
+    const accounts = useTokenStore(state => state.accounts)
+    const activeEmail = useTokenStore(state => state.activeEmail)
+    const switchAccount = useTokenStore(state => state.switchAccount)
+    const removeAccount = useTokenStore(state => state.removeAccount)
+    const lan = useLanStorage(state => state.lan) as 'uz' | 'ru' | 'en'
+    const setLan = useLanStorage(state => state.setLan)
+    const t = translations[lan || 'uz']
+
+    const { width } = useWindowDimensions();
+    const isDesktop = width >= 800;
+
+    const [isEditing, setIsEditing] = useState<boolean>(false)
+    const [accountsModalOpen, setAccountsModalOpen] = useState(false)
+    const [designSettingsOpen, setDesignSettingsOpen] = useState(false)
+
+    const [firstName, setFirstName] = useState<string>('FirstName')
+    const [image, setImage] = useState(UserPng)
+    const [lastName, setLastName] = useState<string>('LastName')
+    const [phone, setPhone] = useState<string>('+99 888 90 90')
+    const [email, setEmail] = useState<string>('Example@gmail.com')
+    const [gender, setGender] = useState<string>('Male')
+    const [bio, setBio] = useState('bio')
+    const [focus, setFocus] = useState(0)
+    const [genderOpen, setGenderOpen] = useState(false)
+    const [deliveryCoordinates, setDeliveryCoordinates] = useState<AddressCoordinates | null>(null)
+    const [profileUserId, setProfileUserId] = useState<string | null>(null)
+    const [profileError, setProfileError] = useState('')
+    const setSavedDeliveryLocation = useDeliveryLocationStore(state => state.setLocation)
+    const router = useRouter()
+    const setOpenLocation = useLocationOpenStore(state => state.setLocationOpen)
+
+    const scrollY = useRef(new Animated.Value(0)).current
+    const fadeAnim = useRef(new Animated.Value(0)).current
+
+    React.useEffect(() => {
+        Animated.timing(fadeAnim, {
+            toValue: 1,
+            duration: 400,
+            useNativeDriver: true,
+        }).start()
+    }, [isEditing])
+
+    const avatarScale = scrollY.interpolate({
+        inputRange: [-50, 0, 100, 110],
+        outputRange: [2, 1, 0.55, 0.4],
+        extrapolate: 'clamp',
+    })
+
+    const cycleLanguage = () => {
+        if (lan === 'uz') setLan('en')
+        else if (lan === 'en') setLan('ru')
+        else setLan('uz')
+    }
+
+    const renderToken = async (token: string) => {
+        try {
+            const res = await fetchWithAuth(`${url}/auth/profile`, {
+                method: 'GET',
+            }, token)
+            if (!res.ok) {
+                if (res.status === 401) router.push('/auth')
+                throw new Error(`Profilni yuklash muvaffaqiyatsiz: ${res.status}`)
+            }
+            const req = await res.json()
+            if (useTokenStore.getState().token !== token) return
+            setFirstName(req.firstName)
+            setLastName(req.lastName)
+            setPhone(req.phone)
+            setEmail(req.email)
+            setGender(req.gender)
+            setBio(req.bio)
+            setImage(req.image)
+            setProfileUserId(typeof req.id === 'string' ? req.id : null)
+            const profileCoordinates = Number.isFinite(req.latitude) && Number.isFinite(req.longitude)
+                ? { latitude: req.latitude, longitude: req.longitude }
+                : null
+            setDeliveryCoordinates(profileCoordinates)
+            if (typeof req.id === 'string') setSavedDeliveryLocation(profileCoordinates, req.id)
+        } catch (err) {
+            console.log(err)
+        }
+    }
+
+    const handleDeleteAccount = async () => {
+        try {
+            const response = await fetchWithAuth(`${url}/auth/account`, {
+                method: 'DELETE',
+            });
+
+            if (response.ok) {
+                removeAccount(email)
+                if (useTokenStore.getState().accounts.length === 0) router.push('/auth')
+            } else {
+                throw new Error(`Akkauntni o‘chirish muvaffaqiyatsiz: ${response.status}`)
+            }
+        } catch (error) {
+            console.error('Server bilan aloqada xatolik:', error);
+        }
+    };
+
+    const handleUpdateProfile = async () => {
+        setProfileError('')
+        try {
+            const response = await fetchWithAuth(`${url}/auth/update-profile`, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    firstName,
+                    lastName,
+                    email,
+                    phone,
+                    gender,
+                    image,
+                    bio,
+                    ...(deliveryCoordinates
+                        ? {
+                            latitude: deliveryCoordinates.latitude,
+                            longitude: deliveryCoordinates.longitude,
+                        }
+                        : {}),
+                })
+            });
+
+            if (response.ok) {
+                await renderToken(useTokenStore.getState().token)
+                if (deliveryCoordinates) setSavedDeliveryLocation(deliveryCoordinates, profileUserId)
+                return true
+            }
+            const result: unknown = await response.json().catch(() => null)
+            const serverMessage = result && typeof result === 'object' && 'message' in result
+                ? String(result.message)
+                : t.saveFailed
+            throw new Error(serverMessage)
+        } catch (error) {
+            console.error('Server xatosi:', error);
+            setProfileError(error instanceof Error ? error.message : t.saveFailed)
+            return false
+        }
+    };
+
+    useEffect(() => {
+        if (!hasHydrated) return
+        if (!token) {
+            router.push('/auth')
+        } else {
+            renderToken(token)
+        }
+    }, [hasHydrated, token])
+
+    const handleLogout = () => {
+        removeAccount(email)
+        if (useTokenStore.getState().accounts.length === 0) {
+            router.push('/auth')
+        }
+    }
+
+
+    return (
+        <View style={ styles.outerContainer }>
+            <DesignSettingsModal
+                visible={designSettingsOpen}
+                language={lan || 'uz'}
+                onClose={() => setDesignSettingsOpen(false)}
+            />
+            <View style={ styles.backgroundDecor }>
+                <View style={ styles.orbTop } />
+                <View style={ styles.orbBottom } />
+            </View>
+
+            <Animated.ScrollView
+                contentContainerStyle={ [styles.scrollContent, {
+                    paddingVertical: isDesktop ? 24 : 0,
+                    paddingHorizontal: isDesktop ? 16 : 0,
+                }] }
+                showsVerticalScrollIndicator={ false }
+                onScroll={ Animated.event(
+                    [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+                    { useNativeDriver: false }
+                ) }
+                scrollEventThrottle={ 16 }
+            >
+                <View style={ [styles.mainWrapper, isDesktop && styles.desktopMaxWidth] }>
+
+                    { !isEditing ? (
+                        <View style={ [styles.containerCard, isDesktop && styles.desktopGridContainer, {
+                            paddingBottom: isDesktop ? 0 : 80,
+                            paddingTop: isDesktop ? 100 : 40
+                        }] }>
+
+                            <View style={ [styles.sidebarColumn, isDesktop && styles.desktopSidebarColumn, {
+                                backgroundColor: isDesktop ? '#FFFFFF' : 'transparent',
+                            }] }>
+                                <View style={ styles.phoneHeader }>
+                                    { !isDesktop && (
+                                        <Pressable style={ styles.iconButton } onPress={ () => router.back() }>
+                                            <Text style={ styles.headerNavArrow }>‹</Text>
+                                        </Pressable>
+                                    ) }
+                                    <Text style={ styles.phoneHeaderTitle }>{ isDesktop ? t.accountSettings : t.myProfile }</Text>
+                                    <View style={ [styles.iconButton, { backgroundColor: 'transparent' }] }>
+                                    </View>
+                                </View>
+
+                                <View style={ styles.profileCardClean }>
+                                    <Animated.View style={ [styles.avatarWrapper, {
+                                        elevation: 120,
+                                        shadowColor: `${gender === 'Male' ? '#0284C7' : 'red'}`,
+                                        shadowOffset: { width: 0, height: 0 },
+                                        shadowOpacity: 1,
+                                        shadowRadius: 120,
+                                        borderRadius: 10000000,
+                                        transform: [{ scale: avatarScale }],
+                                    }] }>
+                                        <Animated.View style={ [styles.avatarContainer, {
+                                            borderColor: gender === 'Male' ? '#00E5FF' : '#FF007F',
+                                        }] }>
+                                            <UniversalImage
+                                                src={ image }
+                                                alt="Profile"
+                                                width={ 80 }
+                                                height={ 80 }
+                                                resizeMode="cover"
+                                            />
+                                        </Animated.View>
+                                        <Pressable style={ styles.cameraBadge }>
+                                            <ProfileImageUpload render={ renderToken } gender={ gender } />
+                                        </Pressable>
+                                    </Animated.View>
+
+                                    <Text style={ styles.profileName }>{ firstName } { lastName }</Text>
+                                    <Text style={ styles.profileEmail }>{ email }</Text>
+                                    <Text style={ styles.profileEmail }>{ bio }</Text>
+
+                                    <Pressable
+                                        android_ripple={ { color: 'rgba(255, 255, 255, 0.3)' } }
+                                        style={ ({ pressed, hovered }: { pressed?: boolean; hovered?: boolean }) => [
+                                            [styles.editProfileButton, { transition: 'all 0.3s' }],
+                                            {
+                                                background: (hovered || pressed)
+                                                    ? 'linear-gradient(#0284C7, #00E5FF)'
+                                                    : 'linear-gradient(#00E5FF, #0284C7)'
+                                            },
+                                            pressed && [styles.editProfileButtonPressed, {
+                                                elevation: 6,
+                                                shadowColor: '#0284C7',
+                                                shadowOffset: { width: 0, height: 0 },
+                                                shadowOpacity: 0.8,
+                                                shadowRadius: 8,
+                                                opacity: 0.6,
+                                                transform: [{ scale: 0.95 }]
+                                            }],
+                                            hovered && {
+                                                elevation: 6,
+                                                shadowColor: '#0284C7',
+                                                shadowOffset: { width: 0, height: 0 },
+                                                shadowOpacity: 0.8,
+                                                shadowRadius: 8,
+                                            }
+                                        ] }
+                                        onPress={ () => setIsEditing(true) }
+                                    >
+                                        { ({ pressed, hovered }: { pressed?: boolean; hovered?: boolean }) => (
+                                            <LinearGradient
+                                                colors={ (hovered || pressed) ? ['#0284C7', '#00E5FF'] : ['#00E5FF', '#0284C7'] }
+                                                start={ { x: 0, y: 0 } }
+                                                end={ { x: 0, y: 1 } }
+                                                style={ styles.editProfileGradient }
+                                            >
+                                                <Text style={ styles.editProfileButtonText }>{ t.editProfile }</Text>
+                                            </LinearGradient>
+                                        ) }
+                                    </Pressable>
+                                    { accounts.length > 0 && (
+                                        <Pressable
+                                            onPress={ () => setAccountsModalOpen(true) }
+                                            accessibilityRole="button"
+                                            accessibilityLabel={ `${t.switchAccount}, ${accounts.length} ${t.accountCount}` }
+                                            style={ ({ pressed }: { pressed: boolean }) => [
+                                                styles.accountSwitchButton,
+                                                pressed && styles.accountSwitchButtonPressed,
+                                            ] }
+                                        >
+                                            <Text style={ styles.accountSwitchIcon }>⇄</Text>
+                                            <View style={ styles.accountSwitchCopy }>
+                                                <Text style={ styles.accountSwitchTitle }>{ t.switchAccount }</Text>
+                                                <Text style={ styles.accountSwitchSubtitle } numberOfLines={ 1 }>
+                                                    { activeEmail } · { accounts.length } { t.accountCount }
+                                                </Text>
+                                            </View>
+                                            <Text style={ styles.accountSwitchChevron }>›</Text>
+                                        </Pressable>
+                                    ) }
+                                </View>
+
+                                <View style={ styles.menuGroup }>
+                                    <Pressable android_ripple={ { color: 'rgba(0, 229, 255, 0.2)' } } onPress={ () => router.push('/yoqtirilgan') } style={ styles.menuRow }>
+                                        <View style={ styles.menuRowLeft }>
+                                            <Text style={ styles.menuEmoji }>🤍</Text>
+                                            <Text style={ styles.menuRowText }>{ t.favourites }</Text>
+                                        </View>
+                                        <Text style={ styles.menuArrow }>›</Text>
+                                    </Pressable>
+
+                                    <Pressable android_ripple={ { color: 'rgba(0, 229, 255, 0.2)' } } onPress={ () => router.push('/savat') } style={ styles.menuRow }>
+                                        <View style={ styles.menuRowLeft }>
+                                            <Text style={ styles.menuEmoji }>🛒</Text>
+                                            <Text style={ styles.menuRowText }>{ t.cart }</Text>
+                                        </View>
+                                        <Text style={ styles.menuArrow }>›</Text>
+                                    </Pressable>
+                                </View>
+                            </View>
+
+                            <View style={ [styles.contentColumn, isDesktop && styles.desktopContentColumn, {
+                                backgroundColor: isDesktop ? '#FFFFFF' : 'transparent',
+                            }] }>
+                                <View style={ styles.menuGroup }>
+                                    <Text style={ styles.desktopSectionHeader }>{ t.generalSettings }</Text>
+                                    <Pressable android_ripple={ { color: 'rgba(0, 229, 255, 0.2)' } } style={ styles.menuRow } onPress={ cycleLanguage }>
+                                        <View style={ styles.menuRowLeft }>
+                                            <Text style={ styles.menuEmoji }>🌐</Text>
+                                            <Text style={ styles.menuRowText }>{ t.language }</Text>
+                                        </View>
+                                        <Text style={ styles.menuArrow }>›</Text>
+                                    </Pressable>
+
+                                    <Pressable android_ripple={ { color: 'rgba(0, 229, 255, 0.2)' } } onPress={ () => setOpenLocation(prev => !prev) } style={ styles.menuRow }>
+                                        <View style={ styles.menuRowLeft }>
+                                            <Text style={ styles.menuEmoji }>📍</Text>
+                                            <Text style={ styles.menuRowText }>{ t.location }</Text>
+                                        </View>
+                                        <Text style={ styles.menuArrow }>›</Text>
+                                    </Pressable>
+
+                                    <Pressable
+                                        android_ripple={ { color: 'rgba(0, 229, 255, 0.2)' } }
+                                        style={ styles.menuRow }
+                                    >
+                                        <View style={ styles.menuRowLeft }>
+                                            <Text style={ styles.menuEmoji }>📦</Text>
+                                            <Text style={ styles.menuRowText }>{ t.orders }</Text>
+                                        </View>
+                                        <Text style={ styles.menuArrow }>›</Text>
+                                    </Pressable>
+
+                                    <Pressable
+                                        android_ripple={ { color: 'rgba(0, 229, 255, 0.2)' } }
+                                        style={ styles.menuRow }
+                                        onPress={() => setDesignSettingsOpen(true)}
+                                        accessibilityRole="button"
+                                    >
+                                        <View style={ styles.menuRowLeft }>
+                                            <Text style={ styles.menuEmoji }>📱</Text>
+                                            <Text style={ styles.menuRowText }>{ t.feedPreference }</Text>
+                                        </View>
+                                        <Text style={ styles.menuArrow }>›</Text>
+                                    </Pressable>
+
+                                    <Pressable onPress={ () => router.push('/follow') } android_ripple={ { color: 'rgba(0, 229, 255, 0.2)' } } style={ styles.menuRow }>
+                                        <View style={ styles.menuRowLeft }>
+                                            <Text style={ styles.menuEmoji }>🏪</Text>
+                                            <Text style={ styles.menuRowText }>{ t.subscription }</Text>
+                                        </View>
+                                        <Text style={ styles.menuArrow }>›</Text>
+                                    </Pressable>
+                                </View>
+
+                                <View style={ styles.menuGroup }>
+                                    <Text style={ styles.desktopSectionHeader }>{ t.systemData }</Text>
+                                    <Pressable onPress={ () => router.push('/auth') } android_ripple={ { color: 'rgba(0, 229, 255, 0.2)' } } style={ styles.menuRow }>
+                                        <View style={ styles.menuRowLeft }>
+                                            <Text style={ styles.menuEmoji }>➕</Text>
+                                            <Text style={ styles.menuRowText }>{ t.addAccount }</Text>
+                                        </View>
+                                        <Text style={ styles.menuArrow }>›</Text>
+                                    </Pressable>
+                                    <Pressable android_ripple={ { color: 'rgba(0, 229, 255, 0.2)' } } style={ styles.menuRow }>
+                                        <View style={ styles.menuRowLeft }>
+                                            <Text style={ styles.menuEmoji }>🗑️</Text>
+                                            <Text style={ styles.menuRowText }>{ t.clearCache }</Text>
+                                        </View>
+                                        <Text style={ styles.menuArrow }>›</Text>
+                                    </Pressable>
+
+                                    <Pressable onPress={ handleDeleteAccount } android_ripple={ { color: 'rgba(239, 68, 68, 0.2)' } } style={ styles.menuRow }>
+                                        <View style={ styles.menuRowLeft }>
+                                            <Text style={ styles.menuEmoji }>⚠️</Text>
+                                            <Text style={ [styles.menuRowText, styles.logoutTextLabel] }>{ t.deleteAkk }</Text>
+                                        </View>
+                                        <Text style={ [styles.menuArrow, styles.logoutTextLabel] }>›</Text>
+                                    </Pressable>
+
+                                    <Pressable onPress={ handleLogout } android_ripple={ { color: 'rgba(239, 68, 68, 0.2)' } } style={ styles.menuRow }>
+                                        <View style={ styles.menuRowLeft }>
+                                            <Text style={ styles.menuEmoji }>🚪</Text>
+                                            <Text style={ [styles.menuRowText, styles.logoutTextLabel] }>{ t.logout }</Text>
+                                        </View>
+                                        <Text style={ [styles.menuArrow, styles.logoutTextLabel] }>›</Text>
+                                    </Pressable>
+                                </View>
+
+                                <Text style={ styles.versionFooterText }>{ t.appVersion } 3.0.0</Text>
+                            </View>
+
+                        </View>
+                    ) : (
+                        <View style={ [styles.containerCard, {
+                            maxWidth: isDesktop ? 800 : 900, alignSelf: 'center',
+                            paddingTop: isDesktop ? 100 : 40,
+                            paddingBottom: isDesktop ? 20 : 100,
+                            marginTop: isDesktop ? 100 : 0,
+                            marginBottom: isDesktop ? 100 : 0,
+                        }] }>
+                            <View style={ styles.phoneHeader }>
+                                <Pressable style={ styles.iconButton } onPress={ () => { setIsEditing(false), renderToken(token) } }>
+                                    <Text style={ styles.headerNavArrow }>‹</Text>
+                                </Pressable>
+                                <Text style={ styles.phoneHeaderTitle }>{ t.editProfile }</Text>
+                                <Pressable
+                                    style={ [styles.iconButton, styles.checkButtonBg] }
+                                    onPress={ () => setIsEditing(false) }
+                                >
+                                    <Text style={ styles.checkIconText }>✓</Text>
+                                </Pressable>
+                            </View>
+
+                            <View style={ [styles.inputBox, isDesktop && { flex: 1 }, focus === 8 ? styles.inputBoxActive : null] }>
+                                <Text style={ styles.inputLabel }>{ t.firstName }</Text>
+                                <TextInput
+                                    multiline={ true }
+                                    numberOfLines={ 5 }
+                                    placeholder="Matn kiriting..."
+                                    style={ [styles.textInput, { width: '100%' }] }
+                                    value={ bio }
+                                    onChangeText={ (text: string) => {
+                                        const letters = text.match(/[a-zA-Zа-яА-ЯoʻgʻOʻGʻ\u0400-\u04FF]/g) || [];
+                                        if (letters.length <= 140) setBio(text);
+                                    } }
+                                    onFocus={ () => setFocus(8) }
+                                    onBlur={ () => setFocus(0) }
+                                    placeholderTextColor="#64748B"
+                                />
+                            </View>
+
+                            <View style={ styles.formContainer }>
+                                <Text style={ styles.formSectionTitle }>{ t.yourInformation }</Text>
+
+                                <View style={ isDesktop ? styles.desktopFormRow : null }>
+                                    <View style={ [styles.inputBox, isDesktop && { flex: 1 }, focus === 1 ? styles.inputBoxActive : null] }>
+                                        <Text style={ styles.inputLabel }>{ t.firstName }</Text>
+                                        <TextInput
+                                            style={ styles.textInput }
+                                            value={ firstName }
+                                            placeholder='First name...'
+                                            onChangeText={ setFirstName }
+                                            onFocus={ () => setFocus(1) }
+                                            onBlur={ () => setFocus(0) }
+                                            placeholderTextColor="#64748B"
+                                        />
+                                    </View>
+
+                                    <View style={ [styles.inputBox, isDesktop && { flex: 1 }, focus === 2 ? styles.inputBoxActive : null] }>
+                                        <Text style={ styles.inputLabel }>{ t.lastName }</Text>
+                                        <TextInput
+                                            style={ styles.textInput }
+                                            value={ lastName }
+                                            onFocus={ () => setFocus(2) }
+                                            onBlur={ () => setFocus(0) }
+                                            placeholder='Last name...'
+                                            onChangeText={ setLastName }
+                                            placeholderTextColor="#64748B"
+                                        />
+                                    </View>
+                                </View>
+
+                                <View style={ isDesktop ? styles.desktopFormRow : null }>
+                                    <View style={ [styles.inputBox, isDesktop && { flex: 1 }, focus === 3 ? styles.inputBoxActive : null] }>
+                                        <Text style={ styles.inputLabel }>{ t.phone }</Text>
+                                        <TextInput
+                                            style={ styles.textInput }
+                                            value={ phone }
+                                            placeholder='Phone number...'
+                                            onChangeText={ (text: string) => {
+                                                if (!text.startsWith('+998 ')) {
+                                                    text = '+998 ';
+                                                }
+
+                                                const rawNumber = text.replace(/[^\d]/g, '').slice(3);
+
+                                                let formatted = '+998 ';
+                                                if (rawNumber.length > 0) formatted += rawNumber.substring(0, 2);
+                                                if (rawNumber.length > 2) formatted += ' ' + rawNumber.substring(2, 5);
+                                                if (rawNumber.length > 5) formatted += ' ' + rawNumber.substring(5, 7);
+                                                if (rawNumber.length > 7) formatted += ' ' + rawNumber.substring(7, 9);
+
+                                                setPhone(formatted);
+                                            } }
+                                            onFocus={ () => setFocus(3) }
+                                            onBlur={ () => setFocus(0) }
+                                            placeholderTextColor="#64748B"
+                                        />
+                                    </View>
+
+                                    <View style={ [styles.inputBox, isDesktop && { flex: 1 }, focus === 4 ? styles.inputBoxActive : null] }>
+                                        <Text style={ styles.inputLabel }>{ t.emailId }</Text>
+                                        <TextInput
+                                            style={ styles.textInput }
+                                            value={ email }
+                                            placeholder='Email...'
+                                            onChangeText={ setEmail }
+                                            onFocus={ () => setFocus(4) }
+                                            onBlur={ () => setFocus(0) }
+                                            placeholderTextColor="#64748B"
+                                        />
+                                    </View>
+                                </View>
+
+                                <View style={ [styles.inputBox, genderOpen ? styles.inputBoxActive : null] }>
+                                    <Text style={ styles.inputLabel }>{ t.gender }</Text>
+                                    <Pressable onPress={ () => setGenderOpen(prev => !prev) } style={ [styles.selectRow, { flexDirection: genderOpen ? 'column' : 'row', gap: 5 }] }>
+                                        <Text style={ styles.selectText }>{ gender === 'Male' ? t.male : t.female }</Text>
+                                        { genderOpen ? null : <Text style={ styles.selectArrow }>▼</Text> }
+                                        {
+                                            genderOpen ? (
+                                                <Pressable onPress={ () => { setGender(prev => prev === 'Male' ? 'Female' : 'Male'), setGenderOpen(false) } }>
+                                                    <Text style={ styles.selectText }>{ gender === 'Male' ? t.female : t.male }</Text>
+                                                </Pressable>
+                                            ) : null
+                                        }
+                                    </Pressable>
+                                </View>
+
+                                <View style={ styles.inputBox }>
+                                    <Text style={ styles.inputLabel }>{ t.location }</Text>
+                                    <Text style={ styles.locationInstructions }>{ t.mapInstructions }</Text>
+                                    <AddressMap value={ deliveryCoordinates } onSelect={ setDeliveryCoordinates } />
+                                    { deliveryCoordinates ? (
+                                        <Text style={ styles.locationCoordinates }>
+                                            { deliveryCoordinates.latitude.toFixed(5) }, { deliveryCoordinates.longitude.toFixed(5) }
+                                        </Text>
+                                    ) : null }
+                                </View>
+                                { profileError ? <Text style={ styles.profileError }>{ profileError }</Text> : null }
+
+                                <Pressable
+                                    android_ripple={ { color: 'rgba(255, 255, 255, 0.3)' } }
+                                    style={ ({ pressed, hovered }: { pressed?: boolean; hovered?: boolean }) => [
+                                        [styles.saveButtonWrapper, { borderWidth: 0.1, borderColor: '#00E5FF', transition: 'all 0.3s' }],
+                                        {
+                                            background: (hovered || pressed)
+                                                ? 'linear-gradient(#0284C7, #00E5FF)'
+                                                : 'linear-gradient(#00E5FF, #0284C7)'
+                                        },
+                                        pressed && [styles.editProfileButtonPressed, {
+                                            elevation: 6,
+                                            shadowColor: '#0284C7',
+                                            shadowOffset: { width: 0, height: 0 },
+                                            shadowOpacity: 0.8,
+                                            shadowRadius: 8,
+                                            opacity: 0.6,
+                                            transform: [{ scale: 0.95 }]
+                                        }],
+                                        hovered && {
+                                            elevation: 6,
+                                            shadowColor: '#0284C7',
+                                            shadowOffset: { width: 0, height: 0 },
+                                            shadowOpacity: 0.8,
+                                            shadowRadius: 8,
+                                        }
+                                    ] }
+                                    onPress={ async () => {
+                                        if (await handleUpdateProfile()) setIsEditing(false)
+                                    } }
+                                >
+                                    { ({ pressed, hovered }: { pressed?: boolean; hovered?: boolean }) => (
+                                        <LinearGradient
+                                            colors={ (hovered || pressed) ? ['#0284C7', '#00E5FF'] : ['#00E5FF', '#0284C7'] }
+                                            start={ { x: 0, y: 0 } }
+                                            end={ { x: 0, y: 1 } }
+                                            style={ styles.editProfileGradient }
+                                        >
+                                            <Text style={ styles.editProfileButtonText }>{ t.save }</Text>
+                                        </LinearGradient>
+                                    ) }
+                                </Pressable>
+                            </View>
+                        </View>
+                    ) }
+
+                </View>
+            </Animated.ScrollView>
+            <Modal
+                transparent
+                visible={ accountsModalOpen }
+                animationType={ isDesktop ? 'fade' : 'slide' }
+                statusBarTranslucent
+                onRequestClose={ () => setAccountsModalOpen(false) }
+            >
+                <View style={ [styles.accountModalRoot, isDesktop && styles.accountModalRootDesktop] }>
+                    <Pressable
+                        style={ styles.accountModalBackdrop }
+                        onPress={ () => setAccountsModalOpen(false) }
+                        accessibilityRole="button"
+                        accessibilityLabel={ t.close }
+                    />
+                    <View style={ [styles.accountSheet, isDesktop ? styles.accountDialog : styles.accountBottomSheet] }>
+                        { !isDesktop && <View style={ styles.accountSheetHandle } /> }
+                        <View style={ styles.accountSheetHeader }>
+                            <View style={ styles.accountSheetHeading }>
+                                <Text style={ styles.accountSheetTitle }>{ t.accounts }</Text>
+                                <Text style={ styles.accountSheetSubtitle }>{ t.switchAccount }</Text>
+                            </View>
+                            <Pressable
+                                onPress={ () => setAccountsModalOpen(false) }
+                                style={ styles.accountSheetClose }
+                                accessibilityRole="button"
+                                accessibilityLabel={ t.close }
+                            >
+                                <Text style={ styles.accountSheetCloseText }>×</Text>
+                            </Pressable>
+                        </View>
+
+                        <ScrollView
+                            style={ styles.accountList }
+                            contentContainerStyle={ styles.accountListContent }
+                            showsVerticalScrollIndicator={ false }
+                            keyboardShouldPersistTaps="handled"
+                        >
+                            { accounts.map(account => {
+                                const isActive = account.email === activeEmail
+                                return (
+                                    <Pressable
+                                        key={ account.email }
+                                        onPress={ () => {
+                                            switchAccount(account.email)
+                                            setAccountsModalOpen(false)
+                                        } }
+                                        accessibilityRole="button"
+                                        accessibilityState={ { selected: isActive } }
+                                        style={ ({ pressed }: { pressed: boolean }) => [
+                                            styles.accountOption,
+                                            isActive && styles.accountOptionActive,
+                                            pressed && styles.accountOptionPressed,
+                                        ] }
+                                    >
+                                        <View style={ [styles.accountAvatar, isActive && styles.accountAvatarActive] }>
+                                            <Text style={ [styles.accountAvatarText, isActive && styles.accountAvatarTextActive] }>
+                                                { (account.userName || account.email).trim().charAt(0).toUpperCase() }
+                                            </Text>
+                                        </View>
+                                        <View style={ styles.accountOptionCopy }>
+                                            <Text style={ styles.accountOptionName } numberOfLines={ 1 }>
+                                                { account.userName || account.email.split('@')[0] }
+                                            </Text>
+                                            <Text style={ styles.accountOptionEmail } numberOfLines={ 1 }>
+                                                { account.email }
+                                            </Text>
+                                        </View>
+                                        { isActive && (
+                                            <View style={ styles.accountActiveBadge }>
+                                                <Text style={ styles.accountActiveBadgeText }>{ t.activeAccount }</Text>
+                                            </View>
+                                        ) }
+                                        { !isActive && <Text style={ styles.accountOptionChevron }>›</Text> }
+                                    </Pressable>
+                                )
+                            }) }
+                            <Pressable
+                                onPress={ () => {
+                                    setAccountsModalOpen(false)
+                                    router.push('/auth')
+                                } }
+                                accessibilityRole="button"
+                                style={ ({ pressed }: { pressed: boolean }) => [
+                                    styles.accountAddButton,
+                                    pressed && styles.accountOptionPressed,
+                                ] }
+                            >
+                                <Text style={ styles.accountAddIcon }>＋</Text>
+                                <Text style={ styles.accountAddText }>{ t.addAccount }</Text>
+                            </Pressable>
+                        </ScrollView>
+                    </View>
+                </View>
+            </Modal>
+        </View>
+    )
+}
+
+export default Profile
+
+const styles = StyleSheet.create({
+    outerContainer: {
+        flex: 1,
+        width: '100%',
+        backgroundColor: '#F8FAFC',
+    },
+    backgroundDecor: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        overflow: 'hidden',
+        pointerEvents: 'none',
+    },
+    orbTop: {
+        position: 'absolute',
+        top: -60,
+        left: -60,
+        width: 240,
+        height: 240,
+        borderRadius: 120,
+        backgroundColor: 'rgba(0, 229, 255, 0.12)',
+    },
+    orbBottom: {
+        position: 'absolute',
+        bottom: -60,
+        right: -60,
+        width: 280,
+        height: 280,
+        borderRadius: 140,
+        backgroundColor: 'rgba(2, 132, 199, 0.08)',
+    },
+    scrollContent: {
+        alignItems: 'center',
+    },
+    mainWrapper: {
+        width: '100%',
+        maxWidth: 1200,
+        alignSelf: 'center',
+    },
+    desktopMaxWidth: {
+        paddingHorizontal: 16,
+    },
+    desktopWelcomeCard: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        backgroundColor: '#FFFFFF',
+        borderRadius: 24,
+        padding: 28,
+        marginBottom: 20,
+        ...Platform.select({
+            web: {
+                boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05)'
+            },
+            default: {
+                elevation: 3
+            }
+        }),
+        borderWidth: 1,
+        borderColor: '#F1F5F9',
+    },
+    desktopWelcomeTitle: {
+        fontSize: 26,
+        fontWeight: '800',
+        color: '#0F172A',
+        marginBottom: 6,
+    },
+    desktopWelcomeSubtitle: {
+        fontSize: 14,
+        color: '#64748B',
+        maxWidth: 600,
+    },
+    desktopStatsContainer: {
+        flexDirection: 'row',
+        gap: 16,
+    },
+    statBox: {
+        backgroundColor: '#F8FAFC',
+        paddingVertical: 12,
+        paddingHorizontal: 20,
+        borderRadius: 16,
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: '#E2E8F0',
+    },
+    statNumber: {
+        fontSize: 20,
+        fontWeight: '800',
+        color: '#0284C7',
+    },
+    statLabel: {
+        fontSize: 11,
+        color: '#64748B',
+        fontWeight: '600',
+    },
+    containerCard: {
+        width: '100%',
+        alignSelf: 'center',
+        backgroundColor: '#FFFFFF',
+        borderRadius: 24,
+        padding: 24,
+        paddingBottom: 40,
+        ...Platform.select({
+            web: {
+                boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.05), 0 10px 10px -5px rgba(0, 0, 0, 0.04)'
+            },
+            default: {
+                elevation: 4
+            }
+        }),
+        borderWidth: 1,
+        borderColor: '#F1F5F9',
+    },
+    desktopGridContainer: {
+        maxWidth: '100%',
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        gap: 24,
+        backgroundColor: 'transparent',
+        borderWidth: 0,
+        padding: 0,
+        ...Platform.select({
+            web: { boxShadow: 'none' },
+            default: { elevation: 0 }
+        })
+    },
+    sidebarColumn: {
+        width: '100%',
+    },
+    desktopSidebarColumn: {
+        width: '380px',
+        borderRadius: 24,
+        padding: 20,
+        borderWidth: 1,
+        borderColor: '#F1F5F9',
+        ...Platform.select({
+            web: { boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.05)' },
+            default: { elevation: 3 }
+        })
+    },
+    contentColumn: {
+        width: '100%',
+    },
+    desktopContentColumn: {
+        flex: 1,
+        borderRadius: 24,
+        padding: 20,
+        borderWidth: 1,
+        borderColor: '#F1F5F9',
+        ...Platform.select({
+            web: { boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.05)' },
+            default: { elevation: 3 }
+        })
+    },
+    desktopSectionHeader: {
+        fontSize: 13,
+        fontWeight: '700',
+        color: '#64748B',
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
+        marginBottom: 8,
+        marginTop: 4,
+        paddingHorizontal: 4,
+    },
+    desktopFormRow: {
+        flexDirection: 'row',
+        gap: 12,
+    },
+    phoneHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 20,
+    },
+    iconButton: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: '#F1F5F9',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    headerNavArrow: {
+        fontSize: 26,
+        fontWeight: '600',
+        color: '#0F172A',
+        marginTop: -2,
+    },
+    phoneHeaderTitle: {
+        fontSize: 18,
+        fontWeight: '700',
+        color: '#0F172A',
+    },
+    checkButtonBg: {
+        backgroundColor: 'rgba(0, 229, 255, 0.15)',
+    },
+    checkIconText: {
+        color: '#00A8CC',
+        fontSize: 18,
+        fontWeight: '800',
+    },
+    profileCardClean: {
+        alignItems: 'center',
+        marginBottom: 20,
+        paddingBottom: 20,
+        borderBottomWidth: 1,
+        borderBottomColor: '#F1F5F9',
+    },
+    avatarWrapper: {
+        position: 'relative',
+        marginBottom: 12,
+    },
+    avatarContainer: {
+        width: 90,
+        height: 90,
+        borderRadius: 45,
+        borderWidth: 3,
+        overflow: 'hidden',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    cameraBadge: {
+        position: 'absolute',
+        bottom: 0,
+        right: 0,
+        width: 30,
+        height: 30,
+        borderRadius: 15,
+        backgroundColor: '#FFFFFF',
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: '#E2E8F0',
+        ...Platform.select({
+            web: {
+                boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+            },
+            default: {
+                elevation: 2
+            }
+        }),
+    },
+    cameraBadgeText: {
+        fontSize: 12,
+    },
+    profileName: {
+        fontSize: 20,
+        fontWeight: '700',
+        color: '#0F172A',
+        marginBottom: 4,
+    },
+    profileEmail: {
+        fontSize: 14,
+        color: '#64748B',
+        marginBottom: 16,
+    },
+    editProfileButton: {
+        borderRadius: 24,
+        overflow: 'hidden',
+        width: '100%',
+        maxWidth: 220,
+        transition: 'all 0.3s ease'
+    },
+    editProfileGradient: {
+        paddingVertical: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    editProfileButtonText: {
+        color: '#FFFFFF',
+        fontWeight: '700',
+        fontSize: 14,
+    },
+    menuGroup: {
+        backgroundColor: '#F8FAFC',
+        borderRadius: 18,
+        paddingVertical: 6,
+        paddingHorizontal: 14,
+        marginBottom: 16,
+        borderWidth: 1,
+        borderColor: '#F1F5F9',
+    },
+    menuRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingVertical: 14,
+        borderBottomWidth: 1,
+        borderBottomColor: '#F1F5F9',
+    },
+    menuRowLeft: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 14,
+    },
+    menuEmoji: {
+        fontSize: 18,
+    },
+    menuRowText: {
+        fontSize: 15,
+        fontWeight: '600',
+        color: '#1E293B',
+    },
+    accountSwitchButton: {
+        width: '100%',
+        maxWidth: 220,
+        minHeight: 48,
+        marginTop: 10,
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        borderRadius: 16,
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#F0F9FF',
+        borderWidth: 1,
+        borderColor: '#D9F2FC',
+        gap: 10,
+    },
+    accountSwitchButtonPressed: {
+        opacity: 0.75,
+        transform: [{ scale: 0.98 }],
+    },
+    accountSwitchIcon: {
+        color: '#0284C7',
+        fontSize: 22,
+        fontWeight: '700',
+    },
+    accountSwitchCopy: {
+        flex: 1,
+        minWidth: 0,
+    },
+    accountSwitchTitle: {
+        color: '#0F172A',
+        fontSize: 12,
+        fontWeight: '700',
+    },
+    accountSwitchSubtitle: {
+        color: '#64748B',
+        fontSize: 10,
+        marginTop: 2,
+    },
+    accountSwitchChevron: {
+        color: '#0284C7',
+        fontSize: 22,
+        fontWeight: '500',
+    },
+    accountModalRoot: {
+        flex: 1,
+        justifyContent: 'flex-end',
+    },
+    accountModalRootDesktop: {
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 24,
+    },
+    accountModalBackdrop: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: 'rgba(15, 23, 42, 0.48)',
+    },
+    accountSheet: {
+        width: '100%',
+        backgroundColor: '#FFFFFF',
+        paddingHorizontal: 20,
+        paddingTop: 12,
+        ...Platform.select({
+            web: { boxShadow: '0 -12px 40px rgba(15, 23, 42, 0.18)' },
+            default: { elevation: 24 },
+        }),
+    },
+    accountBottomSheet: {
+        maxHeight: '78%',
+        borderTopLeftRadius: 26,
+        borderTopRightRadius: 26,
+        paddingBottom: 28,
+    },
+    accountDialog: {
+        maxWidth: 460,
+        maxHeight: '80%',
+        borderRadius: 24,
+        paddingBottom: 20,
+        borderWidth: 1,
+        borderColor: '#E2E8F0',
+    },
+    accountSheetHandle: {
+        width: 38,
+        height: 4,
+        borderRadius: 2,
+        alignSelf: 'center',
+        backgroundColor: '#CBD5E1',
+        marginBottom: 16,
+    },
+    accountSheetHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingBottom: 16,
+    },
+    accountSheetHeading: {
+        flex: 1,
+    },
+    accountSheetTitle: {
+        color: '#0F172A',
+        fontSize: 20,
+        fontWeight: '800',
+    },
+    accountSheetSubtitle: {
+        color: '#64748B',
+        fontSize: 13,
+        marginTop: 3,
+    },
+    accountSheetClose: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#F1F5F9',
+        marginLeft: 12,
+    },
+    accountSheetCloseText: {
+        color: '#475569',
+        fontSize: 25,
+        lineHeight: 28,
+        marginTop: -2,
+    },
+    accountList: {
+        flexGrow: 0,
+        flexShrink: 1,
+    },
+    accountListContent: {
+        paddingBottom: 8,
+    },
+    accountOption: {
+        minHeight: 68,
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: '#E2E8F0',
+        backgroundColor: '#FFFFFF',
+        marginBottom: 9,
+        gap: 12,
+    },
+    accountOptionActive: {
+        backgroundColor: '#F0F9FF',
+        borderColor: '#7DD3FC',
+    },
+    accountOptionPressed: {
+        opacity: 0.72,
+    },
+    accountAvatar: {
+        width: 42,
+        height: 42,
+        borderRadius: 21,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#F1F5F9',
+    },
+    accountAvatarActive: {
+        backgroundColor: '#0284C7',
+    },
+    accountAvatarText: {
+        color: '#475569',
+        fontSize: 16,
+        fontWeight: '800',
+    },
+    accountAvatarTextActive: {
+        color: '#FFFFFF',
+    },
+    accountOptionCopy: {
+        flex: 1,
+        minWidth: 0,
+    },
+    accountOptionName: {
+        color: '#0F172A',
+        fontSize: 14,
+        fontWeight: '700',
+    },
+    accountOptionEmail: {
+        color: '#64748B',
+        fontSize: 12,
+        marginTop: 3,
+    },
+    accountActiveBadge: {
+        paddingHorizontal: 9,
+        paddingVertical: 5,
+        borderRadius: 10,
+        backgroundColor: '#DBF3FF',
+    },
+    accountActiveBadgeText: {
+        color: '#0369A1',
+        fontSize: 10,
+        fontWeight: '700',
+    },
+    accountOptionChevron: {
+        color: '#94A3B8',
+        fontSize: 23,
+    },
+    accountAddButton: {
+        minHeight: 52,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: '#BAE6FD',
+        borderStyle: 'dashed',
+        backgroundColor: '#F8FCFF',
+        marginTop: 3,
+        gap: 8,
+    },
+    accountAddIcon: {
+        color: '#0284C7',
+        fontSize: 20,
+        fontWeight: '700',
+    },
+    accountAddText: {
+        color: '#0369A1',
+        fontSize: 13,
+        fontWeight: '700',
+    },
+    logoutTextLabel: {
+        color: '#EF4444',
+    },
+    menuArrow: {
+        fontSize: 18,
+        color: '#94A3B8',
+        fontWeight: '700',
+    },
+    versionFooterText: {
+        textAlign: 'center',
+        fontSize: 12,
+        color: '#94A3B8',
+        marginTop: 8,
+        marginBottom: 4,
+    },
+    formContainer: {
+        width: '100%',
+    },
+    formSectionTitle: {
+        fontSize: 15,
+        fontWeight: '700',
+        color: '#0F172A',
+        marginBottom: 16,
+    },
+    inputBox: {
+        backgroundColor: '#F8FAFC',
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: '#E2E8F0',
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        marginBottom: 14,
+    },
+    inputBoxActive: {
+        borderColor: '#00E5FF',
+        backgroundColor: '#F0FDFA',
+    },
+    inputLabel: {
+        fontSize: 11,
+        color: '#64748B',
+        fontWeight: '600',
+        marginBottom: 4,
+    },
+    locationInstructions: {
+        color: '#64748B',
+        fontSize: 13,
+        marginBottom: 10,
+    },
+    locationCoordinates: {
+        color: '#475569',
+        fontSize: 12,
+        marginTop: 8,
+    },
+    profileError: {
+        color: '#dc2626',
+        fontSize: 13,
+        marginBottom: 8,
+    },
+    textInput: {
+        fontSize: 15,
+        fontWeight: '600',
+        color: '#0F172A',
+        paddingVertical: 4,
+    },
+    selectRow: {
+        justifyContent: 'space-between',
+        paddingVertical: 4,
+    },
+    selectText: {
+        fontSize: 15,
+        fontWeight: '600',
+        color: '#0F172A',
+    },
+    selectArrow: {
+        fontSize: 11,
+        color: '#64748B',
+    },
+    saveButtonWrapper: {
+        borderRadius: 18,
+        overflow: 'hidden',
+        marginTop: 12,
+        width: '100%',
+    },
+    saveButtonGradient: {
+        payddingVertical: 16,
+        paddingVertical: 16,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    saveButtonText: {
+        color: '#FFFFFF',
+        fontWeight: '700',
+        fontSize: 16,
+    }
+})

@@ -1,0 +1,14 @@
+{
+  "version": 2,
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/api/vercel"
+    }
+  ],
+  "functions": {
+    "api/vercel.js": {
+      "includeFiles": "../public/**"
+    }
+  }
+}
