@@ -14,7 +14,7 @@ export interface DesignState {
     glassLevel: GlassLevel;
     headerStyle: HeaderStyle;
     iconTone: IconTone;
-    setTheme: (theme: DesignTheme) => void;
+    setTheme: (theme?: DesignTheme) => void;
     setAccentColor: (color: string) => void;
     setColor: (color: string) => void;
     setGlassLevel: (level: GlassLevel) => void;
@@ -39,6 +39,8 @@ const isHeaderStyle = (value: unknown): value is HeaderStyle =>
     value === 'glass' || value === 'solid' || value === 'transparent';
 const isIconTone = (value: unknown): value is IconTone =>
     value === 'accent' || value === 'neutral';
+const isDesignTheme = (value: unknown): value is DesignTheme =>
+    value === 'light' || value === 'dark';
 
 function createDesignStorage(): StateStorage {
     return {
@@ -76,7 +78,11 @@ export const useDesignStore = create<DesignState>()(
         (set) => ({
             ...DEFAULT_DESIGN,
             color: DEFAULT_DESIGN.accentColor,
-            setTheme: (theme) => set({ theme }),
+            // Agarda qiymat berilmasa, avtomatik ravishda dark <-> light ga o'zgartiradi
+            setTheme: (theme) => 
+                set((state) => ({ 
+                    theme: theme ?? (state.theme === 'light' ? 'dark' : 'light') 
+                })),
             setAccentColor: (accentColor) => set({ accentColor, color: accentColor }),
             setColor: (accentColor) => set({ accentColor, color: accentColor }),
             setGlassLevel: (glassLevel) => set({ glassLevel }),
@@ -97,7 +103,9 @@ export const useDesignStore = create<DesignState>()(
 
                 return {
                     ...currentState,
-                    theme: persisted?.theme === 'light' ? 'light' : 'dark',
+                    theme: isDesignTheme(persisted?.theme) 
+                        ? persisted.theme 
+                        : currentState.theme,
                     accentColor,
                     color: accentColor,
                     glassLevel: isGlassLevel(persisted?.glassLevel)
