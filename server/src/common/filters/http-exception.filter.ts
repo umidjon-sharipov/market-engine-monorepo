@@ -25,12 +25,11 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const exceptionResponse =
       exception instanceof HttpException ? exception.getResponse() : undefined;
 
-    // Ruxsat berilgan origin'lar
     const allowedOrigins = [
       'http://localhost:3000',
       'http://127.0.0.1:3000',
-      'https://internet-magazin-panel.vercel.app',
-      'https://internet-magazin-uzum.vercel.app',
+      'https://market-engine-monorepo.vercel.app',
+      'https://panel-market-engine-monorepo.vercel.app',
     ];
 
     const origin = request.headers.origin;

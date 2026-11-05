@@ -419,7 +419,7 @@ const Header = () => {
                                     borderColor: 'rgba(255, 255, 255, 0.25)',
                                 }]}
                             >
-                                <Pressable onPress={() => { setTimeout(() => setExtra(false), 600), router.push('https://internet-magazin-panel.vercel.app') }}>
+                                <Pressable onPress={() => { setTimeout(() => setExtra(false), 600), router.push('https://panel-market-engine-monorepo.vercel.app') }}>
                                     <Animated.View
                                         style={{
                                             width: 20,

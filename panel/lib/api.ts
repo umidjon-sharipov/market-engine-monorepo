@@ -1,1 +1,1 @@
-export const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://internet-magazin-nest-server.vercel.app';
+export const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://market-engine-monorepo-back.onrender.com';
