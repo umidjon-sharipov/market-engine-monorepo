@@ -38,8 +38,22 @@ export class ProductsController {
     @Get()
     findAll(
         @Query('search') search?: string,
+        @Query('ids') ids?: string,
     ) {
-        return this.productsService.findAll(search);
+        const productIds = ids
+            ?.split(',')
+            .map((id) => id.trim())
+            .filter((id) =>
+                /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+                    id,
+                ),
+            )
+            .slice(0, 50);
+        return this.productsService.findAll(
+            search,
+            undefined,
+            productIds?.length ? productIds : undefined,
+        );
     }
 
     @Get('market/:marketId')
@@ -95,6 +109,11 @@ export class ProductsController {
         @Req() req: any,
     ) {
         return this.productsService.findData(req.user.userId);
+    }
+
+    @Get(':id')
+    findOne(@Param('id', ParseUUIDPipe) id: string) {
+        return this.productsService.findOnePublic(id);
     }
 
     @Post()

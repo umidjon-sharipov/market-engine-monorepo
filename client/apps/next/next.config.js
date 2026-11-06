@@ -3,60 +3,27 @@ const path = require('path')
 /**
  * @type {import('next').NextConfig}
  */
-const withWebpack = {
-  webpack(config) {
-    if (!config.resolve) {
-      config.resolve = {}
-    }
-
-    config.resolve.alias = {
-      ...(config.resolve.alias || {}),
-      'react-native': 'react-native-web',
-      'react-native$': 'react-native-web',
-      'react-native/Libraries/EventEmitter/RCTDeviceEventEmitter$':
-        'react-native-web/dist/vendor/react-native/NativeEventEmitter/RCTDeviceEventEmitter',
-      'react-native/Libraries/vendor/emitter/EventEmitter$':
-        'react-native-web/dist/vendor/react-native/emitter/EventEmitter',
-      'react-native/Libraries/EventEmitter/NativeEventEmitter$':
-        'react-native-web/dist/vendor/react-native/NativeEventEmitter',
-    }
-
-    config.resolve.extensions = [
-      '.web.js',
-      '.web.jsx',
-      '.web.ts',
-      '.web.tsx',
-      ...(config.resolve?.extensions ?? []),
-    ]
-
-    return config
-  },
-}
-
-/**
- * @type {import('next').NextConfig}
- */
-const withTurpopack = {
+const nextConfig = {
   turbopack: {
     resolveAlias: {
       'react-native': 'react-native-web',
-      'react-native/Libraries/EventEmitter/RCTDeviceEventEmitter$':
-        'react-native-web/dist/vendor/react-native/NativeEventEmitter/RCTDeviceEventEmitter',
-      'react-native/Libraries/vendor/emitter/EventEmitter$':
-        'react-native-web/dist/vendor/react-native/emitter/EventEmitter',
-      'react-native/Libraries/EventEmitter/NativeEventEmitter$':
-        'react-native-web/dist/vendor/react-native/NativeEventEmitter',
+      'react-native/Libraries/EventEmitter/RCTDeviceEventEmitter':
+        'react-native-web/dist/vendor/react-native/EventEmitter/RCTDeviceEventEmitter',
+      'react-native/Libraries/vendor/emitter/EventEmitter':
+        'react-native-web/dist/vendor/react-native/vendor/emitter/EventEmitter',
+      'react-native/Libraries/EventEmitter/NativeEventEmitter':
+        'react-native-web/dist/vendor/react-native/EventEmitter/NativeEventEmitter',
     },
     resolveExtensions: [
-      '.web.js',
-      '.web.jsx',
-      '.web.ts',
       '.web.tsx',
-      '.js',
-      '.mjs',
+      '.web.ts',
+      '.web.jsx',
+      '.web.js',
       '.tsx',
       '.ts',
       '.jsx',
+      '.js',
+      '.mjs',
       '.json',
       '.wasm',
     ],
@@ -68,16 +35,15 @@ const withTurpopack = {
  * @type {import('next').NextConfig}
  */
 module.exports = {
+  ...nextConfig,
+
   typescript: {
     ignoreBuildErrors: true,
   },
 
   transpilePackages: [
-    'expo',
-    'expo-modules-core',
     'expo-blur',
     'expo-linear-gradient',
-    'react-native',
     'react-native-web',
     'solito',
     'moti',
@@ -116,6 +82,4 @@ module.exports = {
     ],
   },
 
-  ...withWebpack,
-  ...withTurpopack,
 }

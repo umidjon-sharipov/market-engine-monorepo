@@ -8,8 +8,19 @@ import { join } from 'path';
 import { getAllowedOrigins } from './common/helpers/allowed-origins.helper';
 
 async function bootstrap() {
-    const app = await NestFactory.create<NestExpressApplication>(AppModule);
+    const jwtSecret = process.env.JWT_SECRET?.trim();
+    if (!jwtSecret || jwtSecret.length < 32) {
+        throw new Error(
+            'JWT_SECRET must be set to a strong value of at least 32 characters.',
+        );
+    }
 
+    const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+        bodyParser: true,
+    });
+
+    app.useBodyParser('json', { limit: '1mb' });
+    app.useBodyParser('urlencoded', { limit: '1mb', extended: true });
     app.getHttpAdapter().getInstance().set('trust proxy', 1);
     const allowedOrigins = getAllowedOrigins();
 
@@ -52,9 +63,6 @@ async function bootstrap() {
         }),
     );
     app.useGlobalFilters(new HttpExceptionFilter());
-
-    app.use(express.json({ limit: '1mb' }));
-    app.use(express.urlencoded({ limit: '1mb', extended: true }));
 
     const port = Number(process.env.PORT) || 4000;
     await app.listen(port, '0.0.0.0');

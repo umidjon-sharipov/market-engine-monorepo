@@ -15,6 +15,7 @@ import {
   WarehouseTaskStatus,
 } from '@prisma/client';
 import { StockMovementsService } from '../stock-movements/stock-movements.service';
+import { haversineDistanceMeters } from '../common/helpers/geo.helper';
 
 const orderProductInclude = {
   options: {
@@ -279,20 +280,12 @@ export class OrdersService {
                   'Topshirish punktini tanlash uchun joylashuv koordinatalari talab qilinadi.',
                 );
               }
-              const radians = (degrees: number) => (degrees * Math.PI) / 180;
-              const latitudeDelta = radians(
-                pickPoint.latitude - createOrderDto.deliveryLatitude,
+              const distanceMeters = haversineDistanceMeters(
+                createOrderDto.deliveryLatitude,
+                createOrderDto.deliveryLongitude,
+                pickPoint.latitude,
+                pickPoint.longitude,
               );
-              const longitudeDelta = radians(
-                pickPoint.longitude - createOrderDto.deliveryLongitude,
-              );
-              const haversine =
-                Math.sin(latitudeDelta / 2) ** 2 +
-                Math.cos(radians(createOrderDto.deliveryLatitude)) *
-                  Math.cos(radians(pickPoint.latitude)) *
-                  Math.sin(longitudeDelta / 2) ** 2;
-              const distanceMeters =
-                2 * 6_371_000 * Math.asin(Math.sqrt(Math.min(1, haversine)));
               if (distanceMeters > pickPoint.serviceRadiusMeters) {
                 throw new BadRequestException(
                   'Tanlangan topshirish punkti xizmat radiusidan tashqarida.',

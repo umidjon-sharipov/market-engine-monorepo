@@ -25,7 +25,15 @@ export function NavigationProvider({
               search: 'search',
               careres: 'about/careres',
               punkt: 'about/punkt',
-              auth: 'auth',
+              auth: {
+                path: 'auth',
+                parse: {
+                  step: String,
+                  email: String,
+                  code: String,
+                  error: String,
+                },
+              },
               follow: 'follow',
               'filter': 'search/:id',
               'products': 'product/:id',

@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { Prisma, ProductStatus } from '@prisma/client';
 import { uploadImageToImgBB } from '../common/helpers/image-upload.helper';
+import { isActivelyFollowing } from '../common/helpers/follow-state.helper';
 import { PrismaService } from '../prisma/prisma.service';
 import { ProductRepository } from './product.repository';
 import {
@@ -61,11 +62,20 @@ export class ProductsService {
         private readonly prisma: PrismaService,
     ) { }
 
-    findAll(search?: string, marketId?: string) {
+    findAll(search?: string, marketId?: string, ids?: string[]) {
+        if (ids?.length) {
+            return this.findProducts({ id: { in: ids } }, false);
+        }
         return this.findProducts({
             ...(marketId ? { marketId } : {}),
             ...this.searchWhere(search),
         }, false);
+    }
+
+    async findOnePublic(id: string) {
+        const [product] = await this.findProducts({ id }, false);
+        if (!product) throw new NotFoundException('Mahsulot topilmadi.');
+        return product;
     }
 
     findManagementProducts(marketId: string) {
@@ -144,14 +154,29 @@ export class ProductsService {
         const available = new Map(
             inventory.map((item) => [item.productId, item.availableQuantity]),
         );
-        const marketScope = where.marketId;
-        const allProducts = await this.prisma.product.findMany({
-            where: marketScope ? { marketId: marketScope } : {},
-            include: productCatalogInclude,
-            orderBy: [{ title: 'asc' }, { id: 'asc' }],
+        const requestedById = typeof where.id === 'string' ||
+            (typeof where.id === 'object' && where.id !== null && 'in' in where.id);
+        const rootProducts = await this.prisma.product.findMany({
+            where: {
+                ...where,
+                ...(!includeUnavailable
+                    ? {
+                        ...(!requestedById
+                            ? { id: { in: inventory.map((item) => item.productId) } }
+                            : {}),
+                        isOptionOnly: false,
+                        status: ProductStatus.ACTIVE,
+                    }
+                    : {}),
+            },
+            orderBy: includeUnavailable
+                ? { createdAt: 'desc' }
+                : [{ createdAt: 'desc' }, { id: 'asc' }],
+            take: includeUnavailable || requestedById ? undefined : 300,
+            select: { id: true },
         });
-        const productsById = new Map(
-            allProducts.map((product) => [product.id, product]),
+        const productsById = await this.loadProductGraph(
+            rootProducts.map((product) => product.id),
         );
         const buildProduct = (
             current: ProductCatalogRow,
@@ -188,21 +213,6 @@ export class ProductsService {
             })),
         });
 
-        const rootProducts = await this.prisma.product.findMany({
-            where: {
-                ...where,
-                ...(!includeUnavailable
-                    ? {
-                        id: { in: inventory.map((item) => item.productId) },
-                        isOptionOnly: false,
-                        status: ProductStatus.ACTIVE,
-                    }
-                    : {}),
-            },
-            orderBy: { createdAt: 'desc' },
-            select: { id: true },
-        });
-
         return rootProducts.flatMap(({ id }) => {
             const baseProduct = productsById.get(id);
             if (!baseProduct) return [];
@@ -214,6 +224,28 @@ export class ProductsService {
                 ...product,
             }];
         });
+    }
+
+    private async loadProductGraph(seedIds: string[]) {
+        const productsById = new Map<string, ProductCatalogRow>();
+        let frontier = [...new Set(seedIds)];
+        for (let depth = 0; frontier.length && depth < 9; depth += 1) {
+            const missingIds = frontier.filter((id) => !productsById.has(id));
+            if (!missingIds.length) break;
+            const rows = await this.prisma.product.findMany({
+                where: { id: { in: missingIds } },
+                include: productCatalogInclude,
+            });
+            rows.forEach((product) => productsById.set(product.id, product));
+            frontier = rows.flatMap((product) =>
+                product.options.flatMap((group) =>
+                    group.items.flatMap((item) =>
+                        item.includeProductId ? [item.includeProductId] : [],
+                    ),
+                ),
+            );
+        }
+        return productsById;
     }
 
     async search(
@@ -264,14 +296,8 @@ export class ProductsService {
         });
 
         const activeMarketIds = followings
-            .filter(item => {
-                const isFollowing = Array.isArray(item.follow) && item.follow.length % 2 !== 0;
-
-                const isBlocked = Array.isArray(item.block) && item.block.length % 2 !== 0;
-
-                return isFollowing && !isBlocked;
-            })
-            .map(item => item.marketId);
+            .filter((item) => isActivelyFollowing(item.follow, item.block))
+            .map((item) => item.marketId);
 
         if (activeMarketIds.length === 0) return [];
 

@@ -7,6 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
+import { getAllowedOrigins } from '../helpers/allowed-origins.helper';
 
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
@@ -25,12 +26,12 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const exceptionResponse =
       exception instanceof HttpException ? exception.getResponse() : undefined;
 
-    const allowedOrigins = [
-      'http://localhost:3000',
-      'http://127.0.0.1:3000',
-      'https://market-engine-monorepo.vercel.app',
-      'https://panel-market-engine-monorepo.vercel.app',
-    ];
+    let allowedOrigins: string[] = [];
+    try {
+      allowedOrigins = getAllowedOrigins();
+    } catch {
+      allowedOrigins = [];
+    }
 
     const origin = request.headers.origin;
     if (origin && allowedOrigins.includes(origin)) {

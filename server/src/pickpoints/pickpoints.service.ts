@@ -10,6 +10,8 @@ import {
   UpdatePickPointDto,
 } from './dto/pickpoint.dto';
 import { ProductStatus } from '@prisma/client';
+import { isActivelyFollowing } from '../common/helpers/follow-state.helper';
+import { haversineDistanceMeters } from '../common/helpers/geo.helper';
 
 @Injectable()
 export class PickPointsService {
@@ -21,12 +23,7 @@ export class PickPointsService {
       select: { marketId: true, follow: true, block: true },
     });
     const marketIds = following
-      .filter(
-        (item) =>
-          Array.isArray(item.follow) &&
-          item.follow.length % 2 === 1 &&
-          !(Array.isArray(item.block) && item.block.length % 2 === 1),
-      )
+      .filter((item) => isActivelyFollowing(item.follow, item.block))
       .map((item) => item.marketId);
 
     if (!marketIds.length) return [];
@@ -138,16 +135,12 @@ export class PickPointsService {
     });
     const ranked = points
       .map((point) => {
-        const toRadians = (degrees: number) => (degrees * Math.PI) / 180;
-        const latitudeDelta = toRadians(point.latitude - latitude);
-        const longitudeDelta = toRadians(point.longitude - longitude);
-        const haversine =
-          Math.sin(latitudeDelta / 2) ** 2 +
-          Math.cos(toRadians(latitude)) *
-            Math.cos(toRadians(point.latitude)) *
-            Math.sin(longitudeDelta / 2) ** 2;
-        const distanceMeters =
-          2 * 6_371_000 * Math.asin(Math.sqrt(Math.min(1, haversine)));
+        const distanceMeters = haversineDistanceMeters(
+          latitude,
+          longitude,
+          point.latitude,
+          point.longitude,
+        );
         return {
           ...point,
           distanceMeters: Math.round(distanceMeters),

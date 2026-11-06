@@ -10,7 +10,7 @@ import { useInputStorage } from 'app/store/useInputStore';
 import { usePathname } from 'solito/navigation';
 import { UniversalImage } from 'app/components/UI/UniversalImage';
 import HeartPng from 'app/features/app/assets/heart.png'
-import { LinearGradient } from 'expo-linear-gradient'
+import { LinearGradient } from 'app/components/UI/UniversalLinearGradient'
 import { useCartStore } from "app/store/useCartStore";
 import { useYoqtirilganStore } from "app/store/useYoqtirilganStore";
 import CartPng from 'app/features/app/assets/cart.png'
@@ -447,9 +447,17 @@ const ProductID = () => {
     useEffect(() => {
         const fetchSearchProducts = async () => {
             try {
-                const response = await fetch(`${url}/products`);
-                const data = await response.json();
-                setProducts(data);
+                const ids = [productIdToFind, ...productsIDs].filter(Boolean);
+                if (!ids.length) {
+                    setProducts([]);
+                    return;
+                }
+                const response = await fetch(
+                    `${url}/products?ids=${encodeURIComponent(ids.join(','))}`,
+                );
+                if (!response.ok) throw new Error(`Mahsulotni yuklab bo‘lmadi: ${response.status}`);
+                const data: unknown = await response.json();
+                setProducts(Array.isArray(data) ? data as Product[] : []);
             } catch (error) {
                 console.error("Ma'lumot yuklashda xatolik:", error);
             } finally {
@@ -460,7 +468,7 @@ const ProductID = () => {
         if (url) {
             fetchSearchProducts();
         }
-    }, [url]);
+    }, [url, productIdToFind, pathname]);
 
 
     const totalPrice = configuration?.totalPrice ?? 0;

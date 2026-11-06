@@ -31,6 +31,7 @@ import { PickPointsModule } from './pickpoints/pickpoints.module';
 import { WarehouseTasksModule } from './warehouse-tasks/warehouse-tasks.module';
 import { AIModule } from './ai/ai.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { MailModule } from './mail/mail.module';
 
 const getPublicPath = () => {
   const paths = [
@@ -56,6 +57,7 @@ const getPublicPath = () => {
       exclude: ['/api*'],
     }),
     PrismaModule,
+    MailModule,
     ThrottlerModule.forRoot({
       throttlers: [{ ttl: 60_000, limit: 100 }],
     }),

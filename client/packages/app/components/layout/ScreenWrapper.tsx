@@ -2,13 +2,13 @@
 
 import React, { useState, useEffect, useRef } from 'react'
 import { ScrollView, StyleSheet, View, useWindowDimensions, Animated, Easing } from 'react-native'
-import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Footer from 'app/components/layout/footer/Footer'
 import { useTabStore } from 'app/store/useTabStore'
 import { useScrollStore } from 'app/store/useScrollStore'
-import { LinearGradient } from 'expo-linear-gradient'
+import { LinearGradient } from 'app/components/UI/UniversalLinearGradient'
 import { useDesignStore } from 'app/store/useDesignStore'
 import { useNativeAnimDriver } from 'app/utils/animation'
+import { useSafeArea } from 'app/provider/safe-area/use-safe-area'
 
 interface ScreenWrapperProps {
     children: React.ReactNode;
@@ -40,7 +40,7 @@ const softenGradientColor = (color: string) => {
 };
 
 export default function ScreenWrapper({ children, color }: ScreenWrapperProps) {
-    let insets = { bottom: 0, top: 0 }
+    const insets = useSafeArea()
     const tab = useTabStore(state => state.tab)
     const theme = useDesignStore(state => state.theme)
     const glassLevel = useDesignStore(state => state.glassLevel)
@@ -56,13 +56,6 @@ export default function ScreenWrapper({ children, color }: ScreenWrapperProps) {
             scrollViewRef.current?.scrollTo({ y: 0, animated: true });
         });
     }, [setScrollToTopFunc]);
-
-    try {
-        const hookInsets = useSafeAreaInsets()
-        if (hookInsets) {
-            insets = hookInsets
-        }
-    } catch (error) { }
 
     const { width: windowWidth, height: windowHeight } = useWindowDimensions()
     const [isHydrated, setIsHydrated] = useState(false)

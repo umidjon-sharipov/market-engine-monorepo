@@ -112,6 +112,7 @@ model User {
     gender              String?   @db.VarChar(20)
     bio                 String?   @db.Text
     image               String?   @db.Text
+    passwordHash        String?   @db.VarChar(255)
     isBlocked           Boolean   @default(false)
     blockReason         String?   @db.Text
     blockedUntil        DateTime? @db.Timestamptz(6)
@@ -130,8 +131,38 @@ model User {
     pinnedGroupMessages GroupPin[]
     following           Following[]
     notifications        Notification[]
+    identities          AuthIdentity[]
+    authTickets         AuthTicket[]
 
     @@map("Users")
+}
+
+model AuthIdentity {
+    id                String   @id @default(uuid()) @db.Uuid
+    userId            String   @db.Uuid
+    provider          String   @db.VarChar(40)
+    providerAccountId String   @db.VarChar(255)
+    createdAt         DateTime @default(now()) @db.Timestamptz(6)
+
+    user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    @@unique([provider, providerAccountId])
+    @@index([userId])
+    @@map("AuthIdentities")
+}
+
+model AuthTicket {
+    id        String    @id @default(uuid()) @db.Uuid
+    userId    String    @db.Uuid
+    codeHash  String    @db.VarChar(255)
+    expiresAt DateTime  @db.Timestamptz(6)
+    usedAt    DateTime? @db.Timestamptz(6)
+    createdAt DateTime  @default(now()) @db.Timestamptz(6)
+
+    user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+    @@index([userId, usedAt])
+    @@map("AuthTickets")
 }
 
 model Notification {
@@ -157,8 +188,10 @@ model UserOtp {
     otpHash      String   @db.VarChar(255)
     expiresAt    DateTime @db.Timestamptz(6)
     attemptCount Int      @default(0)
-    isUsed       Boolean  @default(false)
-    ipAddress    String   @db.VarChar(45)
+    isUsed              Boolean  @default(false)
+    firstName           String?  @db.VarChar(100)
+    pendingPasswordHash String?  @db.VarChar(255)
+    ipAddress           String   @db.VarChar(45)
     userAgent    String?  @db.Text
     createdAt    DateTime @default(now()) @db.Timestamptz(6)
 

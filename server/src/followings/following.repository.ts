@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { Following, Prisma } from '@prisma/client';
 import { BaseCrudService, RepositoryDelegate } from '../common/services/base-crud.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { isToggleActive } from '../common/helpers/follow-state.helper';
 
 const followingInclude = {
   user: { select: { id: true, userName: true, image: true } },
@@ -32,9 +33,7 @@ export class FollowingRepository extends BaseCrudService<
       where: { userId },
       orderBy: { updatedAt: 'desc' },
       include: followingInclude,
-    }).then(records => records.filter(record =>
-      Array.isArray(record.follow) && record.follow.length % 2 === 1
-    ));
+    }).then(records => records.filter(record => isToggleActive(record.follow)));
   }
 
   async searchMarketsForUser(userId: string, query: string) {

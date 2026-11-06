@@ -115,7 +115,9 @@ const Savat = () => {
         }
         try {
             setLoading('loading')
-            const response = await fetch(`${url}/products`);
+            const response = await fetch(
+                `${url}/products?ids=${encodeURIComponent(cartIds.join(','))}`,
+            );
             if (!response.ok) {
                 throw new Error(`Savat mahsulotlarini yuklab bo‘lmadi: ${response.status}`);
             }

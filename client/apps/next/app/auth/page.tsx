@@ -1,8 +1,12 @@
-import React from 'react'
+import React, { Suspense } from 'react'
 import AuthC from 'app/features/app/auth/page'
 
 const Auth = () => {
-    return <AuthC />
+    return (
+        <Suspense fallback={null}>
+            <AuthC />
+        </Suspense>
+    )
 }
 
 export default Auth

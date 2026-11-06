@@ -4,7 +4,7 @@ import { Text, View, StyleSheet, ScrollView, Pressable, Animated, TextInput, use
 import { UniversalImage } from 'app/components/UI/UniversalImage'
 import { useRouter } from 'solito/navigation'
 import React, { useState, useEffect, useRef } from 'react'
-import { LinearGradient } from 'expo-linear-gradient'
+import { LinearGradient } from 'app/components/UI/UniversalLinearGradient'
 import { useLanStorage } from 'app/store/useLanStore'
 import UserPng from 'app/features/app/assets/user.png'
 import ProfileImageUpload from './_components/ProfileImageUpload'

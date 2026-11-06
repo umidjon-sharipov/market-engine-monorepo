@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { CategoryOptionItem, Prisma } from '@prisma/client';
 import { uploadImageToImgBB } from '../common/helpers/image-upload.helper';
+import { isActivelyFollowing } from '../common/helpers/follow-state.helper';
 import { PrismaService } from '../prisma/prisma.service';
 import { CategoryRepository } from './category.repository';
 import {
@@ -54,9 +55,7 @@ export class CategoriesService {
         ]);
         const subscribedMarketIds = followings
             .filter((following) =>
-                Array.isArray(following.follow) &&
-                following.follow.length % 2 === 1 &&
-                (!Array.isArray(following.block) || following.block.length % 2 === 0),
+                isActivelyFollowing(following.follow, following.block),
             )
             .map((following) => following.marketId);
         const visibleMarketIds = new Set([

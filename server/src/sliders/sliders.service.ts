@@ -4,6 +4,7 @@ import { SliderRepository } from './slider.repository';
 import { CreateSliderDto } from './dto/create-slider.dto';
 import { UpdateSliderDto } from './dto/update-slider.dto';
 import { PrismaService } from '../prisma/prisma.service';
+import { isActivelyFollowing } from '../common/helpers/follow-state.helper';
 
 @Injectable()
 export class SlidersService {
@@ -32,14 +33,8 @@ export class SlidersService {
         });
 
         const activeMarketIds = followings
-            .filter(item => {
-                const isFollowing = Array.isArray(item.follow) && item.follow.length % 2 !== 0;
-
-                const isBlocked = Array.isArray(item.block) && item.block.length % 2 !== 0;
-
-                return isFollowing && !isBlocked;
-            })
-            .map(item => item.marketId);
+            .filter((item) => isActivelyFollowing(item.follow, item.block))
+            .map((item) => item.marketId);
         const ownedMarkets = await this.prisma.market.findMany({
             where: { email: user.email },
             select: { id: true },

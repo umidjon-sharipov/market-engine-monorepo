@@ -69,11 +69,10 @@ const HomeScreen = () => {
     const fetchProducts = async () => {
         try {
             setLoading('loading')
-            const response = await fetch(`${url}/products/data`, {
+            const endpoint = token ? `${url}/products/data` : `${url}/products`;
+            const response = await fetch(endpoint, {
                 method: 'GET',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                },
+                headers: token ? { 'Authorization': `Bearer ${token}` } : undefined,
             });
 
             const data = await response.json();
@@ -90,11 +89,10 @@ const HomeScreen = () => {
 
     const fetchSliders = async () => {
         try {
-            const response = await fetch(`${url}/sliders/data`, {
+            const endpoint = token ? `${url}/sliders/data` : `${url}/sliders`;
+            const response = await fetch(endpoint, {
                 method: 'GET',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                },
+                headers: token ? { 'Authorization': `Bearer ${token}` } : undefined,
             });
 
             const data = await response.json();

@@ -75,11 +75,16 @@ const CheckoutPage = () => {
     const [pickPointsLoading, setPickPointsLoading] = useState(false);
     const [pickPointsError, setPickPointsError] = useState('');
 
+    const cartIds = useMemo(() => cart.map((item) => item.id).join(','), [cart]);
+
     useEffect(() => {
-        if (!url) return;
+        if (!url || !cartIds) return;
         const controller = new AbortController();
         setLoading(true);
-        fetch(`${url}/products`, { signal: controller.signal })
+        fetch(
+            `${url}/products?ids=${encodeURIComponent(cartIds)}`,
+            { signal: controller.signal },
+        )
             .then(async (response) => {
                 if (!response.ok) throw new Error(`Savat mahsulotlarini yuklab bo‘lmadi: ${response.status}`);
                 const result: unknown = await response.json();
@@ -95,7 +100,7 @@ const CheckoutPage = () => {
                 if (!controller.signal.aborted) setLoading(false);
             });
         return () => controller.abort();
-    }, [url]);
+    }, [url, cartIds]);
 
     useEffect(() => {
         if (!token || !url) return;

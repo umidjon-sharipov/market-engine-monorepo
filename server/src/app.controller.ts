@@ -9,12 +9,19 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { join } from 'path';
+import { SkipThrottle } from '@nestjs/throttler';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { AppService } from './app.service';
 
 @Controller()
 export class AppController {
   constructor(private readonly appService: AppService) {}
+
+  @Get('health')
+  @SkipThrottle()
+  getHealth() {
+    return { status: 'ok' };
+  }
 
   @Get()
   getHomePage(@Res() res: Response): void {

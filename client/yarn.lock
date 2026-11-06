@@ -3376,6 +3376,7 @@ __metadata:
     moti: "npm:^0.30.0"
     react-leaflet: "npm:^5.0.0"
     react-native-safe-area-context: "npm:~5.6.0"
+    react-native-svg: "npm:15.12.1"
     solito: "npm:next"
     zustand: "npm:^5.0.14"
   languageName: unknown

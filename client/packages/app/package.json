@@ -15,6 +15,7 @@
     "moti": "^0.30.0",
     "react-leaflet": "^5.0.0",
     "react-native-safe-area-context": "~5.6.0",
+    "react-native-svg": "15.12.1",
     "solito": "next",
     "zustand": "^5.0.14"
   },

@@ -32,7 +32,9 @@ const Yoqtirilgan = () => {
     const fetchYoqtirilganProducts = async () => {
         try {
             setLoading('loading')
-            const response = await fetch(`${url}/products`);
+            const response = await fetch(
+                `${url}/products?ids=${encodeURIComponent(yoqtirilganIds.join(','))}`,
+            );
             if (!response.ok) throw new Error(`Mahsulotlarni yuklab bo‘lmadi: ${response.status}`);
             const data: Product[] = await response.json();
             setProducts(data);

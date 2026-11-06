@@ -31,7 +31,7 @@ const Stack = createNativeStackNavigator<{
   search: undefined
   careres: undefined
   punkt: undefined
-  auth: undefined
+  auth: { step?: string; email?: string; code?: string; error?: string } | undefined
   follow: undefined
   'filter': {
     id: 'string'

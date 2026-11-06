@@ -1,5 +1,5 @@
 import { Animated, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { BlurView } from 'expo-blur';
+import { BlurView } from 'app/components/UI/UniversalBlurView';
 import { useEffect, useRef } from 'react';
 import {
     useDesignStore,
