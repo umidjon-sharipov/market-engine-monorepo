@@ -56,6 +56,7 @@ export default function ProfilePage() {
     const [lastName, setLastName] = useState('')
     const [email, setEmail] = useState('')
     const [image, setImage] = useState('https://i.ibb.co/nNZrjBSD/user.png')
+    const [hasPassword, setHasPassword] = useState(false)
 
     const [workers, setWorkers] = useState<Worker[]>([])
     const [markets, setMarkets] = useState<Market[]>([])
@@ -63,6 +64,10 @@ export default function ProfilePage() {
     const [marketAdd, setMarketAdd] = useState(false)
     const [deleteAkkModalOpen, setDeleteAkkModalOpen] = useState(false)
     const [imageUploadModal, setImageUploadModal] = useState(false)
+    const [passwordModalOpen, setPasswordModalOpen] = useState(false)
+    const [newPassword, setNewPassword] = useState('')
+    const [passwordConfirmation, setPasswordConfirmation] = useState('')
+    const [passwordSaving, setPasswordSaving] = useState(false)
 
     const [openMap, setOpenMap] = useState(false)
     const [mapLat, setMapLat] = useState(0)
@@ -92,8 +97,48 @@ export default function ProfilePage() {
             setLastName(req.lastName || '');
             setEmail(req.email);
             setImage(req.image || 'https://i.ibb.co/nNZrjBSD/user.png');
+            setHasPassword(Boolean(req.hasPassword));
         } catch (err) {
             console.error("Profilni yuklash xatosi:", err);
+        }
+    }
+
+    const handleSetPassword = async (event: React.FormEvent<HTMLFormElement>) => {
+        event.preventDefault()
+        if (newPassword.length < 8) {
+            notify.show('Parol kamida 8 ta belgidan iborat bo‘lishi kerak.', 'error', dark ? 'dark' : 'light')
+            return
+        }
+        if (newPassword !== passwordConfirmation) {
+            notify.show('Parollar mos kelmadi.', 'error', dark ? 'dark' : 'light')
+            return
+        }
+        if (!token) {
+            notify.show('Sessiya topilmadi. Qaytadan kiring.', 'error', dark ? 'dark' : 'light')
+            return
+        }
+
+        setPasswordSaving(true)
+        try {
+            const response = await fetch(`${API_URL}/auth/password`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({ password: newPassword }),
+            })
+            const data = await response.json()
+            if (!response.ok) throw new Error(data.message || 'Parolni saqlab bo‘lmadi.')
+            setHasPassword(true)
+            setNewPassword('')
+            setPasswordConfirmation('')
+            setPasswordModalOpen(false)
+            notify.show(data.message || 'Parol saqlandi.', 'success', dark ? 'dark' : 'light')
+        } catch (error) {
+            notify.show(error instanceof Error ? error.message : 'Server xatosi.', 'error', dark ? 'dark' : 'light')
+        } finally {
+            setPasswordSaving(false)
         }
     }
 
@@ -336,6 +381,12 @@ export default function ProfilePage() {
 
                 <div className="flex items-center gap-3 flex-wrap justify-center">
                     <button
+                        onClick={() => setPasswordModalOpen(true)}
+                        className={`px-4 py-2.5 rounded-xl font-medium text-sm ${dark ? 'text-neutral-300' : 'text-neutral-700'} bg-neutral-500/10 hover:bg-neutral-500/20 transition-all`}
+                    >
+                        {hasPassword ? 'Parolni o‘zgartirish' : 'Parol o‘rnatish'}
+                    </button>
+                    <button
                         onClick={ () => router.push(`/${locale}/auth`) }
                         className={ `px-4 py-2.5 rounded-xl font-medium text-sm bg-sky-500/10 text-sky-400 hover:bg-sky-500/20 transition-all` }
                     >
@@ -476,6 +527,54 @@ export default function ProfilePage() {
                     <div className="flex justify-end gap-3 pt-4">
                         <button type="button" onClick={ () => setImageUploadModal(false) } className="px-4 py-2.5 rounded-xl text-sm text-zinc-400 hover:bg-white/5">Cancel</button>
                         <GlassButton type="submit">Yuklash</GlassButton>
+                    </div>
+                </form>
+            </GlassModal>
+
+            <GlassModal
+                title={hasPassword ? 'Parolni o‘zgartirish' : 'Parol o‘rnatish'}
+                onClose={() => {
+                    setPasswordModalOpen(false)
+                    setNewPassword('')
+                    setPasswordConfirmation('')
+                }}
+                open={passwordModalOpen}
+            >
+                <form onSubmit={handleSetPassword} className="space-y-4">
+                    <p className="text-sm text-neutral-400">
+                        Parol kamida 8 ta belgidan iborat bo‘lishi kerak.
+                    </p>
+                    <GlassInput
+                        type="password"
+                        label="Yangi parol"
+                        value={newPassword}
+                        onChange={(event) => setNewPassword(event.target.value)}
+                        minLength={8}
+                        maxLength={128}
+                        autoComplete="new-password"
+                        required
+                    />
+                    <GlassInput
+                        type="password"
+                        label="Parolni tasdiqlang"
+                        value={passwordConfirmation}
+                        onChange={(event) => setPasswordConfirmation(event.target.value)}
+                        minLength={8}
+                        maxLength={128}
+                        autoComplete="new-password"
+                        required
+                    />
+                    <div className="flex justify-end gap-3 pt-2">
+                        <button
+                            type="button"
+                            onClick={() => setPasswordModalOpen(false)}
+                            className="px-4 py-2.5 rounded-xl text-sm text-zinc-400 hover:bg-white/5"
+                        >
+                            Bekor qilish
+                        </button>
+                        <GlassButton type="submit" disabled={passwordSaving}>
+                            {passwordSaving ? 'Saqlanmoqda…' : 'Saqlash'}
+                        </GlassButton>
                     </div>
                 </form>
             </GlassModal>

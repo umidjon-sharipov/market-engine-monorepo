@@ -10,6 +10,7 @@ import { useRouter, useSearchParams } from 'solito/navigation'
 import { useTokenStore } from 'app/store/useTokenStore'
 import { useUrlStore } from 'app/store/useUrlStore'
 import { OAUTH_PROVIDERS, OAuthBrandIcon } from 'app/features/app/auth/OAuthIcons'
+import TelegramLoginWidget from 'app/features/app/auth/TelegramLoginWidget'
 
 type Step = 'methods' | 'otp' | 'oauth-callback'
 
@@ -19,6 +20,10 @@ const translations = {
         firstName: 'Ism',
         password: 'Doimiy parol',
         confirm: 'Parolni tasdiqlang',
+        registerTitle: 'Ro‘yxatdan o‘tish',
+        registerSubmit: 'Ro‘yxatdan o‘tish va kod olish',
+        switchToRegister: 'Akkaunt yo‘qmi? Ro‘yxatdan o‘tish',
+        switchToLogin: 'Akkauntingiz bormi? Kirish',
         submit: 'Kodni olish',
         verify: 'Tasdiqlash',
         login: 'Parol bilan kirish',
@@ -37,13 +42,17 @@ const translations = {
         oauthHint: 'Boshqa platforma orqali',
         back: 'Orqaga',
         oauthLoading: 'OAuth orqali kiritilmoqda…',
-        optionalPassword: 'Doimiy parol (ixtiyoriy)',
+        optionalPassword: 'Doimiy parol',
     },
     ru: {
         email: 'Эл. почта',
         firstName: 'Имя',
         password: 'Постоянный пароль',
         confirm: 'Подтвердите пароль',
+        registerTitle: 'Регистрация',
+        registerSubmit: 'Зарегистрироваться и получить код',
+        switchToRegister: 'Нет аккаунта? Зарегистрироваться',
+        switchToLogin: 'Уже есть аккаунт? Войти',
         submit: 'Получить код',
         verify: 'Подтвердить',
         login: 'Войти с паролем',
@@ -62,13 +71,17 @@ const translations = {
         oauthHint: 'Через другую платформу',
         back: 'Назад',
         oauthLoading: 'Вход через OAuth…',
-        optionalPassword: 'Постоянный пароль (необязательно)',
+        optionalPassword: 'Постоянный пароль',
     },
     en: {
         email: 'Email',
         firstName: 'First name',
         password: 'Password',
         confirm: 'Confirm password',
+        registerTitle: 'Create account',
+        registerSubmit: 'Create account and send code',
+        switchToRegister: 'No account? Create one',
+        switchToLogin: 'Already have an account? Sign in',
         submit: 'Send code',
         verify: 'Verify',
         login: 'Sign in with password',
@@ -87,7 +100,7 @@ const translations = {
         oauthHint: 'Continue with',
         back: 'Back',
         oauthLoading: 'Signing in with OAuth…',
-        optionalPassword: 'Password (optional)',
+        optionalPassword: 'Password',
     },
 }
 
@@ -112,7 +125,12 @@ const AuthPage = () => {
     const isDesktop = width > 600
 
     const [email, setEmail] = useState(searchParams?.get('email') ?? '')
+    const [authMode, setAuthMode] = useState<'login' | 'register'>(
+        searchParams?.get('intent') === 'register' ? 'register' : 'login',
+    )
+    const [firstName, setFirstName] = useState('')
     const [password, setPassword] = useState('')
+    const [passwordConfirmation, setPasswordConfirmation] = useState('')
     const [code, setCode] = useState('')
     const [inputFocus, setInputFocus] = useState(2)
     const [loading, setLoading] = useState(false)
@@ -235,7 +253,7 @@ const AuthPage = () => {
         void Linking.openURL(href)
     }
 
-    const handleSubmit = async (mode: 'otp' | 'password' | 'verify' = 'otp') => {
+    const handleSubmit = async (mode: 'otp' | 'register' | 'password' | 'verify' = 'otp') => {
         const normalizedEmail = email.trim().toLowerCase()
         if (mode !== 'verify' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
             setMessageType('error')
@@ -250,6 +268,21 @@ const AuthPage = () => {
         if (mode === 'password' && password.length < 8) {
             setMessageType('error')
             setMessage(t.invalidPassword)
+            return
+        }
+        if (mode === 'register' && firstName.trim().length < 2) {
+            setMessageType('error')
+            setMessage(t.invalidName)
+            return
+        }
+        if (mode === 'register' && password.length < 8) {
+            setMessageType('error')
+            setMessage(t.invalidPassword)
+            return
+        }
+        if (mode === 'register' && password !== passwordConfirmation) {
+            setMessageType('error')
+            setMessage(t.passwordMismatch)
             return
         }
 
@@ -268,17 +301,25 @@ const AuthPage = () => {
                 return
             }
 
-            if (mode === 'otp') {
+            if (mode === 'otp' || mode === 'register') {
                 const res = await fetch(`${url}/auth/send-otp`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email: normalizedEmail }),
+                    body: JSON.stringify(mode === 'register'
+                        ? {
+                            email: normalizedEmail,
+                            firstName: firstName.trim(),
+                            password,
+                            intent: 'register',
+                        }
+                        : { email: normalizedEmail, intent: 'login' }),
                 })
                 const data: unknown = await res.json()
                 if (!res.ok) throw new Error(readError(data))
                 setMessageType('success')
                 setMessage(t.sent)
-                go('otp', { email: normalizedEmail })
+                if (mode === 'register') setAuthMode('register')
+                go('otp', { email: normalizedEmail, intent: mode === 'register' ? 'register' : 'login' })
                 return
             }
 
@@ -377,25 +418,50 @@ const AuthPage = () => {
                                         {loading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.editProfileButtonText}>{t.verify}</Text>}
                                     </LinearGradient>
                                 </Pressable>
-                                <Pressable disabled={loading} onPress={() => go('methods', { email })}>
+                                <Pressable
+                                    disabled={loading}
+                                    onPress={() => go('methods', { email, intent: authMode })}
+                                >
                                     <Text style={styles.switchModeFooterText}>{t.changeEmail}</Text>
                                 </Pressable>
                             </>
                         ) : (
                             <>
-                                {renderField(t.email, email, setEmail, { focusId: 2, keyboard: 'email-address', placeholder: 'name@example.com', autoFocus: true })}
-                                {renderField(t.optionalPassword, password, setPassword, { focusId: 3, secure: true, placeholder: '********' })}
+                                {authMode === 'register' ? (
+                                    <>
+                                        {renderField(t.firstName, firstName, setFirstName, { focusId: 1, placeholder: t.firstName, autoFocus: true })}
+                                        {renderField(t.email, email, setEmail, { focusId: 2, keyboard: 'email-address', placeholder: 'name@example.com' })}
+                                        {renderField(t.password, password, setPassword, { focusId: 3, secure: true, placeholder: '********' })}
+                                        {renderField(t.confirm, passwordConfirmation, setPasswordConfirmation, { focusId: 4, secure: true, placeholder: '********' })}
+                                    </>
+                                ) : (
+                                    <>
+                                        {renderField(t.email, email, setEmail, { focusId: 2, keyboard: 'email-address', placeholder: 'name@example.com', autoFocus: true })}
+                                        {renderField(t.optionalPassword, password, setPassword, { focusId: 3, secure: true, placeholder: '********' })}
+                                    </>
+                                )}
                                 {message ? (
                                     <Text style={[styles.messageText, messageType === 'success' && styles.successMessageText]}>{message}</Text>
                                 ) : null}
-                                <Pressable disabled={loading} onPress={() => handleSubmit('otp')} style={styles.editProfileButton}>
+                                <Pressable disabled={loading} onPress={() => handleSubmit(authMode === 'register' ? 'register' : 'otp')} style={styles.editProfileButton}>
                                     <LinearGradient colors={['#00E5FF', '#0284C7']} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={styles.editProfileGradient}>
-                                        {loading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.editProfileButtonText}>{t.submit}</Text>}
+                                        {loading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.editProfileButtonText}>{authMode === 'register' ? t.registerSubmit : t.submit}</Text>}
                                     </LinearGradient>
                                 </Pressable>
-                                <Pressable disabled={loading} onPress={() => handleSubmit('password')} style={styles.secondaryButton}>
-                                    <Text style={styles.secondaryButtonText}>{t.login}</Text>
-                                </Pressable>
+                                {authMode === 'login' ? (
+                                    <>
+                                        <Pressable disabled={loading} onPress={() => handleSubmit('password')} style={styles.secondaryButton}>
+                                            <Text style={styles.secondaryButtonText}>{t.login}</Text>
+                                        </Pressable>
+                                        <Pressable disabled={loading} onPress={() => setAuthMode('register')}>
+                                            <Text style={styles.switchModeFooterText}>{t.switchToRegister}</Text>
+                                        </Pressable>
+                                    </>
+                                ) : (
+                                    <Pressable disabled={loading} onPress={() => setAuthMode('login')}>
+                                        <Text style={styles.switchModeFooterText}>{t.switchToLogin}</Text>
+                                    </Pressable>
+                                )}
                                 <View style={styles.dividerRow}>
                                     <View style={styles.dividerLine} />
                                     <Text style={styles.hint}>{t.or}</Text>
@@ -403,7 +469,19 @@ const AuthPage = () => {
                                 </View>
                                 <Text style={styles.hint}>{t.oauthHint}</Text>
                                 <View style={styles.providerGrid}>
-                                    {OAUTH_PROVIDERS.map((provider) => (
+                                    {OAUTH_PROVIDERS.filter((provider) => provider.id !== 'telegram' || Platform.OS === 'web').map((provider) => (
+                                        provider.id === 'telegram' && Platform.OS === 'web' ? (
+                                            <View key={provider.id} style={styles.providerButton}>
+                                                <TelegramLoginWidget
+                                                    apiUrl={url}
+                                                    onSuccess={applySession}
+                                                    onError={(error) => {
+                                                        setMessageType('error')
+                                                        setMessage(error)
+                                                    }}
+                                                />
+                                            </View>
+                                        ) : (
                                         <Pressable
                                             key={provider.id}
                                             disabled={loading}
@@ -414,6 +492,7 @@ const AuthPage = () => {
                                             <OAuthBrandIcon id={provider.id} />
                                             <Text style={styles.providerButtonText}>{provider.label}</Text>
                                         </Pressable>
+                                        )
                                     ))}
                                 </View>
                             </>

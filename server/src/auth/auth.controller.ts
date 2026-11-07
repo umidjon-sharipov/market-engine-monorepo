@@ -44,6 +44,11 @@ export class AuthController {
     return this.authService.listOAuthProviders();
   }
 
+  @Get('oauth/telegram/config')
+  telegramConfig() {
+    return this.oauth.telegramConfig();
+  }
+
   @Get('oauth/:provider')
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   async startOAuth(

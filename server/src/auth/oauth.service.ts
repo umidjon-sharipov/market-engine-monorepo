@@ -85,7 +85,7 @@ const PROVIDER_ENDPOINTS: Record<
     authorizationUrl: 'https://auth.atlassian.com/authorize',
     tokenUrl: 'https://auth.atlassian.com/oauth/token',
     userInfoUrl: 'https://api.atlassian.com/me',
-    scopes: ['read:me', 'offline_access'],
+    scopes: ['read:me'],
     extraAuthParams: { audience: 'api.atlassian.com', prompt: 'consent' },
   },
 };
@@ -108,7 +108,9 @@ export class OAuthService {
 
   isConfigured(provider: OAuthProvider) {
     if (provider === 'telegram') {
-      return Boolean(this.env('TELEGRAM_BOT_TOKEN'));
+      return Boolean(
+        this.env('TELEGRAM_BOT_TOKEN') && this.telegramBotUsername(),
+      );
     }
     if (provider === 'apple') {
       return Boolean(
@@ -119,6 +121,11 @@ export class OAuthService {
       );
     }
     return Boolean(this.clientId(provider) && this.clientSecret(provider));
+  }
+
+  telegramConfig() {
+    const username = this.telegramBotUsername();
+    return { configured: this.isConfigured('telegram'), username };
   }
 
   buildAuthorizeUrl(
@@ -469,7 +476,7 @@ export class OAuthService {
     const user = owner?.user;
     const [firstName, ...last] = String(user?.name || 'Notion').split(' ');
     return {
-      id: String(user?.id || token.bot_id || ''),
+      id: String(user?.id || ''),
       email: user?.person?.email,
       firstName,
       lastName: last.join(' ') || undefined,
@@ -508,7 +515,9 @@ export class OAuthService {
             ? profile.avatarUrl
             : undefined;
     return {
-      id: String(profile.sub || profile.id || ''),
+      id: String(
+        profile.sub || profile.id || profile.account_id || profile.accountId || '',
+      ),
       email: typeof profile.email === 'string' ? profile.email : undefined,
       firstName: firstName || provider,
       lastName:
@@ -542,6 +551,10 @@ export class OAuthService {
 
   private clientId(provider: Exclude<OAuthProvider, 'telegram'>) {
     return this.env(`${provider.toUpperCase()}_OAUTH_CLIENT_ID`);
+  }
+
+  private telegramBotUsername() {
+    return this.env('TELEGRAM_BOT_USERNAME').replace(/^@/, '');
   }
 
   private clientSecret(provider: Exclude<OAuthProvider, 'telegram'>) {

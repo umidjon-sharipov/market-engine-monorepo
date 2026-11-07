@@ -106,6 +106,14 @@ export class AuthService {
 
     const email = dto.email.trim().toLowerCase();
     const firstName = dto.firstName?.trim() || null;
+    if (dto.intent === 'register' && (!firstName || firstName.length < 2)) {
+      throw new BadRequestException(
+        'Ro‘yxatdan o‘tish uchun kamida 2 belgili ism kiriting.',
+      );
+    }
+    if (dto.intent === 'register' && !dto.password) {
+      throw new BadRequestException('Ro‘yxatdan o‘tish uchun parol kiriting.');
+    }
     const pendingPasswordHash = dto.password
       ? await bcrypt.hash(dto.password, 10)
       : null;
@@ -128,6 +136,21 @@ export class AuthService {
     if (existingUser?.isBlocked) {
       throw new ForbiddenException(
         'Bu akkaunt xavfsizlik maqsadida bloklangan.',
+      );
+    }
+    if (dto.intent === 'register' && existingUser) {
+      throw new BadRequestException(
+        'Bu email bilan akkaunt mavjud. Kirish sahifasidan foydalaning.',
+      );
+    }
+    if (dto.intent === 'login' && !existingUser) {
+      throw new BadRequestException(
+        'Akkaunt topilmadi. Avval ro‘yxatdan o‘ting.',
+      );
+    }
+    if (!existingUser && dto.intent !== 'register') {
+      throw new BadRequestException(
+        'Yangi akkaunt yaratish uchun ro‘yxatdan o‘tish shaklidan foydalaning.',
       );
     }
 

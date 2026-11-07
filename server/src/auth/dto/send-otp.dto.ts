@@ -1,4 +1,11 @@
-import { IsEmail, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import {
+  IsEmail,
+  IsIn,
+  IsOptional,
+  IsString,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
 
 export class SendOtpDto {
   @IsString()
@@ -8,8 +15,13 @@ export class SendOtpDto {
 
   @IsOptional()
   @IsString()
+  @MinLength(2, { message: 'Ism kamida 2 ta belgidan iborat bo‘lishi kerak.' })
   @MaxLength(100)
   firstName?: string;
+
+  @IsOptional()
+  @IsIn(['login', 'register'])
+  intent?: 'login' | 'register';
 
   @IsOptional()
   @IsString()

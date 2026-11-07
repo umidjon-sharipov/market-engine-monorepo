@@ -57,6 +57,13 @@ const translations = {
         accountSettings: 'Hisob sozlamalari',
         generalSettings: 'Umumiy sozlamalar',
         systemData: 'Tizim va ma\'lumotlar',
+        setPassword: 'Parol o‘rnatish',
+        changePassword: 'Parolni o‘zgartirish',
+        newPassword: 'Yangi parol',
+        confirmPassword: 'Parolni tasdiqlang',
+        passwordSaved: 'Parol saqlandi.',
+        passwordTooShort: 'Parol kamida 8 ta belgidan iborat bo‘lishi kerak.',
+        passwordMismatch: 'Parollar mos kelmadi.',
     },
 
     en: {
@@ -98,6 +105,13 @@ const translations = {
         accountSettings: 'Account Settings',
         generalSettings: 'General Settings',
         systemData: 'System & Data',
+        setPassword: 'Set password',
+        changePassword: 'Change password',
+        newPassword: 'New password',
+        confirmPassword: 'Confirm password',
+        passwordSaved: 'Password saved.',
+        passwordTooShort: 'Password must be at least 8 characters.',
+        passwordMismatch: 'Passwords do not match.',
     },
     ru: {
         myProfile: 'Мой профиль',
@@ -138,6 +152,13 @@ const translations = {
         accountSettings: 'Настройки аккаунта',
         generalSettings: 'Общие настройки',
         systemData: 'Система и данные',
+        setPassword: 'Установить пароль',
+        changePassword: 'Изменить пароль',
+        newPassword: 'Новый пароль',
+        confirmPassword: 'Подтвердите пароль',
+        passwordSaved: 'Пароль сохранён.',
+        passwordTooShort: 'Пароль должен содержать минимум 8 символов.',
+        passwordMismatch: 'Пароли не совпадают.',
     }
 }
 
@@ -159,6 +180,12 @@ const Profile = () => {
     const [isEditing, setIsEditing] = useState<boolean>(false)
     const [accountsModalOpen, setAccountsModalOpen] = useState(false)
     const [designSettingsOpen, setDesignSettingsOpen] = useState(false)
+    const [passwordModalOpen, setPasswordModalOpen] = useState(false)
+    const [hasPassword, setHasPassword] = useState(false)
+    const [newPassword, setNewPassword] = useState('')
+    const [passwordConfirmation, setPasswordConfirmation] = useState('')
+    const [passwordError, setPasswordError] = useState('')
+    const [passwordSaving, setPasswordSaving] = useState(false)
 
     const [firstName, setFirstName] = useState<string>('FirstName')
     const [image, setImage] = useState(UserPng)
@@ -217,6 +244,7 @@ const Profile = () => {
             setGender(req.gender)
             setBio(req.bio)
             setImage(req.image)
+            setHasPassword(Boolean(req.hasPassword))
             setProfileUserId(typeof req.id === 'string' ? req.id : null)
             const profileCoordinates = Number.isFinite(req.latitude) && Number.isFinite(req.longitude)
                 ? { latitude: req.latitude, longitude: req.longitude }
@@ -287,6 +315,42 @@ const Profile = () => {
         }
     };
 
+    const handleSetPassword = async () => {
+        setPasswordError('')
+        if (newPassword.length < 8) {
+            setPasswordError(t.passwordTooShort)
+            return
+        }
+        if (newPassword !== passwordConfirmation) {
+            setPasswordError(t.passwordMismatch)
+            return
+        }
+
+        setPasswordSaving(true)
+        try {
+            const response = await fetchWithAuth(`${url}/auth/password`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ password: newPassword }),
+            })
+            const result: unknown = await response.json()
+            if (!response.ok) {
+                const message = result && typeof result === 'object' && 'message' in result
+                    ? String(result.message)
+                    : t.saveFailed
+                throw new Error(message)
+            }
+            setHasPassword(true)
+            setNewPassword('')
+            setPasswordConfirmation('')
+            setPasswordModalOpen(false)
+        } catch (error) {
+            setPasswordError(error instanceof Error ? error.message : t.saveFailed)
+        } finally {
+            setPasswordSaving(false)
+        }
+    }
+
     useEffect(() => {
         if (!hasHydrated) return
         if (!token) {
@@ -311,6 +375,61 @@ const Profile = () => {
                 language={lan || 'uz'}
                 onClose={() => setDesignSettingsOpen(false)}
             />
+            <Modal
+                transparent
+                visible={passwordModalOpen}
+                animationType="fade"
+                onRequestClose={() => setPasswordModalOpen(false)}
+            >
+                <View style={styles.accountModalRoot}>
+                    <Pressable
+                        style={styles.accountModalBackdrop}
+                        onPress={() => setPasswordModalOpen(false)}
+                        accessibilityRole="button"
+                        accessibilityLabel={t.close}
+                    />
+                    <View style={[styles.accountSheet, styles.accountDialog, styles.passwordDialog]}>
+                        <Text style={styles.accountSheetTitle}>
+                            {hasPassword ? t.changePassword : t.setPassword}
+                        </Text>
+                        <TextInput
+                            style={styles.passwordInput}
+                            value={newPassword}
+                            onChangeText={setNewPassword}
+                            placeholder={t.newPassword}
+                            secureTextEntry
+                            editable={!passwordSaving}
+                        />
+                        <TextInput
+                            style={styles.passwordInput}
+                            value={passwordConfirmation}
+                            onChangeText={setPasswordConfirmation}
+                            placeholder={t.confirmPassword}
+                            secureTextEntry
+                            editable={!passwordSaving}
+                        />
+                        {passwordError ? <Text style={styles.passwordError}>{passwordError}</Text> : null}
+                        <View style={styles.passwordActions}>
+                            <Pressable
+                                onPress={() => setPasswordModalOpen(false)}
+                                disabled={passwordSaving}
+                                style={styles.passwordCancelButton}
+                            >
+                                <Text style={styles.passwordCancelText}>{t.close}</Text>
+                            </Pressable>
+                            <Pressable
+                                onPress={() => void handleSetPassword()}
+                                disabled={passwordSaving}
+                                style={styles.passwordSaveButton}
+                            >
+                                <Text style={styles.passwordSaveText}>
+                                    {passwordSaving ? '…' : t.save}
+                                </Text>
+                            </Pressable>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
             <View style={ styles.backgroundDecor }>
                 <View style={ styles.orbTop } />
                 <View style={ styles.orbBottom } />
@@ -522,6 +641,22 @@ const Profile = () => {
                                             <Text style={ styles.menuRowText }>{ t.addAccount }</Text>
                                         </View>
                                         <Text style={ styles.menuArrow }>›</Text>
+                                    </Pressable>
+                                    <Pressable
+                                        onPress={() => {
+                                            setPasswordError('')
+                                            setPasswordModalOpen(true)
+                                        }}
+                                        android_ripple={{ color: 'rgba(0, 229, 255, 0.2)' }}
+                                        style={styles.menuRow}
+                                    >
+                                        <View style={styles.menuRowLeft}>
+                                            <Text style={styles.menuEmoji}>🔒</Text>
+                                            <Text style={styles.menuRowText}>
+                                                {hasPassword ? t.changePassword : t.setPassword}
+                                            </Text>
+                                        </View>
+                                        <Text style={styles.menuArrow}>›</Text>
                                     </Pressable>
                                     <Pressable android_ripple={ { color: 'rgba(0, 229, 255, 0.2)' } } style={ styles.menuRow }>
                                         <View style={ styles.menuRowLeft }>
@@ -1222,6 +1357,49 @@ const styles = StyleSheet.create({
         paddingBottom: 20,
         borderWidth: 1,
         borderColor: '#E2E8F0',
+    },
+    passwordDialog: {
+        alignSelf: 'center',
+        gap: 12,
+    },
+    passwordInput: {
+        minHeight: 48,
+        borderWidth: 1,
+        borderColor: '#CBD5E1',
+        borderRadius: 12,
+        paddingHorizontal: 14,
+        color: '#0F172A',
+        backgroundColor: '#F8FAFC',
+    },
+    passwordError: {
+        color: '#DC2626',
+        fontSize: 13,
+    },
+    passwordActions: {
+        flexDirection: 'row',
+        justifyContent: 'flex-end',
+        gap: 10,
+        marginTop: 4,
+    },
+    passwordCancelButton: {
+        paddingHorizontal: 14,
+        paddingVertical: 10,
+        borderRadius: 10,
+        backgroundColor: '#F1F5F9',
+    },
+    passwordCancelText: {
+        color: '#334155',
+        fontWeight: '600',
+    },
+    passwordSaveButton: {
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        borderRadius: 10,
+        backgroundColor: '#0284C7',
+    },
+    passwordSaveText: {
+        color: '#FFFFFF',
+        fontWeight: '700',
     },
     accountSheetHandle: {
         width: 38,
