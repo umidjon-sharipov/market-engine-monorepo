@@ -7,7 +7,7 @@
   "main": "api/vercel.ts",
   "license": "UNLICENSED",
   "scripts": {
-    "build": "prisma generate && yarn nest build",
+    "build": "prisma generate && npx nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",
