@@ -92,11 +92,12 @@ export class AuthController {
     let platform: 'client' | 'panel' | 'mobile' = platformFallback;
     let locale = 'uz';
     try {
-      if (state) {
-        const parsed = this.oauth.parseState(state);
-        platform = parsed.platform;
-        locale = parsed.locale || 'uz';
+      if (!state) {
+        throw new BadRequestException('OAuth state kelmadi.');
       }
+      const parsed = this.oauth.parseState(state, provider);
+      platform = parsed.platform;
+      locale = parsed.locale || 'uz';
       if (providerError) {
         return response.redirect(
           this.oauth.errorRedirect(platform, locale, String(providerError)),

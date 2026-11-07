@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -16,6 +17,10 @@ import {
 import { TelegramAuthDto } from './dto/telegram-auth.dto';
 import { getOAuthRedirectBase, type OAuthPlatform } from './oauth.redirect';
 
+function isOAuthPlatform(value: string): value is OAuthPlatform {
+  return value === 'client' || value === 'panel' || value === 'mobile';
+}
+
 type ProviderConfig = {
   authorizationUrl?: string;
   tokenUrl?: string;
@@ -23,6 +28,7 @@ type ProviderConfig = {
   scopes: string[];
   extraAuthParams?: Record<string, string>;
   tokenAuth?: 'body' | 'basic';
+  tokenMethod?: 'GET' | 'POST';
 };
 
 const PROVIDER_ENDPOINTS: Record<
@@ -47,6 +53,7 @@ const PROVIDER_ENDPOINTS: Record<
     userInfoUrl:
       'https://graph.facebook.com/me?fields=id,name,email,picture.type(large)',
     scopes: ['email', 'public_profile'],
+    tokenMethod: 'GET',
   },
   linkedin: {
     authorizationUrl: 'https://www.linkedin.com/oauth/v2/authorization',
@@ -85,6 +92,8 @@ const PROVIDER_ENDPOINTS: Record<
 
 @Injectable()
 export class OAuthService {
+  private readonly logger = new Logger(OAuthService.name);
+
   constructor(
     private readonly config: ConfigService,
     private readonly jwtService: JwtService,
@@ -152,17 +161,26 @@ export class OAuthService {
     return `${authorizationUrl}?${params.toString()}`;
   }
 
-  parseState(state: string) {
+  parseState(state: string, expectedProvider?: OAuthProvider) {
     try {
       const payload = this.jwtService.verify<{
         provider: string;
-        platform: OAuthPlatform;
+        platform: string;
         locale?: string;
       }>(state);
-      if (!isOAuthProvider(payload.provider)) {
+      if (
+        !isOAuthProvider(payload.provider) ||
+        (expectedProvider && payload.provider !== expectedProvider) ||
+        !isOAuthPlatform(payload.platform) ||
+        (payload.locale !== undefined && typeof payload.locale !== 'string')
+      ) {
         throw new Error('bad provider');
       }
-      return payload;
+      return {
+        ...payload,
+        provider: payload.provider,
+        platform: payload.platform,
+      };
     } catch {
       throw new BadRequestException(
         'OAuth state yaroqsiz yoki muddati tugagan.',
@@ -300,20 +318,102 @@ export class OAuthService {
       body.delete('client_secret');
       body.delete('client_id');
     }
-    const response = await fetch(
-      this.withTenant(endpoints.tokenUrl || '', provider),
-      {
-        method: 'POST',
-        headers,
-        body,
-      },
-    );
-    const token = (await response.json()) as Record<string, unknown>;
-    if (!response.ok) {
-      throw new BadRequestException(
-        'OAuth tokenini olish muvaffaqiyatsiz tugadi.',
+    const tokenMethod = endpoints.tokenMethod || 'POST';
+    if (tokenMethod === 'GET') {
+      body.delete('grant_type');
+    }
+    const tokenUrl = this.withTenant(endpoints.tokenUrl || '', provider);
+    const requestUrl =
+      tokenMethod === 'GET' ? `${tokenUrl}?${body.toString()}` : tokenUrl;
+    let response: Response;
+    try {
+      response = await fetch(requestUrl, {
+        method: tokenMethod,
+        headers:
+          tokenMethod === 'GET' ? { Accept: 'application/json' } : headers,
+        ...(tokenMethod === 'POST' ? { body } : {}),
+      });
+    } catch (error) {
+      this.logger.error(
+        `OAuth ${provider} token request failed before receiving a response (${
+          error instanceof Error ? error.name : 'Unknown network error'
+        })`,
+      );
+      throw new ServiceUnavailableException(
+        `${provider} OAuth token serveriga ulanib bo‘lmadi.`,
       );
     }
+
+    let responseBody: string;
+    try {
+      responseBody = await response.text();
+    } catch (error) {
+      this.logger.error(
+        `OAuth ${provider} token response could not be read (HTTP ${response.status}): ${
+          error instanceof Error ? error.message : 'Unknown response error'
+        }`,
+      );
+      throw new ServiceUnavailableException(
+        `${provider} OAuth javobini o‘qib bo‘lmadi.`,
+      );
+    }
+
+    let token: Record<string, unknown>;
+    try {
+      const parsed: unknown = JSON.parse(responseBody);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new Error('Invalid token response shape');
+      }
+      token = parsed as Record<string, unknown>;
+    } catch (error) {
+      this.logger.error(
+        `OAuth ${provider} token endpoint returned invalid JSON (HTTP ${response.status})`,
+      );
+      throw new BadRequestException(
+        `${provider} OAuth token serveridan noto‘g‘ri javob keldi.`,
+      );
+    }
+
+    if (!response.ok) {
+      const providerErrorObject =
+        token.error && typeof token.error === 'object'
+          ? (token.error as Record<string, unknown>)
+          : undefined;
+      const providerError = [
+        typeof token.error === 'string' ? token.error : undefined,
+        providerErrorObject?.message,
+        providerErrorObject?.type,
+        token.error_description,
+        token.message,
+      ]
+        .filter((value): value is string => typeof value === 'string')
+        .join(': ')
+        .slice(0, 500);
+      const safeProviderError = [code, this.clientSecret(provider)]
+        .filter(Boolean)
+        .reduce(
+          (message, secret) => message.replaceAll(secret, '[redacted]'),
+          providerError,
+        );
+      this.logger.error(
+        `OAuth ${provider} token exchange failed (HTTP ${response.status})${
+          safeProviderError ? `: ${safeProviderError}` : ''
+        }`,
+      );
+      throw new BadRequestException(
+        `${provider} OAuth tokenini olish muvaffaqiyatsiz tugadi.`,
+      );
+    }
+
+    if (typeof token.access_token !== 'string' || !token.access_token) {
+      this.logger.error(
+        `OAuth ${provider} token endpoint returned no access token (HTTP ${response.status})`,
+      );
+      throw new BadRequestException(
+        `${provider} OAuth javobida access token yo‘q.`,
+      );
+    }
+
     return token;
   }
 
