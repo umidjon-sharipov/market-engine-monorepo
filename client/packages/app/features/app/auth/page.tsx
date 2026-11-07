@@ -2,7 +2,7 @@
 
 import { Text, View, StyleSheet, ScrollView, Pressable, TextInput, useWindowDimensions, ActivityIndicator, Platform, Linking, KeyboardAvoidingView } from 'react-native'
 import { UniversalImage } from 'app/components/UI/UniversalImage'
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { LinearGradient } from 'app/components/UI/UniversalLinearGradient'
 import { useLanStorage } from 'app/store/useLanStore'
 import GrapePng from 'app/features/app/assets/grape.png'
@@ -96,10 +96,16 @@ const AuthPage = () => {
     const addOrUpdateAccount = useTokenStore((state) => state.addOrUpdateAccount)
     const router = useRouter()
     const searchParams = useSearchParams()
+    const startedOAuthCode = useRef<string | null>(null)
+    const oauthCallbackParams = useMemo(() => ({
+        code: searchParams?.get('code') ?? null,
+        state: searchParams?.get('state') ?? null,
+        step: searchParams?.get('step') ?? null,
+    }), [searchParams])
     const lan = useLanStorage((state) => state.lan) as 'uz' | 'ru' | 'en'
     const t = translations[lan || 'uz']
     const [localStep, setLocalStep] = useState<Step>('methods')
-    const queryStep = searchParams?.get('step') ?? null
+    const queryStep = oauthCallbackParams.step
     const step: Step = queryStep === 'otp' || queryStep === 'oauth-callback' ? queryStep : localStep === 'otp' || localStep === 'oauth-callback' ? localStep : 'methods'
 
     const { width } = useWindowDimensions()
@@ -177,11 +183,17 @@ const AuthPage = () => {
     }, [applySession, go, t.serverError, url])
 
     useEffect(() => {
-        const oauthCode = searchParams?.get('code')
-        if (step === 'oauth-callback' && oauthCode && url) {
+        const oauthCode = oauthCallbackParams.code
+        if (
+            step === 'oauth-callback' &&
+            oauthCode &&
+            url &&
+            startedOAuthCode.current !== oauthCode
+        ) {
+            startedOAuthCode.current = oauthCode
             void exchangeOAuth(oauthCode)
         }
-    }, [exchangeOAuth, searchParams, step, url])
+    }, [exchangeOAuth, oauthCallbackParams.code, step, url])
 
     useEffect(() => {
         const onUrl = ({ url: incoming }: { url: string }) => {
