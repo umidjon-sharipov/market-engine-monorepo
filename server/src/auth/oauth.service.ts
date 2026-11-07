@@ -14,8 +14,7 @@ import {
   type OAuthProvider,
 } from './oauth.providers';
 import { TelegramAuthDto } from './dto/telegram-auth.dto';
-
-type OAuthPlatform = 'client' | 'panel' | 'mobile';
+import { getOAuthRedirectBase, type OAuthPlatform } from './oauth.redirect';
 
 type ProviderConfig = {
   authorizationUrl?: string;
@@ -26,7 +25,10 @@ type ProviderConfig = {
   tokenAuth?: 'body' | 'basic';
 };
 
-const PROVIDER_ENDPOINTS: Record<Exclude<OAuthProvider, 'telegram'>, ProviderConfig> = {
+const PROVIDER_ENDPOINTS: Record<
+  Exclude<OAuthProvider, 'telegram'>,
+  ProviderConfig
+> = {
   google: {
     authorizationUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
     tokenUrl: 'https://oauth2.googleapis.com/token',
@@ -42,7 +44,8 @@ const PROVIDER_ENDPOINTS: Record<Exclude<OAuthProvider, 'telegram'>, ProviderCon
   facebook: {
     authorizationUrl: 'https://www.facebook.com/v21.0/dialog/oauth',
     tokenUrl: 'https://graph.facebook.com/v21.0/oauth/access_token',
-    userInfoUrl: 'https://graph.facebook.com/me?fields=id,name,email,picture.type(large)',
+    userInfoUrl:
+      'https://graph.facebook.com/me?fields=id,name,email,picture.type(large)',
     scopes: ['email', 'public_profile'],
   },
   linkedin: {
@@ -52,7 +55,8 @@ const PROVIDER_ENDPOINTS: Record<Exclude<OAuthProvider, 'telegram'>, ProviderCon
     scopes: ['openid', 'profile', 'email'],
   },
   microsoft: {
-    authorizationUrl: 'https://login.microsoftonline.com/{tenant}/oauth2/v2.0/authorize',
+    authorizationUrl:
+      'https://login.microsoftonline.com/{tenant}/oauth2/v2.0/authorize',
     tokenUrl: 'https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token',
     userInfoUrl: 'https://graph.microsoft.com/oidc/userinfo',
     scopes: ['openid', 'email', 'profile', 'offline_access'],
@@ -100,17 +104,23 @@ export class OAuthService {
     if (provider === 'apple') {
       return Boolean(
         this.env('APPLE_OAUTH_CLIENT_ID') &&
-          this.env('APPLE_OAUTH_TEAM_ID') &&
-          this.env('APPLE_OAUTH_KEY_ID') &&
-          this.env('APPLE_OAUTH_PRIVATE_KEY'),
+        this.env('APPLE_OAUTH_TEAM_ID') &&
+        this.env('APPLE_OAUTH_KEY_ID') &&
+        this.env('APPLE_OAUTH_PRIVATE_KEY'),
       );
     }
     return Boolean(this.clientId(provider) && this.clientSecret(provider));
   }
 
-  buildAuthorizeUrl(provider: OAuthProvider, platform: OAuthPlatform, locale?: string) {
+  buildAuthorizeUrl(
+    provider: OAuthProvider,
+    platform: OAuthPlatform,
+    locale?: string,
+  ) {
     if (provider === 'telegram') {
-      throw new BadRequestException('Telegram login alohida widget orqali ishlaydi.');
+      throw new BadRequestException(
+        'Telegram login alohida widget orqali ishlaydi.',
+      );
     }
     if (!this.isConfigured(provider)) {
       throw new ServiceUnavailableException(
@@ -119,7 +129,12 @@ export class OAuthService {
     }
     const endpoints = PROVIDER_ENDPOINTS[provider];
     const state = this.jwtService.sign(
-      { provider, platform, locale: locale || 'uz', nonce: randomBytes(8).toString('hex') },
+      {
+        provider,
+        platform,
+        locale: locale || 'uz',
+        nonce: randomBytes(8).toString('hex'),
+      },
       { expiresIn: '10m' },
     );
     const params = new URLSearchParams({
@@ -130,7 +145,10 @@ export class OAuthService {
       ...(endpoints.scopes.length ? { scope: endpoints.scopes.join(' ') } : {}),
       ...endpoints.extraAuthParams,
     });
-    const authorizationUrl = this.withTenant(endpoints.authorizationUrl || '', provider);
+    const authorizationUrl = this.withTenant(
+      endpoints.authorizationUrl || '',
+      provider,
+    );
     return `${authorizationUrl}?${params.toString()}`;
   }
 
@@ -146,13 +164,20 @@ export class OAuthService {
       }
       return payload;
     } catch {
-      throw new BadRequestException('OAuth state yaroqsiz yoki muddati tugagan.');
+      throw new BadRequestException(
+        'OAuth state yaroqsiz yoki muddati tugagan.',
+      );
     }
   }
 
-  async fetchProfile(provider: OAuthProvider, code: string): Promise<OAuthProfile> {
+  async fetchProfile(
+    provider: OAuthProvider,
+    code: string,
+  ): Promise<OAuthProfile> {
     if (provider === 'telegram') {
-      throw new BadRequestException('Telegram OAuth code oqimidan foydalanmaydi.');
+      throw new BadRequestException(
+        'Telegram OAuth code oqimidan foydalanmaydi.',
+      );
     }
     const endpoints = PROVIDER_ENDPOINTS[provider];
     const token = await this.exchangeToken(provider, code);
@@ -164,15 +189,20 @@ export class OAuthService {
     }
     const accessToken = String(token.access_token || '');
     if (!accessToken || !endpoints.userInfoUrl) {
-      throw new BadRequestException('OAuth tokenidan foydalanuvchi ma’lumoti olinmadi.');
+      throw new BadRequestException(
+        'OAuth tokenidan foydalanuvchi ma’lumoti olinmadi.',
+      );
     }
-    const userResponse = await fetch(this.withTenant(endpoints.userInfoUrl, provider), {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        Accept: 'application/json',
-        'User-Agent': 'market-engine-auth',
+    const userResponse = await fetch(
+      this.withTenant(endpoints.userInfoUrl, provider),
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          Accept: 'application/json',
+          'User-Agent': 'market-engine-auth',
+        },
       },
-    });
+    );
     const profile = (await userResponse.json()) as Record<string, unknown>;
     if (!userResponse.ok) {
       throw new BadRequestException('OAuth profilini yuklab bo‘lmadi.');
@@ -204,7 +234,9 @@ export class OAuthService {
       .sort()
       .join('\n');
     const secretKey = createHash('sha256').update(botToken).digest();
-    const hmac = createHmac('sha256', secretKey).update(dataCheckString).digest('hex');
+    const hmac = createHmac('sha256', secretKey)
+      .update(dataCheckString)
+      .digest('hex');
     if (hmac !== dto.hash) {
       throw new BadRequestException('Telegram imzosi yaroqsiz.');
     }
@@ -234,19 +266,18 @@ export class OAuthService {
   }
 
   private redirectBase(platform: OAuthPlatform, locale: string) {
-    if (platform === 'panel') {
-      return (
-        this.env('OAUTH_PANEL_REDIRECT_URL') ||
-        `http://localhost:3001/${locale}/auth`
-      );
-    }
-    if (platform === 'mobile') {
-      return this.env('OAUTH_MOBILE_REDIRECT_URL') || 'online-market://auth';
-    }
-    return this.env('OAUTH_CLIENT_REDIRECT_URL') || 'http://localhost:3000/auth';
+    return getOAuthRedirectBase(platform, locale, {
+      environment: this.env('NODE_ENV'),
+      clientRedirectUrl: this.env('OAUTH_CLIENT_REDIRECT_URL'),
+      panelRedirectUrl: this.env('OAUTH_PANEL_REDIRECT_URL'),
+      mobileRedirectUrl: this.env('OAUTH_MOBILE_REDIRECT_URL'),
+    });
   }
 
-  private async exchangeToken(provider: Exclude<OAuthProvider, 'telegram'>, code: string) {
+  private async exchangeToken(
+    provider: Exclude<OAuthProvider, 'telegram'>,
+    code: string,
+  ) {
     const endpoints = PROVIDER_ENDPOINTS[provider];
     const body = new URLSearchParams({
       grant_type: 'authorization_code',
@@ -254,7 +285,9 @@ export class OAuthService {
       redirect_uri: this.callbackUrl(provider),
       client_id: this.clientId(provider),
       client_secret:
-        provider === 'apple' ? this.appleClientSecret() : this.clientSecret(provider),
+        provider === 'apple'
+          ? this.appleClientSecret()
+          : this.clientSecret(provider),
     });
     const headers: Record<string, string> = {
       Accept: 'application/json',
@@ -267,19 +300,27 @@ export class OAuthService {
       body.delete('client_secret');
       body.delete('client_id');
     }
-    const response = await fetch(this.withTenant(endpoints.tokenUrl || '', provider), {
-      method: 'POST',
-      headers,
-      body,
-    });
+    const response = await fetch(
+      this.withTenant(endpoints.tokenUrl || '', provider),
+      {
+        method: 'POST',
+        headers,
+        body,
+      },
+    );
     const token = (await response.json()) as Record<string, unknown>;
     if (!response.ok) {
-      throw new BadRequestException('OAuth tokenini olish muvaffaqiyatsiz tugadi.');
+      throw new BadRequestException(
+        'OAuth tokenini olish muvaffaqiyatsiz tugadi.',
+      );
     }
     return token;
   }
 
-  private async githubProfile(profile: Record<string, unknown>, accessToken: string) {
+  private async githubProfile(
+    profile: Record<string, unknown>,
+    accessToken: string,
+  ) {
     let email =
       typeof profile.email === 'string' && profile.email
         ? profile.email
@@ -297,9 +338,10 @@ export class OAuthService {
         primary?: boolean;
         verified?: boolean;
       }>;
-      email = emails.find((item) => item.primary && item.verified)?.email
-        || emails.find((item) => item.verified)?.email
-        || emails[0]?.email;
+      email =
+        emails.find((item) => item.primary && item.verified)?.email ||
+        emails.find((item) => item.verified)?.email ||
+        emails[0]?.email;
     }
     const name = typeof profile.name === 'string' ? profile.name : '';
     const [firstName, ...last] = name.split(' ');
@@ -308,12 +350,22 @@ export class OAuthService {
       email,
       firstName: firstName || String(profile.login || 'GitHub'),
       lastName: last.join(' ') || undefined,
-      image: typeof profile.avatar_url === 'string' ? profile.avatar_url : undefined,
+      image:
+        typeof profile.avatar_url === 'string' ? profile.avatar_url : undefined,
     };
   }
 
   private notionProfile(token: Record<string, unknown>): OAuthProfile {
-    const owner = token.owner as { user?: { id?: string; name?: string; avatar_url?: string; person?: { email?: string } } } | undefined;
+    const owner = token.owner as
+      | {
+          user?: {
+            id?: string;
+            name?: string;
+            avatar_url?: string;
+            person?: { email?: string };
+          };
+        }
+      | undefined;
     const user = owner?.user;
     const [firstName, ...last] = String(user?.name || 'Notion').split(' ');
     return {
@@ -337,10 +389,14 @@ export class OAuthService {
     };
   }
 
-  private normalizeProfile(provider: OAuthProvider, profile: Record<string, unknown>): OAuthProfile {
-    const name = typeof profile.name === 'string'
-      ? profile.name
-      : [profile.given_name, profile.family_name].filter(Boolean).join(' ');
+  private normalizeProfile(
+    provider: OAuthProvider,
+    profile: Record<string, unknown>,
+  ): OAuthProfile {
+    const name =
+      typeof profile.name === 'string'
+        ? profile.name
+        : [profile.given_name, profile.family_name].filter(Boolean).join(' ');
     const [firstName, ...last] = name.split(' ').filter(Boolean);
     const picture = profile.picture;
     const image =
@@ -355,15 +411,24 @@ export class OAuthService {
       id: String(profile.sub || profile.id || ''),
       email: typeof profile.email === 'string' ? profile.email : undefined,
       firstName: firstName || provider,
-      lastName: last.join(' ') || (typeof profile.family_name === 'string' ? profile.family_name : undefined),
+      lastName:
+        last.join(' ') ||
+        (typeof profile.family_name === 'string'
+          ? profile.family_name
+          : undefined),
       image,
     };
   }
 
   private appleClientSecret() {
-    const privateKey = this.env('APPLE_OAUTH_PRIVATE_KEY')?.replace(/\\n/g, '\n');
+    const privateKey = this.env('APPLE_OAUTH_PRIVATE_KEY')?.replace(
+      /\\n/g,
+      '\n',
+    );
     if (!privateKey) {
-      throw new ServiceUnavailableException('Apple OAuth private key sozlanmagan.');
+      throw new ServiceUnavailableException(
+        'Apple OAuth private key sozlanmagan.',
+      );
     }
     return jwt.sign({}, privateKey, {
       algorithm: 'ES256',
@@ -384,13 +449,18 @@ export class OAuthService {
   }
 
   private callbackUrl(provider: OAuthProvider) {
-    const base = (this.env('API_PUBLIC_URL') || 'http://localhost:4000').replace(/\/+$/, '');
+    const base = (
+      this.env('API_PUBLIC_URL') || 'http://localhost:4000'
+    ).replace(/\/+$/, '');
     return `${base}/auth/oauth/${provider}/callback`;
   }
 
   private withTenant(url: string, provider: OAuthProvider) {
     if (provider !== 'microsoft') return url;
-    return url.replace('{tenant}', this.env('MICROSOFT_OAUTH_TENANT') || 'common');
+    return url.replace(
+      '{tenant}',
+      this.env('MICROSOFT_OAUTH_TENANT') || 'common',
+    );
   }
 
   private env(name: string) {
