@@ -18,6 +18,7 @@ import { MailService } from '../mail/mail.service';
 import { OAuthService } from './oauth.service';
 import { TelegramAuthDto } from './dto/telegram-auth.dto';
 import type { OAuthProfile, OAuthProvider } from './oauth.providers';
+import { OAuthCallbackCache } from './oauth-callback-cache';
 
 const FAILED_OTP_IP_LIMIT = 8;
 const IP_BLOCK_MS = 15 * 60 * 1000;
@@ -40,6 +41,8 @@ const profileSelect = {
 
 @Injectable()
 export class AuthService {
+  private readonly oauthCallbackCache = new OAuthCallbackCache();
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
@@ -277,6 +280,13 @@ export class AuthService {
   async resolveOAuthUser(provider: OAuthProvider, code: string) {
     const profile = await this.oauth.fetchProfile(provider, code);
     return this.upsertOAuthUser(provider, profile);
+  }
+
+  createOAuthCallbackTicket(provider: OAuthProvider, code: string) {
+    return this.oauthCallbackCache.run(provider, code, async () => {
+      const user = await this.resolveOAuthUser(provider, code);
+      return this.createOAuthTicket(user.id);
+    });
   }
 
   async finishOAuth(

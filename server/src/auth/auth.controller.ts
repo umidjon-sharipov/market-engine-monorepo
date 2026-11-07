@@ -108,8 +108,10 @@ export class AuthController {
           this.oauth.errorRedirect(platform, locale, 'OAuth code kelmadi.'),
         );
       }
-      const user = await this.authService.resolveOAuthUser(provider, code);
-      const ticket = await this.authService.createOAuthTicket(user.id);
+      const ticket = await this.authService.createOAuthCallbackTicket(
+        provider,
+        code,
+      );
       return response.redirect(this.oauth.successRedirect(platform, locale, ticket));
     } catch (error) {
       const message =

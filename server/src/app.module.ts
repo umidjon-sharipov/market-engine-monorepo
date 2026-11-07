@@ -54,7 +54,7 @@ const getPublicPath = () => {
     ConfigModule.forRoot({ isGlobal: true }),
     ServeStaticModule.forRoot({
       rootPath: getPublicPath(),
-      exclude: ['/api*'],
+      exclude: ['/api', '/api/*path'],
     }),
     PrismaModule,
     MailModule,
